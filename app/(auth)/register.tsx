@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Dumbbell } from 'lucide-react-native';
 
 export default function Register() {
@@ -21,6 +22,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const router = useRouter();
   const { signUp } = useAuth();
+  const { colors } = useTheme();
 
   const handleRegister = async () => {
     if (!email || !password || !fullName) {
@@ -49,7 +51,7 @@ export default function Register() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>

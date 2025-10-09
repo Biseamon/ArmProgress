@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Goal, StrengthTest, Workout } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
@@ -23,6 +24,7 @@ const { width } = Dimensions.get('window');
 
 export default function Progress() {
   const { profile, isPremium } = useAuth();
+  const { colors } = useTheme();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -143,9 +145,9 @@ export default function Progress() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Progress</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Progress</Text>
       </View>
 
       <ScrollView style={styles.content}>
@@ -406,7 +408,6 @@ export default function Progress() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
   },
   header: {
     padding: 20,

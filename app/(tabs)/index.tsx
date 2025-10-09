@@ -8,12 +8,14 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { Calendar, TrendingUp, Target, Clock } from 'lucide-react-native';
 
 export default function Home() {
   const { profile, isPremium } = useAuth();
+  const { colors } = useTheme();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,26 +140,26 @@ export default function Home() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Loading...</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.loadingText, { color: colors.text }]}>Loading...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#E63946" />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Welcome back,</Text>
-          <Text style={styles.name}>{profile?.full_name || 'Athlete'}</Text>
+          <Text style={[styles.greeting, { color: colors.textTertiary }]}>Welcome back,</Text>
+          <Text style={[styles.name, { color: colors.text }]}>{profile?.full_name || 'Athlete'}</Text>
         </View>
         {isPremium && (
-          <View style={styles.premiumBadge}>
+          <View style={[styles.premiumBadge, { backgroundColor: colors.premium }]}>
             <Text style={styles.premiumText}>PRO</Text>
           </View>
         )}
@@ -166,59 +168,59 @@ export default function Home() {
       <AdBanner />
 
       <View style={styles.statsGrid}>
-        <View style={styles.statCard}>
-          <Target size={24} color="#E63946" />
-          <Text style={styles.statValue}>{stats.totalWorkouts}</Text>
-          <Text style={styles.statLabel}>Total Workouts</Text>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <Target size={24} color={colors.primary} />
+          <Text style={[styles.statValue, { color: colors.text }]}>{stats.totalWorkouts}</Text>
+          <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Total Workouts</Text>
         </View>
 
-        <View style={styles.statCard}>
-          <Calendar size={24} color="#E63946" />
-          <Text style={styles.statValue}>{stats.thisWeek}</Text>
-          <Text style={styles.statLabel}>This Week</Text>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <Calendar size={24} color={colors.primary} />
+          <Text style={[styles.statValue, { color: colors.text }]}>{stats.thisWeek}</Text>
+          <Text style={[styles.statLabel, { color: colors.textTertiary }]}>This Week</Text>
         </View>
 
-        <View style={styles.statCard}>
-          <Clock size={24} color="#E63946" />
-          <Text style={styles.statValue}>{stats.totalMinutes}</Text>
-          <Text style={styles.statLabel}>Total Minutes</Text>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <Clock size={24} color={colors.primary} />
+          <Text style={[styles.statValue, { color: colors.text }]}>{stats.totalMinutes}</Text>
+          <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Total Minutes</Text>
         </View>
 
-        <View style={styles.statCard}>
-          <TrendingUp size={24} color="#E63946" />
-          <Text style={styles.statValue}>{stats.avgIntensity}</Text>
-          <Text style={styles.statLabel}>Avg Intensity</Text>
+        <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+          <TrendingUp size={24} color={colors.primary} />
+          <Text style={[styles.statValue, { color: colors.text }]}>{stats.avgIntensity}</Text>
+          <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Avg Intensity</Text>
         </View>
       </View>
 
       {cycles.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Training Cycles</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Training Cycles</Text>
           {cycles.map((cycle) => (
-            <View key={cycle.id} style={[styles.cycleCard, cycle.is_active && styles.cycleCardActive]}>
+            <View key={cycle.id} style={[styles.cycleCard, { backgroundColor: colors.surface, borderColor: cycle.is_active ? colors.secondary : 'transparent' }]}>
               <View style={styles.cycleHeader}>
-                <Text style={styles.cycleName}>{cycle.name}</Text>
+                <Text style={[styles.cycleName, { color: colors.text }]}>{cycle.name}</Text>
                 {cycle.is_active && (
-                  <View style={styles.activeBadge}>
+                  <View style={[styles.activeBadge, { backgroundColor: colors.secondary }]}>
                     <Text style={styles.activeBadgeText}>ACTIVE</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.cycleType}>
+              <Text style={[styles.cycleType, { color: colors.secondary }]}>
                 {cycle.cycle_type.replace(/_/g, ' ').toUpperCase()}
               </Text>
-              <Text style={styles.cycleDates}>
+              <Text style={[styles.cycleDates, { color: colors.textTertiary }]}>
                 {formatCycleDate(cycle.start_date)} - {formatCycleDate(cycle.end_date)}
               </Text>
               {cycle.description && (
-                <Text style={styles.cycleDescription} numberOfLines={2}>
+                <Text style={[styles.cycleDescription, { color: colors.textSecondary }]} numberOfLines={2}>
                   {cycle.description}
                 </Text>
               )}
-              <View style={styles.progressBarContainer}>
-                <View style={[styles.progressBar, { width: `${getCycleProgress(cycle)}%` }]} />
+              <View style={[styles.progressBarContainer, { backgroundColor: colors.background }]}>
+                <View style={[styles.progressBar, { width: `${getCycleProgress(cycle)}%`, backgroundColor: colors.secondary }]} />
               </View>
-              <Text style={styles.progressText}>
+              <Text style={[styles.progressText, { color: colors.secondary }]}>
                 {Math.round(getCycleProgress(cycle))}% complete
               </Text>
             </View>
@@ -227,35 +229,35 @@ export default function Home() {
       )}
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Workouts</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Workouts</Text>
 
         {workouts.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>No workouts yet</Text>
-            <Text style={styles.emptySubtext}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workouts yet</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textTertiary }]}>
               Start tracking your arm wrestling training!
             </Text>
           </View>
         ) : (
           workouts.map((workout) => (
-            <View key={workout.id} style={styles.workoutCard}>
+            <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
               <View style={styles.workoutHeader}>
-                <Text style={styles.workoutType}>
+                <Text style={[styles.workoutType, { color: colors.primary }]}>
                   {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
                 </Text>
-                <Text style={styles.workoutDate}>{formatDate(workout.created_at)}</Text>
+                <Text style={[styles.workoutDate, { color: colors.textTertiary }]}>{formatDate(workout.created_at)}</Text>
               </View>
               <View style={styles.workoutDetails}>
-                <Text style={styles.workoutDetail}>
+                <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
                   {workout.duration_minutes} min
                 </Text>
-                <Text style={styles.workoutDivider}>•</Text>
-                <Text style={styles.workoutDetail}>
+                <Text style={[styles.workoutDivider, { color: colors.border }]}>•</Text>
+                <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
                   Intensity: {workout.intensity}/10
                 </Text>
               </View>
               {workout.notes && (
-                <Text style={styles.workoutNotes} numberOfLines={2}>
+                <Text style={[styles.workoutNotes, { color: colors.textTertiary }]} numberOfLines={2}>
                   {workout.notes}
                 </Text>
               )}
@@ -272,10 +274,8 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
   },
   loadingText: {
-    color: '#FFF',
     fontSize: 16,
     textAlign: 'center',
     marginTop: 100,
@@ -289,16 +289,13 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 16,
-    color: '#999',
   },
   name: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFF',
     marginTop: 4,
   },
   premiumBadge: {
-    backgroundColor: '#FFD700',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 12,
@@ -317,7 +314,6 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: '#2A2A2A',
     borderRadius: 16,
     padding: 20,
     alignItems: 'center',
@@ -325,12 +321,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFF',
     marginTop: 12,
   },
   statLabel: {
     fontSize: 12,
-    color: '#999',
     marginTop: 4,
     textAlign: 'center',
   },
@@ -340,7 +334,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#FFF',
     marginBottom: 16,
   },
   emptyState: {
@@ -350,16 +343,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#555',
     marginTop: 8,
     textAlign: 'center',
   },
   workoutCard: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -373,11 +363,9 @@ const styles = StyleSheet.create({
   workoutType: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#E63946',
   },
   workoutDate: {
     fontSize: 12,
-    color: '#999',
   },
   workoutDetails: {
     flexDirection: 'row',
@@ -385,16 +373,13 @@ const styles = StyleSheet.create({
   },
   workoutDetail: {
     fontSize: 14,
-    color: '#CCC',
   },
   workoutDivider: {
     fontSize: 14,
-    color: '#666',
     marginHorizontal: 8,
   },
   workoutNotes: {
     fontSize: 14,
-    color: '#999',
     marginTop: 8,
     fontStyle: 'italic',
   },
@@ -402,15 +387,10 @@ const styles = StyleSheet.create({
     height: 20,
   },
   cycleCard: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  cycleCardActive: {
-    borderColor: '#2A7DE1',
   },
   cycleHeader: {
     flexDirection: 'row',
@@ -421,11 +401,9 @@ const styles = StyleSheet.create({
   cycleName: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFF',
     flex: 1,
   },
   activeBadge: {
-    backgroundColor: '#2A7DE1',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -437,36 +415,30 @@ const styles = StyleSheet.create({
   },
   cycleType: {
     fontSize: 14,
-    color: '#2A7DE1',
     fontWeight: '600',
     marginBottom: 4,
   },
   cycleDates: {
     fontSize: 12,
-    color: '#999',
     marginBottom: 8,
   },
   cycleDescription: {
     fontSize: 14,
-    color: '#CCC',
     fontStyle: 'italic',
     marginBottom: 12,
   },
   progressBarContainer: {
     height: 8,
-    backgroundColor: '#1A1A1A',
     borderRadius: 4,
     overflow: 'hidden',
     marginTop: 8,
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#2A7DE1',
     borderRadius: 4,
   },
   progressText: {
     fontSize: 12,
-    color: '#2A7DE1',
     marginTop: 4,
     fontWeight: '600',
   },

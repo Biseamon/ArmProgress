@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
@@ -28,6 +29,7 @@ type Exercise = {
 
 export default function Training() {
   const { profile, isPremium } = useAuth();
+  const { colors } = useTheme();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -293,9 +295,9 @@ export default function Training() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Training</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Training</Text>
         <View style={styles.headerButtons}>
           <TouchableOpacity
             style={[styles.addButton, styles.cycleButton]}
@@ -309,7 +311,7 @@ export default function Training() {
         </View>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 20 }}>
         <AdBanner />
 
         {cycles.length > 0 && (
@@ -749,7 +751,6 @@ export default function Training() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
   },
   header: {
     flexDirection: 'row',
