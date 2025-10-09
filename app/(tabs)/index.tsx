@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
@@ -29,36 +28,40 @@ export default function Home() {
   const fetchWorkouts = async () => {
     if (!profile) return;
 
-    const [recentWorkouts, allWorkouts, cyclesData] = await Promise.all([
-      supabase
-        .from('workouts')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(5),
-      supabase
-        .from('workouts')
-        .select('*')
-        .eq('user_id', profile.id),
-      supabase
-        .from('cycles')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('is_active', { ascending: false })
-        .order('start_date', { ascending: false })
-        .limit(3),
-    ]);
+    try {
+      const [recentWorkouts, allWorkouts, cyclesData] = await Promise.all([
+        supabase
+          .from('workouts')
+          .select('*')
+          .eq('user_id', profile.id)
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('workouts')
+          .select('*')
+          .eq('user_id', profile.id),
+        supabase
+          .from('cycles')
+          .select('*')
+          .eq('user_id', profile.id)
+          .order('is_active', { ascending: false })
+          .order('start_date', { ascending: false })
+          .limit(3),
+      ]);
 
-    if (recentWorkouts.data) {
-      setWorkouts(recentWorkouts.data);
-    }
+      if (recentWorkouts.data) {
+        setWorkouts(recentWorkouts.data);
+      }
 
-    if (allWorkouts.data) {
-      calculateStats(allWorkouts.data);
-    }
+      if (allWorkouts.data) {
+        calculateStats(allWorkouts.data);
+      }
 
-    if (cyclesData.data) {
-      setCycles(cyclesData.data);
+      if (cyclesData.data) {
+        setCycles(cyclesData.data);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
     }
   };
 
@@ -132,6 +135,14 @@ export default function Home() {
     const elapsed = now.getTime() - start.getTime();
     return Math.min(Math.max((elapsed / total) * 100, 0), 100);
   };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView
@@ -262,6 +273,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1A1A1A',
+  },
+  loadingText: {
+    color: '#FFF',
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 100,
   },
   header: {
     flexDirection: 'row',
