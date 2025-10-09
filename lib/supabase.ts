@@ -34,6 +34,7 @@ export type Workout = {
   duration_minutes: number;
   intensity: number;
   notes: string;
+  cycle_id: string | null;
   created_at: string;
 };
 
@@ -64,5 +65,17 @@ export type StrengthTest = {
   test_type: string;
   result_value: number;
   notes: string;
+  created_at: string;
+};
+
+export type Cycle = {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  cycle_type: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
   created_at: string;
 };

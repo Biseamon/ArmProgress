@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Alert,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
+import { supabase, Workout, Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
-import { Plus, X, Save } from 'lucide-react-native';
+import { Plus, X, Save, Edit2, Trash2, Calendar } from 'lucide-react-native';
 
 type Exercise = {
   exercise_name: string;
@@ -24,30 +26,59 @@ type Exercise = {
 
 export default function Training() {
   const { profile, isPremium } = useAuth();
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [showCycleModal, setShowCycleModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [workoutCount, setWorkoutCount] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
 
   const [workoutType, setWorkoutType] = useState('table_practice');
   const [duration, setDuration] = useState('30');
   const [intensity, setIntensity] = useState('5');
   const [notes, setNotes] = useState('');
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
 
-  useEffect(() => {
-    fetchWorkoutCount();
-  }, [profile]);
+  const [cycleName, setCycleName] = useState('');
+  const [cycleType, setCycleType] = useState('competition_prep');
+  const [cycleDescription, setCycleDescription] = useState('');
+  const [cycleStartDate, setCycleStartDate] = useState('');
+  const [cycleEndDate, setCycleEndDate] = useState('');
 
-  const fetchWorkoutCount = async () => {
+  useFocusEffect(
+    useCallback(() => {
+      if (profile) {
+        fetchData();
+      }
+    }, [profile])
+  );
+
+  const fetchData = async () => {
     if (!profile) return;
 
-    const { count } = await supabase
-      .from('workouts')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', profile.id);
+    const [workoutsRes, cyclesRes, countRes] = await Promise.all([
+      supabase
+        .from('workouts')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('cycles')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('start_date', { ascending: false }),
+      supabase
+        .from('workouts')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', profile.id),
+    ]);
 
-    setWorkoutCount(count || 0);
+    if (workoutsRes.data) setWorkouts(workoutsRes.data);
+    if (cyclesRes.data) setCycles(cyclesRes.data);
+    setWorkoutCount(countRes.count || 0);
   };
 
   const handleStartWorkout = () => {
@@ -55,7 +86,47 @@ export default function Training() {
       setShowPaywall(true);
       return;
     }
+    setEditingWorkout(null);
+    resetForm();
     setShowWorkoutModal(true);
+  };
+
+  const handleEditWorkout = async (workout: Workout) => {
+    setEditingWorkout(workout);
+    setWorkoutType(workout.workout_type);
+    setDuration(String(workout.duration_minutes));
+    setIntensity(String(workout.intensity));
+    setNotes(workout.notes);
+    setSelectedCycleId(workout.cycle_id);
+
+    const { data: exercisesData } = await supabase
+      .from('exercises')
+      .select('*')
+      .eq('workout_id', workout.id);
+
+    if (exercisesData) {
+      setExercises(exercisesData);
+    }
+
+    setShowWorkoutModal(true);
+  };
+
+  const handleDeleteWorkout = (workout: Workout) => {
+    Alert.alert(
+      'Delete Workout',
+      'Are you sure you want to delete this workout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.from('workouts').delete().eq('id', workout.id);
+            fetchData();
+          },
+        },
+      ]
+    );
   };
 
   const handleAddExercise = () => {
@@ -80,36 +151,99 @@ export default function Training() {
 
     setSaving(true);
 
-    const { data: workout, error: workoutError } = await supabase
-      .from('workouts')
-      .insert({
-        user_id: profile.id,
-        workout_type: workoutType,
-        duration_minutes: parseInt(duration) || 0,
-        intensity: parseInt(intensity) || 5,
-        notes,
-      })
-      .select()
-      .single();
+    if (editingWorkout) {
+      const { error: updateError } = await supabase
+        .from('workouts')
+        .update({
+          workout_type: workoutType,
+          duration_minutes: parseInt(duration) || 0,
+          intensity: parseInt(intensity) || 5,
+          notes,
+          cycle_id: selectedCycleId,
+        })
+        .eq('id', editingWorkout.id);
 
-    if (workoutError || !workout) {
-      setSaving(false);
-      return;
-    }
+      if (!updateError) {
+        await supabase.from('exercises').delete().eq('workout_id', editingWorkout.id);
 
-    if (exercises.length > 0) {
-      const exercisesData = exercises.map((ex) => ({
-        workout_id: workout.id,
-        ...ex,
-      }));
+        if (exercises.length > 0) {
+          const exercisesData = exercises.map((ex) => ({
+            workout_id: editingWorkout.id,
+            ...ex,
+          }));
+          await supabase.from('exercises').insert(exercisesData);
+        }
+      }
+    } else {
+      const { data: workout, error: workoutError } = await supabase
+        .from('workouts')
+        .insert({
+          user_id: profile.id,
+          workout_type: workoutType,
+          duration_minutes: parseInt(duration) || 0,
+          intensity: parseInt(intensity) || 5,
+          notes,
+          cycle_id: selectedCycleId,
+        })
+        .select()
+        .single();
 
-      await supabase.from('exercises').insert(exercisesData);
+      if (!workoutError && workout && exercises.length > 0) {
+        const exercisesData = exercises.map((ex) => ({
+          workout_id: workout.id,
+          ...ex,
+        }));
+        await supabase.from('exercises').insert(exercisesData);
+      }
     }
 
     setSaving(false);
     setShowWorkoutModal(false);
     resetForm();
-    fetchWorkoutCount();
+    fetchData();
+  };
+
+  const handleSaveCycle = async () => {
+    if (!profile || !cycleName || !cycleStartDate || !cycleEndDate) return;
+
+    await supabase.from('cycles').insert({
+      user_id: profile.id,
+      name: cycleName,
+      description: cycleDescription,
+      cycle_type: cycleType,
+      start_date: cycleStartDate,
+      end_date: cycleEndDate,
+      is_active: false,
+    });
+
+    setShowCycleModal(false);
+    resetCycleForm();
+    fetchData();
+  };
+
+  const handleDeleteCycle = (cycle: Cycle) => {
+    Alert.alert('Delete Cycle', 'Are you sure you want to delete this cycle?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.from('cycles').delete().eq('id', cycle.id);
+          fetchData();
+        },
+      },
+    ]);
+  };
+
+  const handleToggleActiveCycle = async (cycle: Cycle) => {
+    await supabase.from('cycles').update({ is_active: false }).eq('user_id', profile!.id);
+
+    await supabase
+      .from('cycles')
+      .update({ is_active: !cycle.is_active })
+      .eq('id', cycle.id);
+
+    fetchData();
   };
 
   const resetForm = () => {
@@ -117,7 +251,17 @@ export default function Training() {
     setDuration('30');
     setIntensity('5');
     setNotes('');
+    setSelectedCycleId(null);
     setExercises([]);
+    setEditingWorkout(null);
+  };
+
+  const resetCycleForm = () => {
+    setCycleName('');
+    setCycleType('competition_prep');
+    setCycleDescription('');
+    setCycleStartDate('');
+    setCycleEndDate('');
   };
 
   const workoutTypes = [
@@ -128,35 +272,79 @@ export default function Training() {
     { value: 'sparring', label: 'Sparring' },
   ];
 
+  const cycleTypes = [
+    { value: 'competition_prep', label: 'Competition Prep' },
+    { value: 'rehab', label: 'Rehabilitation' },
+    { value: 'strength_building', label: 'Strength Building' },
+    { value: 'technique_focus', label: 'Technique Focus' },
+    { value: 'off_season', label: 'Off Season' },
+  ];
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Training</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleStartWorkout}>
-          <Plus size={24} color="#FFF" />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[styles.addButton, styles.cycleButton]}
+            onPress={() => setShowCycleModal(true)}
+          >
+            <Calendar size={20} color="#FFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addButton} onPress={handleStartWorkout}>
+            <Plus size={24} color="#FFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={styles.content}>
         <AdBanner />
 
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Quick Tips</Text>
-          <Text style={styles.infoText}>
-            • Warm up properly before intense training
-          </Text>
-          <Text style={styles.infoText}>• Focus on technique over strength</Text>
-          <Text style={styles.infoText}>• Rest adequately between sessions</Text>
-          <Text style={styles.infoText}>
-            • Track your progress consistently
-          </Text>
-        </View>
+        {cycles.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Training Cycles</Text>
+            {cycles.map((cycle) => (
+              <TouchableOpacity
+                key={cycle.id}
+                style={[styles.cycleCard, cycle.is_active && styles.cycleCardActive]}
+                onPress={() => handleToggleActiveCycle(cycle)}
+                onLongPress={() => handleDeleteCycle(cycle)}
+              >
+                <View style={styles.cycleHeader}>
+                  <Text style={styles.cycleName}>{cycle.name}</Text>
+                  {cycle.is_active && (
+                    <View style={styles.activeBadge}>
+                      <Text style={styles.activeBadgeText}>ACTIVE</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.cycleType}>
+                  {cycle.cycle_type.replace(/_/g, ' ').toUpperCase()}
+                </Text>
+                <Text style={styles.cycleDates}>
+                  {formatDate(cycle.start_date)} - {formatDate(cycle.end_date)}
+                </Text>
+                {cycle.description && (
+                  <Text style={styles.cycleDescription} numberOfLines={2}>
+                    {cycle.description}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {!isPremium && (
           <View style={styles.limitCard}>
-            <Text style={styles.limitText}>
-              Free: {workoutCount}/5 workouts tracked
-            </Text>
+            <Text style={styles.limitText}>Free: {workoutCount}/5 workouts tracked</Text>
             <TouchableOpacity
               style={styles.upgradeButton}
               onPress={() => setShowPaywall(true)}
@@ -167,19 +355,56 @@ export default function Training() {
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Common Exercises</Text>
-          {[
-            'Wrist Curls',
-            'Pronation/Supination',
-            'Top Roll Practice',
-            'Hook Practice',
-            'Strap Pulls',
-            'Cable Pulls',
-          ].map((exercise) => (
-            <View key={exercise} style={styles.exerciseItem}>
-              <Text style={styles.exerciseText}>{exercise}</Text>
+          <Text style={styles.sectionTitle}>Your Workouts</Text>
+          {workouts.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No workouts yet</Text>
+              <Text style={styles.emptySubtext}>Start tracking your training!</Text>
             </View>
-          ))}
+          ) : (
+            workouts.map((workout) => (
+              <View key={workout.id} style={styles.workoutCard}>
+                <View style={styles.workoutHeader}>
+                  <View style={styles.workoutInfo}>
+                    <Text style={styles.workoutType}>
+                      {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
+                    </Text>
+                    <Text style={styles.workoutDate}>
+                      {formatDate(workout.created_at)}
+                    </Text>
+                  </View>
+                  <View style={styles.workoutActions}>
+                    <TouchableOpacity
+                      style={styles.iconButton}
+                      onPress={() => handleEditWorkout(workout)}
+                    >
+                      <Edit2 size={18} color="#E63946" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.iconButton}
+                      onPress={() => handleDeleteWorkout(workout)}
+                    >
+                      <Trash2 size={18} color="#FF6B6B" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.workoutDetails}>
+                  <Text style={styles.workoutDetail}>
+                    {workout.duration_minutes} min
+                  </Text>
+                  <Text style={styles.workoutDivider}>•</Text>
+                  <Text style={styles.workoutDetail}>
+                    Intensity: {workout.intensity}/10
+                  </Text>
+                </View>
+                {workout.notes && (
+                  <Text style={styles.workoutNotes} numberOfLines={2}>
+                    {workout.notes}
+                  </Text>
+                )}
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -190,13 +415,58 @@ export default function Training() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Log Workout</Text>
+            <Text style={styles.modalTitle}>
+              {editingWorkout ? 'Edit Workout' : 'Log Workout'}
+            </Text>
             <TouchableOpacity onPress={() => setShowWorkoutModal(false)}>
               <X size={24} color="#999" />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.modalContent}>
+            {cycles.length > 0 && (
+              <>
+                <Text style={styles.label}>Training Cycle (Optional)</Text>
+                <View style={styles.typeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      selectedCycleId === null && styles.typeButtonActive,
+                    ]}
+                    onPress={() => setSelectedCycleId(null)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        selectedCycleId === null && styles.typeButtonTextActive,
+                      ]}
+                    >
+                      None
+                    </Text>
+                  </TouchableOpacity>
+                  {cycles.map((cycle) => (
+                    <TouchableOpacity
+                      key={cycle.id}
+                      style={[
+                        styles.typeButton,
+                        selectedCycleId === cycle.id && styles.typeButtonActive,
+                      ]}
+                      onPress={() => setSelectedCycleId(cycle.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeButtonText,
+                          selectedCycleId === cycle.id && styles.typeButtonTextActive,
+                        ]}
+                      >
+                        {cycle.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
             <Text style={styles.label}>Workout Type</Text>
             <View style={styles.typeContainer}>
               {workoutTypes.map((type) => (
@@ -266,9 +536,7 @@ export default function Training() {
               {exercises.map((exercise, index) => (
                 <View key={index} style={styles.exerciseCard}>
                   <View style={styles.exerciseCardHeader}>
-                    <Text style={styles.exerciseCardTitle}>
-                      Exercise {index + 1}
-                    </Text>
+                    <Text style={styles.exerciseCardTitle}>Exercise {index + 1}</Text>
                     <TouchableOpacity onPress={() => handleRemoveExercise(index)}>
                       <X size={20} color="#999" />
                     </TouchableOpacity>
@@ -315,11 +583,7 @@ export default function Training() {
                         style={styles.smallInput}
                         value={String(exercise.weight_lbs)}
                         onChangeText={(val) =>
-                          handleUpdateExercise(
-                            index,
-                            'weight_lbs',
-                            parseInt(val) || 0
-                          )
+                          handleUpdateExercise(index, 'weight_lbs', parseInt(val) || 0)
                         }
                         keyboardType="number-pad"
                       />
@@ -336,8 +600,93 @@ export default function Training() {
             >
               <Save size={20} color="#FFF" />
               <Text style={styles.saveButtonText}>
-                {saving ? 'Saving...' : 'Save Workout'}
+                {saving ? 'Saving...' : editingWorkout ? 'Update Workout' : 'Save Workout'}
               </Text>
+            </TouchableOpacity>
+
+            <View style={styles.modalBottomSpacing} />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showCycleModal}
+        animationType="slide"
+        onRequestClose={() => setShowCycleModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>New Training Cycle</Text>
+            <TouchableOpacity onPress={() => setShowCycleModal(false)}>
+              <X size={24} color="#999" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.label}>Cycle Name</Text>
+            <TextInput
+              style={styles.input}
+              value={cycleName}
+              onChangeText={setCycleName}
+              placeholder="e.g., Competition Prep 2025"
+              placeholderTextColor="#666"
+            />
+
+            <Text style={styles.label}>Cycle Type</Text>
+            <View style={styles.typeContainer}>
+              {cycleTypes.map((type) => (
+                <TouchableOpacity
+                  key={type.value}
+                  style={[
+                    styles.typeButton,
+                    cycleType === type.value && styles.typeButtonActive,
+                  ]}
+                  onPress={() => setCycleType(type.value)}
+                >
+                  <Text
+                    style={[
+                      styles.typeButtonText,
+                      cycleType === type.value && styles.typeButtonTextActive,
+                    ]}
+                  >
+                    {type.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Start Date (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.input}
+              value={cycleStartDate}
+              onChangeText={setCycleStartDate}
+              placeholder="2025-01-01"
+              placeholderTextColor="#666"
+            />
+
+            <Text style={styles.label}>End Date (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.input}
+              value={cycleEndDate}
+              onChangeText={setCycleEndDate}
+              placeholder="2025-04-01"
+              placeholderTextColor="#666"
+            />
+
+            <Text style={styles.label}>Description (Optional)</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={cycleDescription}
+              onChangeText={setCycleDescription}
+              multiline
+              numberOfLines={3}
+              placeholder="Describe your training cycle..."
+              placeholderTextColor="#666"
+            />
+
+            <TouchableOpacity style={styles.saveButton} onPress={handleSaveCycle}>
+              <Save size={20} color="#FFF" />
+              <Text style={styles.saveButtonText}>Create Cycle</Text>
             </TouchableOpacity>
 
             <View style={styles.modalBottomSpacing} />
@@ -348,9 +697,7 @@ export default function Training() {
       <PaywallModal
         visible={showPaywall}
         onClose={() => setShowPaywall(false)}
-        onUpgrade={() => {
-          setShowPaywall(false);
-        }}
+        onUpgrade={() => setShowPaywall(false)}
         feature="Unlimited workout tracking"
       />
     </View>
@@ -374,6 +721,10 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFF',
   },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   addButton: {
     backgroundColor: '#E63946',
     width: 48,
@@ -382,27 +733,71 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  cycleButton: {
+    backgroundColor: '#2A7DE1',
+  },
   content: {
     flex: 1,
     padding: 20,
   },
-  infoCard: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  section: {
+    marginBottom: 24,
   },
-  infoTitle: {
+  sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFF',
     marginBottom: 12,
   },
-  infoText: {
+  cycleCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  cycleCardActive: {
+    borderColor: '#2A7DE1',
+  },
+  cycleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  cycleName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+    flex: 1,
+  },
+  activeBadge: {
+    backgroundColor: '#2A7DE1',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  activeBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  cycleType: {
+    fontSize: 14,
+    color: '#2A7DE1',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  cycleDates: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 8,
+  },
+  cycleDescription: {
     fontSize: 14,
     color: '#CCC',
-    marginBottom: 8,
-    lineHeight: 20,
+    fontStyle: 'italic',
   },
   limitCard: {
     backgroundColor: '#2A2A2A',
@@ -428,24 +823,72 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
-  section: {
-    marginTop: 8,
+  emptyState: {
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#555',
+    marginTop: 4,
+  },
+  workoutCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 12,
   },
-  exerciseItem: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 8,
-    padding: 14,
+  workoutHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 8,
   },
-  exerciseText: {
+  workoutInfo: {
+    flex: 1,
+  },
+  workoutType: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#E63946',
+    marginBottom: 4,
+  },
+  workoutDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  workoutActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconButton: {
+    padding: 8,
+  },
+  workoutDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  workoutDetail: {
     fontSize: 14,
     color: '#CCC',
+  },
+  workoutDivider: {
+    fontSize: 14,
+    color: '#666',
+    marginHorizontal: 8,
+  },
+  workoutNotes: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   modalContainer: {
     flex: 1,

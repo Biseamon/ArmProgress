@@ -10,9 +10,10 @@ import {
   Dimensions,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, Goal, StrengthTest } from '@/lib/supabase';
+import { supabase, Goal, StrengthTest, Workout } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
+import { ProgressGraphs } from '@/components/ProgressGraphs';
 import { Plus, Target, X, Save, Trophy, TrendingUp } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
@@ -21,6 +22,7 @@ export default function Progress() {
   const { profile, isPremium } = useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -41,7 +43,7 @@ export default function Progress() {
   const fetchData = async () => {
     if (!profile) return;
 
-    const [goalsResponse, testsResponse] = await Promise.all([
+    const [goalsResponse, testsResponse, workoutsResponse] = await Promise.all([
       supabase
         .from('goals')
         .select('*')
@@ -53,10 +55,16 @@ export default function Progress() {
         .eq('user_id', profile.id)
         .order('created_at', { ascending: false })
         .limit(10),
+      supabase
+        .from('workouts')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false }),
     ]);
 
     if (goalsResponse.data) setGoals(goalsResponse.data);
     if (testsResponse.data) setStrengthTests(testsResponse.data);
+    if (workoutsResponse.data) setWorkouts(workoutsResponse.data);
 
     setLoading(false);
   };
@@ -134,6 +142,11 @@ export default function Progress() {
 
       <ScrollView style={styles.content}>
         <AdBanner />
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Analytics</Text>
+          <ProgressGraphs workouts={workouts} strengthTests={strengthTests} />
+        </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
