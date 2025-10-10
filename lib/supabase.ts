@@ -25,6 +25,7 @@ export type Profile = {
   full_name: string;
   is_premium: boolean;
   is_test_user: boolean;
+  weight_unit: 'lbs' | 'kg';
   created_at: string;
   updated_at: string;
 };

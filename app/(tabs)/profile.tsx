@@ -11,13 +11,29 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
-import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase';
+import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun, Weight } from 'lucide-react-native';
 
 export default function Profile() {
-  const { profile, signOut, isPremium } = useAuth();
+  const { profile, signOut, isPremium, refreshProfile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
   const router = useRouter();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
+
+  const handleWeightUnitToggle = async (value: boolean) => {
+    const newUnit = value ? 'kg' : 'lbs';
+    setWeightUnit(newUnit);
+
+    if (profile) {
+      await supabase
+        .from('profiles')
+        .update({ weight_unit: newUnit })
+        .eq('id', profile.id);
+
+      await refreshProfile();
+    }
+  };
 
   const handleSignOut = () => {
     Alert.alert(
@@ -132,6 +148,25 @@ export default function Profile() {
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor={notificationsEnabled ? '#FFF' : '#FFF'}
               />
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <View style={styles.settingItem}>
+              <View style={styles.settingLeft}>
+                <Weight size={20} color={colors.primary} />
+                <Text style={[styles.settingText, { color: colors.text }]}>Weight Unit</Text>
+              </View>
+              <View style={styles.weightUnitToggle}>
+                <Text style={[styles.unitLabel, weightUnit === 'lbs' && styles.unitLabelActive, { color: weightUnit === 'lbs' ? colors.primary : colors.textTertiary }]}>lbs</Text>
+                <Switch
+                  value={weightUnit === 'kg'}
+                  onValueChange={handleWeightUnitToggle}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFF"
+                />
+                <Text style={[styles.unitLabel, weightUnit === 'kg' && styles.unitLabelActive, { color: weightUnit === 'kg' ? colors.primary : colors.textTertiary }]}>kg</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -351,5 +386,17 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 40,
+  },
+  weightUnitToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  unitLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  unitLabelActive: {
+    fontWeight: 'bold',
   },
 });

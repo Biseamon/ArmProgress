@@ -2,6 +2,8 @@ import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-nati
 import { Workout, StrengthTest } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaywallModal } from './PaywallModal';
+import { PieChart } from './charts/PieChart';
+import { LineChart } from './charts/LineChart';
 import { useState } from 'react';
 import { Lock } from 'lucide-react-native';
 
@@ -102,26 +104,35 @@ export function ProgressGraphs({ workouts, strengthTests, cycleId }: ProgressGra
         <Text style={styles.graphTitle}>Training Volume by Type</Text>
         <Text style={styles.graphSubtitle}>Total minutes per category</Text>
 
-        <View style={styles.volumeList}>
-          {['strength', 'table_practice', 'technique', 'endurance', 'sparring'].map((type) => {
-            const duration = getTotalDurationByType(type);
-            const maxDuration = Math.max(
-              ...['strength', 'table_practice', 'technique', 'endurance', 'sparring'].map(
-                (t) => getTotalDurationByType(t)
-              ),
-              1
-            );
-            const percentage = (duration / maxDuration) * 100;
+        <View style={styles.pieChartContainer}>
+          <PieChart
+            data={[
+              { value: getTotalDurationByType('strength'), color: '#E63946' },
+              { value: getTotalDurationByType('table_practice'), color: '#2A7DE1' },
+              { value: getTotalDurationByType('technique'), color: '#FFD700' },
+              { value: getTotalDurationByType('endurance'), color: '#4CAF50' },
+              { value: getTotalDurationByType('sparring'), color: '#FF6B6B' },
+            ].filter((d) => d.value > 0)}
+            size={160}
+          />
+        </View>
 
+        <View style={styles.legendContainer}>
+          {[
+            { type: 'strength', color: '#E63946' },
+            { type: 'table_practice', color: '#2A7DE1' },
+            { type: 'technique', color: '#FFD700' },
+            { type: 'endurance', color: '#4CAF50' },
+            { type: 'sparring', color: '#FF6B6B' },
+          ].map(({ type, color }) => {
+            const duration = getTotalDurationByType(type);
+            if (duration === 0) return null;
             return (
-              <View key={type} style={styles.volumeItem}>
-                <Text style={styles.volumeLabel}>
-                  {type.replace(/_/g, ' ')}
+              <View key={type} style={styles.legendItem}>
+                <View style={[styles.legendColor, { backgroundColor: color }]} />
+                <Text style={styles.legendLabel}>
+                  {type.replace(/_/g, ' ')}: {duration}m
                 </Text>
-                <View style={styles.volumeBarContainer}>
-                  <View style={[styles.volumeBar, { width: `${percentage}%` }]} />
-                </View>
-                <Text style={styles.volumeValue}>{duration}m</Text>
               </View>
             );
           })}
@@ -175,33 +186,25 @@ export function ProgressGraphs({ workouts, strengthTests, cycleId }: ProgressGra
         )}
 
         <Text style={styles.graphTitle}>Strength Training Progress</Text>
-        <Text style={styles.graphSubtitle}>Last 5 sessions</Text>
+        <Text style={styles.graphSubtitle}>Intensity over time</Text>
 
         {isPremium ? (
-          <View style={styles.trendList}>
-            {getRecentTrend('strength').length > 0 ? (
-              getRecentTrend('strength').map((workout, index) => (
-                <View key={workout.id} style={styles.trendItem}>
-                  <Text style={styles.trendIndex}>#{index + 1}</Text>
-                  <View style={styles.trendInfo}>
-                    <Text style={styles.trendDate}>
-                      {new Date(workout.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </Text>
-                    <View style={styles.trendStats}>
-                      <Text style={styles.trendStat}>{workout.duration_minutes}m</Text>
-                      <Text style={styles.trendDivider}>•</Text>
-                      <Text style={styles.trendStat}>Intensity: {workout.intensity}/10</Text>
-                    </View>
-                  </View>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.noDataText}>No strength workouts yet</Text>
-            )}
-          </View>
+          getRecentTrend('strength').length > 0 ? (
+            <LineChart
+              data={getRecentTrend('strength').map((w) => ({
+                value: w.intensity,
+                label: new Date(w.created_at).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                }),
+              }))}
+              color="#E63946"
+              width={width - 80}
+              height={180}
+            />
+          ) : (
+            <Text style={styles.noDataText}>No strength workouts yet</Text>
+          )
         ) : (
           <View style={styles.blurredChart}>
             <Text style={styles.blurredText}>Premium analytics locked</Text>
@@ -211,32 +214,24 @@ export function ProgressGraphs({ workouts, strengthTests, cycleId }: ProgressGra
 
       <View style={styles.graphCard}>
         <Text style={styles.graphTitle}>Technique Training Progress</Text>
-        <Text style={styles.graphSubtitle}>Last 5 sessions</Text>
+        <Text style={styles.graphSubtitle}>Duration over time</Text>
 
-        <View style={styles.trendList}>
-          {getRecentTrend('technique').length > 0 ? (
-            getRecentTrend('technique').map((workout, index) => (
-              <View key={workout.id} style={styles.trendItem}>
-                <Text style={styles.trendIndex}>#{index + 1}</Text>
-                <View style={styles.trendInfo}>
-                  <Text style={styles.trendDate}>
-                    {new Date(workout.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </Text>
-                  <View style={styles.trendStats}>
-                    <Text style={styles.trendStat}>{workout.duration_minutes}m</Text>
-                    <Text style={styles.trendDivider}>•</Text>
-                    <Text style={styles.trendStat}>Intensity: {workout.intensity}/10</Text>
-                  </View>
-                </View>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.noDataText}>No technique workouts yet</Text>
-          )}
-        </View>
+        {getRecentTrend('technique').length > 0 ? (
+          <LineChart
+            data={getRecentTrend('technique').map((w) => ({
+              value: w.duration_minutes,
+              label: new Date(w.created_at).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+              }),
+            }))}
+            color="#FFD700"
+            width={width - 80}
+            height={180}
+          />
+        ) : (
+          <Text style={styles.noDataText}>No technique workouts yet</Text>
+        )}
       </View>
 
       <TouchableOpacity
@@ -252,33 +247,25 @@ export function ProgressGraphs({ workouts, strengthTests, cycleId }: ProgressGra
         )}
 
         <Text style={styles.graphTitle}>Endurance Training Progress</Text>
-        <Text style={styles.graphSubtitle}>Last 5 sessions</Text>
+        <Text style={styles.graphSubtitle}>Duration over time</Text>
 
         {isPremium ? (
-          <View style={styles.trendList}>
-            {getRecentTrend('endurance').length > 0 ? (
-              getRecentTrend('endurance').map((workout, index) => (
-                <View key={workout.id} style={styles.trendItem}>
-                  <Text style={styles.trendIndex}>#{index + 1}</Text>
-                  <View style={styles.trendInfo}>
-                    <Text style={styles.trendDate}>
-                      {new Date(workout.created_at).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </Text>
-                    <View style={styles.trendStats}>
-                      <Text style={styles.trendStat}>{workout.duration_minutes}m</Text>
-                      <Text style={styles.trendDivider}>•</Text>
-                      <Text style={styles.trendStat}>Intensity: {workout.intensity}/10</Text>
-                    </View>
-                  </View>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.noDataText}>No endurance workouts yet</Text>
-            )}
-          </View>
+          getRecentTrend('endurance').length > 0 ? (
+            <LineChart
+              data={getRecentTrend('endurance').map((w) => ({
+                value: w.duration_minutes,
+                label: new Date(w.created_at).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                }),
+              }))}
+              color="#4CAF50"
+              width={width - 80}
+              height={180}
+            />
+          ) : (
+            <Text style={styles.noDataText}>No endurance workouts yet</Text>
+          )
         ) : (
           <View style={styles.blurredChart}>
             <Text style={styles.blurredText}>Premium analytics locked</Text>
@@ -288,32 +275,24 @@ export function ProgressGraphs({ workouts, strengthTests, cycleId }: ProgressGra
 
       <View style={styles.graphCard}>
         <Text style={styles.graphTitle}>Table Practice Progress</Text>
-        <Text style={styles.graphSubtitle}>Last 5 sessions</Text>
+        <Text style={styles.graphSubtitle}>Intensity over time</Text>
 
-        <View style={styles.trendList}>
-          {getRecentTrend('table_practice').length > 0 ? (
-            getRecentTrend('table_practice').map((workout, index) => (
-              <View key={workout.id} style={styles.trendItem}>
-                <Text style={styles.trendIndex}>#{index + 1}</Text>
-                <View style={styles.trendInfo}>
-                  <Text style={styles.trendDate}>
-                    {new Date(workout.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </Text>
-                  <View style={styles.trendStats}>
-                    <Text style={styles.trendStat}>{workout.duration_minutes}m</Text>
-                    <Text style={styles.trendDivider}>•</Text>
-                    <Text style={styles.trendStat}>Intensity: {workout.intensity}/10</Text>
-                  </View>
-                </View>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.noDataText}>No table practice workouts yet</Text>
-          )}
-        </View>
+        {getRecentTrend('table_practice').length > 0 ? (
+          <LineChart
+            data={getRecentTrend('table_practice').map((w) => ({
+              value: w.intensity,
+              label: new Date(w.created_at).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+              }),
+            }))}
+            color="#2A7DE1"
+            width={width - 80}
+            height={180}
+          />
+        ) : (
+          <Text style={styles.noDataText}>No table practice workouts yet</Text>
+        )}
       </View>
 
       <TouchableOpacity
@@ -609,5 +588,29 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     padding: 20,
+  },
+  pieChartContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  legendContainer: {
+    gap: 8,
+    marginTop: 16,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendColor: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  legendLabel: {
+    fontSize: 14,
+    color: '#CCC',
+    textTransform: 'capitalize',
   },
 });
