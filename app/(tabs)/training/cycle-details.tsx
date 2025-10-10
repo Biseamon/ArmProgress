@@ -246,7 +246,7 @@ export default function CycleDetails() {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/training')}>
             <ArrowLeft size={24} color="#FFF" />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.text }]}>Loading...</Text>
@@ -258,7 +258,7 @@ export default function CycleDetails() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.push('/(tabs)/training')} style={styles.backButton}>
           <ArrowLeft size={24} color="#FFF" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
