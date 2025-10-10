@@ -33,11 +33,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error('Session error:', error);
+        supabase.auth.signOut().catch(() => {});
+        setSession(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
       setSession(session);
       if (session?.user) {
         fetchProfile(session.user.id);
       }
+      setLoading(false);
+    }).catch((error) => {
+      console.error('Failed to get session:', error);
+      supabase.auth.signOut().catch(() => {});
+      setSession(null);
+      setProfile(null);
       setLoading(false);
     });
 
