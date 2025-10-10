@@ -18,6 +18,7 @@ import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Plus, X, Save, Edit2, Trash2, Calendar as CalendarIcon } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { formatWeight, convertToLbs, convertFromLbs } from '@/lib/weightUtils';
 
 type Exercise = {
   exercise_name: string;
@@ -587,13 +588,15 @@ export default function Training() {
                     </View>
 
                     <View style={styles.exerciseInputGroup}>
-                      <Text style={styles.smallLabel}>Weight (lbs)</Text>
+                      <Text style={styles.smallLabel}>Weight ({profile?.weight_unit || 'lbs'})</Text>
                       <TextInput
                         style={styles.smallInput}
-                        value={String(exercise.weight_lbs)}
-                        onChangeText={(val) =>
-                          handleUpdateExercise(index, 'weight_lbs', parseInt(val) || 0)
-                        }
+                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        onChangeText={(val) => {
+                          const inputValue = parseInt(val) || 0;
+                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
+                          handleUpdateExercise(index, 'weight_lbs', lbsValue);
+                        }}
                         keyboardType="number-pad"
                       />
                     </View>

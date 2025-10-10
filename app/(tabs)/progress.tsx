@@ -19,6 +19,7 @@ import { PaywallModal } from '@/components/PaywallModal';
 import { ProgressGraphs } from '@/components/ProgressGraphs';
 import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { formatWeight, convertToLbs } from '@/lib/weightUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -118,10 +119,12 @@ export default function Progress() {
   const handleSaveTest = async () => {
     if (!profile || !testResult) return;
 
+    const resultInLbs = convertToLbs(parseInt(testResult), profile.weight_unit || 'lbs');
+
     await supabase.from('strength_tests').insert({
       user_id: profile.id,
       test_type: testType,
-      result_value: parseInt(testResult),
+      result_value: resultInLbs,
       notes: testNotes,
     });
 
@@ -250,7 +253,9 @@ export default function Progress() {
                     {new Date(test.created_at).toLocaleDateString()}
                   </Text>
                 </View>
-                <Text style={styles.testResult}>{test.result_value} lbs</Text>
+                <Text style={styles.testResult}>
+                  {formatWeight(test.result_value, profile?.weight_unit || 'lbs')}
+                </Text>
                 {test.notes && (
                   <Text style={styles.testNotes}>{test.notes}</Text>
                 )}
@@ -366,7 +371,7 @@ export default function Progress() {
               ))}
             </View>
 
-            <Text style={styles.label}>Result (lbs)</Text>
+            <Text style={styles.label}>Result ({profile?.weight_unit || 'lbs'})</Text>
             <TextInput
               style={styles.input}
               value={testResult}
