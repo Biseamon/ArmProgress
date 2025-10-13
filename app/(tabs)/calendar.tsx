@@ -1,0 +1,469 @@
+import { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Modal,
+  Dimensions,
+} from 'react-native';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
+
+interface Workout {
+  id: string;
+  date: string;
+  duration_minutes: number;
+  notes: string;
+}
+
+interface Cycle {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  cycle_type: string;
+}
+
+interface DayData {
+  date: Date;
+  workoutCount: number;
+  isInCycle: boolean;
+  cycleName?: string;
+}
+
+export default function CalendarScreen() {
+  const { colors } = useTheme();
+  const { profile } = useAuth();
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showDayModal, setShowDayModal] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      fetchData();
+    }
+  }, [profile, selectedYear]);
+
+  const fetchData = async () => {
+    if (!profile) return;
+
+    const startDate = `${selectedYear}-01-01`;
+    const endDate = `${selectedYear}-12-31`;
+
+    const [workoutsRes, cyclesRes, profileRes] = await Promise.all([
+      supabase
+        .from('workouts')
+        .select('*')
+        .eq('user_id', profile.id)
+        .gte('date', startDate)
+        .lte('date', endDate)
+        .order('date', { ascending: true }),
+      supabase
+        .from('cycles')
+        .select('*')
+        .eq('user_id', profile.id),
+      supabase
+        .from('profiles')
+        .select('created_at')
+        .eq('id', profile.id)
+        .single(),
+    ]);
+
+    if (workoutsRes.data) setWorkouts(workoutsRes.data);
+    if (cyclesRes.data) setCycles(cyclesRes.data);
+
+    if (profileRes.data) {
+      const registrationYear = new Date(profileRes.data.created_at).getFullYear();
+      const currentYear = new Date().getFullYear();
+      const years = [];
+      for (let year = registrationYear; year <= currentYear; year++) {
+        years.push(year);
+      }
+      setAvailableYears(years);
+    }
+  };
+
+  const getWorkoutCountForDate = (date: Date): number => {
+    const dateStr = date.toISOString().split('T')[0];
+    return workouts.filter((w) => w.date === dateStr).length;
+  };
+
+  const isDateInCycle = (date: Date): { isInCycle: boolean; cycleName?: string } => {
+    const dateStr = date.toISOString().split('T')[0];
+    for (const cycle of cycles) {
+      if (dateStr >= cycle.start_date && dateStr <= cycle.end_date) {
+        return { isInCycle: true, cycleName: cycle.name };
+      }
+    }
+    return { isInCycle: false };
+  };
+
+  const getDayColor = (workoutCount: number, isInCycle: boolean): string => {
+    if (workoutCount === 0 && !isInCycle) return '#2A2A2A';
+    if (isInCycle && workoutCount === 0) return '#2A7DE144';
+    if (workoutCount === 1) return '#E6394655';
+    if (workoutCount === 2) return '#E6394688';
+    if (workoutCount >= 3) return '#E63946';
+    return '#2A2A2A';
+  };
+
+  const handleDayPress = (date: Date) => {
+    const workoutCount = getWorkoutCountForDate(date);
+    if (workoutCount > 0) {
+      setSelectedDate(date);
+      setShowDayModal(true);
+    }
+  };
+
+  const renderCalendar = () => {
+    const months = [];
+    const screenWidth = Dimensions.get('window').width;
+    const daySize = Math.floor((screenWidth - 60) / 7);
+
+    for (let month = 0; month < 12; month++) {
+      const firstDay = new Date(selectedYear, month, 1);
+      const lastDay = new Date(selectedYear, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+      const startingDayOfWeek = firstDay.getDay();
+
+      const days = [];
+      for (let i = 0; i < startingDayOfWeek; i++) {
+        days.push(
+          <View
+            key={`empty-${i}`}
+            style={[styles.day, { width: daySize, height: daySize }]}
+          />
+        );
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(selectedYear, month, day);
+        const workoutCount = getWorkoutCountForDate(date);
+        const { isInCycle, cycleName } = isDateInCycle(date);
+        const dayColor = getDayColor(workoutCount, isInCycle);
+
+        days.push(
+          <TouchableOpacity
+            key={day}
+            style={[
+              styles.day,
+              {
+                width: daySize,
+                height: daySize,
+                backgroundColor: dayColor,
+                borderWidth: isInCycle ? 2 : 0,
+                borderColor: '#2A7DE1',
+              },
+            ]}
+            onPress={() => handleDayPress(date)}
+          >
+            <Text
+              style={[
+                styles.dayText,
+                workoutCount > 0 && styles.dayTextActive,
+              ]}
+            >
+              {day}
+            </Text>
+          </TouchableOpacity>
+        );
+      }
+
+      months.push(
+        <View key={month} style={styles.monthContainer}>
+          <Text style={[styles.monthTitle, { color: colors.text }]}>
+            {new Date(selectedYear, month).toLocaleString('default', {
+              month: 'long',
+            })}
+          </Text>
+          <View style={styles.daysContainer}>{days}</View>
+        </View>
+      );
+    }
+
+    return months;
+  };
+
+  const getWorkoutsForDate = (date: Date) => {
+    const dateStr = date.toISOString().split('T')[0];
+    return workouts.filter((w) => w.date === dateStr);
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: colors.text }]}>Calendar</Text>
+      </View>
+
+      <View style={styles.yearSelector}>
+        <TouchableOpacity
+          onPress={() =>
+            setSelectedYear((y) => Math.max(y - 1, availableYears[0] || 2020))
+          }
+          disabled={selectedYear <= (availableYears[0] || 2020)}
+        >
+          <ChevronLeft
+            size={24}
+            color={
+              selectedYear <= (availableYears[0] || 2020) ? '#333' : '#FFF'
+            }
+          />
+        </TouchableOpacity>
+        <Text style={[styles.yearText, { color: colors.text }]}>
+          {selectedYear}
+        </Text>
+        <TouchableOpacity
+          onPress={() =>
+            setSelectedYear((y) =>
+              Math.min(y + 1, new Date().getFullYear())
+            )
+          }
+          disabled={selectedYear >= new Date().getFullYear()}
+        >
+          <ChevronRight
+            size={24}
+            color={
+              selectedYear >= new Date().getFullYear() ? '#333' : '#FFF'
+            }
+          />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.legend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendBox, { backgroundColor: '#2A2A2A' }]} />
+          <Text style={styles.legendText}>No workout</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View
+            style={[styles.legendBox, { backgroundColor: '#2A7DE144' }]}
+          />
+          <Text style={styles.legendText}>In cycle</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View
+            style={[styles.legendBox, { backgroundColor: '#E6394655' }]}
+          />
+          <Text style={styles.legendText}>1 workout</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View
+            style={[styles.legendBox, { backgroundColor: '#E63946' }]}
+          />
+          <Text style={styles.legendText}>3+ workouts</Text>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        {renderCalendar()}
+      </ScrollView>
+
+      <Modal
+        visible={showDayModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDayModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedDate?.toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </Text>
+              <TouchableOpacity onPress={() => setShowDayModal(false)}>
+                <X size={24} color="#999" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalContent}>
+              {selectedDate && (
+                <>
+                  <Text style={styles.modalSectionTitle}>
+                    Workouts ({getWorkoutsForDate(selectedDate).length})
+                  </Text>
+                  {getWorkoutsForDate(selectedDate).map((workout) => (
+                    <View key={workout.id} style={styles.workoutCard}>
+                      <Text style={styles.workoutDuration}>
+                        {workout.duration_minutes} minutes
+                      </Text>
+                      {workout.notes && (
+                        <Text style={styles.workoutNotes}>{workout.notes}</Text>
+                      )}
+                    </View>
+                  ))}
+
+                  {isDateInCycle(selectedDate).isInCycle && (
+                    <>
+                      <Text style={styles.modalSectionTitle}>Training Cycle</Text>
+                      <View style={styles.cycleCard}>
+                        <Text style={styles.cycleName}>
+                          {isDateInCycle(selectedDate).cycleName}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    padding: 20,
+    paddingTop: 60,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+  },
+  yearSelector: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 24,
+    paddingVertical: 16,
+  },
+  yearText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  legend: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendBox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#999',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  monthContainer: {
+    marginBottom: 24,
+  },
+  monthTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  daysContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  day: {
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  dayText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  dayTextActive: {
+    color: '#FFF',
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: '#1A1A1A',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '60%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+    flex: 1,
+  },
+  modalContent: {
+    padding: 20,
+  },
+  modalSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  workoutCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  workoutDuration: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#E63946',
+    marginBottom: 4,
+  },
+  workoutNotes: {
+    fontSize: 14,
+    color: '#CCC',
+  },
+  cycleCard: {
+    backgroundColor: '#2A7DE144',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#2A7DE1',
+  },
+  cycleName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2A7DE1',
+  },
+});

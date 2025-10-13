@@ -12,7 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun, Weight } from 'lucide-react-native';
+import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun, Weight, Heart } from 'lucide-react-native';
 
 export default function Profile() {
   const { profile, signOut, isPremium, refreshProfile } = useAuth();
@@ -57,6 +57,14 @@ export default function Profile() {
     Alert.alert(
       'Upgrade to Premium',
       'Premium features include:\n\n✓ Unlimited workout tracking\n✓ Advanced analytics\n✓ Custom training programs\n✓ No advertisements\n✓ Export data\n\nContact support to upgrade your account.',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleDonate = () => {
+    Alert.alert(
+      'Support Development',
+      'Thank you for considering supporting Arm Wrestling Pro! Your donation helps us continue improving the app and adding new features.\n\nDonation options will be available soon through in-app purchases.',
       [{ text: 'OK' }]
     );
   };
@@ -224,6 +232,14 @@ export default function Profile() {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={[styles.donateButton, { backgroundColor: colors.surface, borderColor: '#FF6B9D' }]}
+          onPress={handleDonate}
+        >
+          <Heart size={20} color="#FF6B9D" />
+          <Text style={[styles.donateText, { color: '#FF6B9D' }]}>Support Development</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={[styles.signOutButton, { backgroundColor: colors.surface, borderColor: colors.error }]} onPress={handleSignOut}>
           <LogOut size={20} color={colors.error} />
           <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out</Text>
@@ -369,6 +385,21 @@ const styles = StyleSheet.create({
   aboutText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  donateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  donateText: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   signOutButton: {
     flexDirection: 'row',

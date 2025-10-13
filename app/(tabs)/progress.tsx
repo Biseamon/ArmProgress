@@ -16,7 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Goal, StrengthTest, Workout } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
-import { ProgressGraphs } from '@/components/ProgressGraphs';
+import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
 import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatWeight, convertToLbs } from '@/lib/weightUtils';
@@ -158,7 +158,11 @@ export default function Progress() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Analytics</Text>
-          <ProgressGraphs workouts={workouts} strengthTests={strengthTests} />
+          <EnhancedProgressGraphs
+            workouts={workouts}
+            strengthTests={strengthTests}
+            weightUnit={profile?.weight_unit || 'lbs'}
+          />
         </View>
 
         <View style={styles.section}>
