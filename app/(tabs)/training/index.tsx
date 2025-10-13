@@ -16,7 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
-import { Plus, X, Save, Edit2, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
+import { Plus, X, Save, CreditCard as Edit2, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatWeight, convertToLbs, convertFromLbs } from '@/lib/weightUtils';
 

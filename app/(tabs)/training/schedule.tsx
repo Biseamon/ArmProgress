@@ -13,7 +13,7 @@ import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
-import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CheckCircle } from 'lucide-react-native';
+import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CircleCheck as CheckCircle } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface ScheduledTraining {
