@@ -209,11 +209,6 @@ export default function Home() {
             >
               <View style={styles.cycleHeader}>
                 <Text style={[styles.cycleName, { color: colors.text }]}>{cycle.name}</Text>
-                {cycle.is_active && (
-                  <View style={[styles.activeBadge, { backgroundColor: colors.secondary }]}>
-                    <Text style={styles.activeBadgeText}>ACTIVE</Text>
-                  </View>
-                )}
               </View>
               <Text style={[styles.cycleType, { color: colors.secondary }]}>
                 {cycle.cycle_type.replace(/_/g, ' ').toUpperCase()}

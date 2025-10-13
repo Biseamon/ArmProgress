@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -48,11 +49,13 @@ export default function CalendarScreen() {
   const [showWorkouts, setShowWorkouts] = useState(true);
   const [showCycles, setShowCycles] = useState(true);
 
-  useEffect(() => {
-    if (profile) {
-      fetchData();
-    }
-  }, [profile, selectedYear]);
+  useFocusEffect(
+    useCallback(() => {
+      if (profile) {
+        fetchData();
+      }
+    }, [profile, selectedYear])
+  );
 
   const fetchData = async () => {
     if (!profile) return;

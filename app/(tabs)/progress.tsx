@@ -9,6 +9,7 @@ import {
   Modal,
   Dimensions,
   Platform,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';

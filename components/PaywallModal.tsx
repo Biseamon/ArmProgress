@@ -1,14 +1,28 @@
-import { View, Text, Modal, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
 import { Crown, X } from 'lucide-react-native';
 
 type PaywallModalProps = {
   visible: boolean;
   onClose: () => void;
-  onUpgrade: () => void;
+  onUpgrade?: () => void;
   feature: string;
 };
 
 export function PaywallModal({ visible, onClose, onUpgrade, feature }: PaywallModalProps) {
+  const handleUpgrade = () => {
+    const stripePaymentUrl = 'https://buy.stripe.com/test_00000000';
+
+    if (Platform.OS === 'web') {
+      window.open(stripePaymentUrl, '_blank');
+    } else {
+      Linking.openURL(stripePaymentUrl);
+    }
+
+    if (onUpgrade) {
+      onUpgrade();
+    }
+    onClose();
+  };
   return (
     <Modal
       visible={visible}
@@ -40,9 +54,13 @@ export function PaywallModal({ visible, onClose, onUpgrade, feature }: PaywallMo
             <Text style={styles.benefit}>✓ Export your data</Text>
           </View>
 
-          <TouchableOpacity style={styles.upgradeButton} onPress={onUpgrade}>
+          <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
             <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
           </TouchableOpacity>
+
+          <Text style={styles.noteText}>
+            Note: Please configure your Stripe payment link in the code
+          </Text>
 
           <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
             <Text style={styles.cancelButtonText}>Maybe Later</Text>
@@ -130,5 +148,12 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     color: '#999',
     fontSize: 14,
+  },
+  noteText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 12,
+    fontStyle: 'italic',
   },
 });

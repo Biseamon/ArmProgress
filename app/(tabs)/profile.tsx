@@ -9,6 +9,7 @@ import {
   Switch,
   Image,
   Platform,
+  Linking,
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -75,11 +76,13 @@ export default function Profile() {
   };
 
   const handleDonate = () => {
-    Alert.alert(
-      'Support Development',
-      'To integrate Stripe for donations, you will need to:\n\n1. Create a Stripe account at stripe.com\n2. Get your Stripe publishable and secret keys\n3. Configure your environment variables\n4. Deploy an edge function to handle payments\n\nFor detailed instructions, see docs/STRIPE_INTEGRATION.md\n\nThank you for your support!',
-      [{ text: 'OK' }]
-    );
+    const stripeDonationUrl = 'https://buy.stripe.com/test_00000000';
+
+    if (Platform.OS === 'web') {
+      window.open(stripeDonationUrl, '_blank');
+    } else {
+      Linking.openURL(stripeDonationUrl);
+    }
   };
 
   return (
