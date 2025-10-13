@@ -17,7 +17,7 @@ import { supabase, Goal, StrengthTest, Workout } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
-import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar } from 'lucide-react-native';
+import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar, Edit2, Trash2 } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatWeight, convertToLbs } from '@/lib/weightUtils';
 
@@ -34,11 +34,13 @@ export default function Progress() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalType, setGoalType] = useState('');
   const [targetValue, setTargetValue] = useState('');
   const [deadline, setDeadline] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
 
+  const [editingTest, setEditingTest] = useState<StrengthTest | null>(null);
   const [testType, setTestType] = useState('max_wrist_curl');
   const [testResult, setTestResult] = useState('');
   const [testNotes, setTestNotes] = useState('');
@@ -91,20 +93,54 @@ export default function Progress() {
   const handleSaveGoal = async () => {
     if (!profile || !goalType || !targetValue) return;
 
-    await supabase.from('goals').insert({
-      user_id: profile.id,
-      goal_type: goalType,
-      target_value: parseInt(targetValue),
-      deadline: deadline.toISOString().split('T')[0],
-      current_value: 0,
-      is_completed: false,
-    });
+    if (editingGoal) {
+      await supabase
+        .from('goals')
+        .update({
+          goal_type: goalType,
+          target_value: parseInt(targetValue),
+          deadline: deadline.toISOString().split('T')[0],
+        })
+        .eq('id', editingGoal.id);
+    } else {
+      await supabase.from('goals').insert({
+        user_id: profile.id,
+        goal_type: goalType,
+        target_value: parseInt(targetValue),
+        deadline: deadline.toISOString().split('T')[0],
+        current_value: 0,
+        is_completed: false,
+      });
+    }
 
     setGoalType('');
     setTargetValue('');
     setDeadline(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+    setEditingGoal(null);
     setShowGoalModal(false);
     fetchData();
+  };
+
+  const handleEditGoal = (goal: Goal) => {
+    setEditingGoal(goal);
+    setGoalType(goal.goal_type);
+    setTargetValue(goal.target_value.toString());
+    setDeadline(new Date(goal.deadline));
+    setShowGoalModal(true);
+  };
+
+  const handleDeleteGoal = async (goalId: string) => {
+    Alert.alert('Delete Goal', 'Are you sure you want to delete this goal?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.from('goals').delete().eq('id', goalId);
+          fetchData();
+        },
+      },
+    ]);
   };
 
   const handleToggleGoal = async (goal: Goal) => {
@@ -121,18 +157,52 @@ export default function Progress() {
 
     const resultInLbs = convertToLbs(parseInt(testResult), profile.weight_unit || 'lbs');
 
-    await supabase.from('strength_tests').insert({
-      user_id: profile.id,
-      test_type: testType,
-      result_value: resultInLbs,
-      notes: testNotes,
-    });
+    if (editingTest) {
+      await supabase
+        .from('strength_tests')
+        .update({
+          test_type: testType,
+          result_value: resultInLbs,
+          notes: testNotes,
+        })
+        .eq('id', editingTest.id);
+    } else {
+      await supabase.from('strength_tests').insert({
+        user_id: profile.id,
+        test_type: testType,
+        result_value: resultInLbs,
+        notes: testNotes,
+      });
+    }
 
     setTestType('max_wrist_curl');
     setTestResult('');
     setTestNotes('');
+    setEditingTest(null);
     setShowTestModal(false);
     fetchData();
+  };
+
+  const handleEditTest = (test: StrengthTest) => {
+    setEditingTest(test);
+    setTestType(test.test_type);
+    setTestResult(test.result_value.toString());
+    setTestNotes(test.notes || '');
+    setShowTestModal(true);
+  };
+
+  const handleDeleteTest = async (testId: string) => {
+    Alert.alert('Delete Test', 'Are you sure you want to delete this test?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.from('strength_tests').delete().eq('id', testId);
+          fetchData();
+        },
+      },
+    ]);
   };
 
   const testTypes = [
@@ -186,27 +256,27 @@ export default function Progress() {
             </View>
           ) : (
             goals.map((goal) => (
-              <TouchableOpacity
-                key={goal.id}
-                style={[
-                  styles.goalCard,
-                  goal.is_completed && styles.goalCardCompleted,
-                ]}
-                onPress={() => handleToggleGoal(goal)}
-              >
-                <View style={styles.goalHeader}>
-                  <View style={styles.goalInfo}>
-                    {goal.is_completed && (
-                      <Trophy size={20} color="#FFD700" style={styles.goalIcon} />
-                    )}
-                    <Text
-                      style={[
-                        styles.goalType,
-                        goal.is_completed && styles.goalTypeCompleted,
-                      ]}
-                    >
-                      {goal.goal_type}
-                    </Text>
+              <View key={goal.id} style={styles.goalCardWrapper}>
+                <TouchableOpacity
+                  style={[
+                    styles.goalCard,
+                    goal.is_completed && styles.goalCardCompleted,
+                  ]}
+                  onPress={() => handleToggleGoal(goal)}
+                >
+                  <View style={styles.goalHeader}>
+                    <View style={styles.goalInfo}>
+                      {goal.is_completed && (
+                        <Trophy size={20} color="#FFD700" style={styles.goalIcon} />
+                      )}
+                      <Text
+                        style={[
+                          styles.goalType,
+                          goal.is_completed && styles.goalTypeCompleted,
+                        ]}
+                      >
+                        {goal.goal_type}
+                      </Text>
                   </View>
                   {goal.deadline && (
                     <Text style={styles.goalDeadline}>
@@ -214,18 +284,33 @@ export default function Progress() {
                     </Text>
                   )}
                 </View>
-                <Text style={styles.goalProgress}>
-                  {goal.current_value} / {goal.target_value}
-                </Text>
-                <View style={styles.progressBar}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${getProgressPercentage(goal)}%` },
-                    ]}
-                  />
+                  <Text style={styles.goalProgress}>
+                    {goal.current_value} / {goal.target_value}
+                  </Text>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${getProgressPercentage(goal)}%` },
+                      ]}
+                    />
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => handleEditGoal(goal)}
+                  >
+                    <Edit2 size={16} color="#2A7DE1" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteGoal(goal.id)}
+                  >
+                    <Trash2 size={16} color="#E63946" />
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))
           )}
         </View>
@@ -249,21 +334,37 @@ export default function Progress() {
             </View>
           ) : (
             strengthTests.map((test) => (
-              <View key={test.id} style={styles.testCard}>
-                <View style={styles.testHeader}>
-                  <Text style={styles.testType}>
-                    {test.test_type.replace(/_/g, ' ').toUpperCase()}
+              <View key={test.id} style={styles.testCardWrapper}>
+                <View style={styles.testCard}>
+                  <View style={styles.testHeader}>
+                    <Text style={styles.testType}>
+                      {test.test_type.replace(/_/g, ' ').toUpperCase()}
+                    </Text>
+                    <Text style={styles.testDate}>
+                      {new Date(test.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text style={styles.testResult}>
+                    {formatWeight(test.result_value, profile?.weight_unit || 'lbs')}
                   </Text>
-                  <Text style={styles.testDate}>
-                    {new Date(test.created_at).toLocaleDateString()}
-                  </Text>
+                  {test.notes && (
+                    <Text style={styles.testNotes}>{test.notes}</Text>
+                  )}
                 </View>
-                <Text style={styles.testResult}>
-                  {formatWeight(test.result_value, profile?.weight_unit || 'lbs')}
-                </Text>
-                {test.notes && (
-                  <Text style={styles.testNotes}>{test.notes}</Text>
-                )}
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => handleEditTest(test)}
+                  >
+                    <Edit2 size={16} color="#2A7DE1" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteTest(test.id)}
+                  >
+                    <Trash2 size={16} color="#E63946" />
+                  </TouchableOpacity>
+                </View>
               </View>
             ))
           )}
@@ -277,8 +378,13 @@ export default function Progress() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>New Goal</Text>
-            <TouchableOpacity onPress={() => setShowGoalModal(false)}>
+            <Text style={styles.modalTitle}>{editingGoal ? 'Edit Goal' : 'New Goal'}</Text>
+            <TouchableOpacity onPress={() => {
+              setShowGoalModal(false);
+              setEditingGoal(null);
+              setGoalType('');
+              setTargetValue('');
+            }}>
               <X size={24} color="#999" />
             </TouchableOpacity>
           </View>
@@ -346,8 +452,14 @@ export default function Progress() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Record Test</Text>
-            <TouchableOpacity onPress={() => setShowTestModal(false)}>
+            <Text style={styles.modalTitle}>{editingTest ? 'Edit Test' : 'Record Test'}</Text>
+            <TouchableOpacity onPress={() => {
+              setShowTestModal(false);
+              setEditingTest(null);
+              setTestType('max_wrist_curl');
+              setTestResult('');
+              setTestNotes('');
+            }}>
               <X size={24} color="#999" />
             </TouchableOpacity>
           </View>
@@ -476,11 +588,16 @@ const styles = StyleSheet.create({
     color: '#555',
     marginTop: 4,
   },
+  goalCardWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   goalCard: {
+    flex: 1,
     backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
   },
   goalCardCompleted: {
     borderWidth: 2,
@@ -528,11 +645,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#E63946',
     borderRadius: 4,
   },
+  testCardWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   testCard: {
+    flex: 1,
     backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
   },
   testHeader: {
     flexDirection: 'row',
@@ -559,6 +681,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     fontStyle: 'italic',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 8,
+  },
+  editButton: {
+    backgroundColor: '#2A7DE144',
+    borderRadius: 8,
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    backgroundColor: '#E6394644',
+    borderRadius: 8,
+    padding: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContainer: {
     flex: 1,
