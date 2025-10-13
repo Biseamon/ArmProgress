@@ -371,11 +371,6 @@ export default function Training() {
                 >
                   <View style={styles.cycleHeader}>
                     <Text style={styles.cycleName}>{cycle.name}</Text>
-                    {cycle.is_active && (
-                      <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>ACTIVE</Text>
-                      </View>
-                    )}
                   </View>
                   <Text style={styles.cycleType}>
                     {cycle.cycle_type.replace(/_/g, ' ').toUpperCase()}

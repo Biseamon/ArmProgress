@@ -54,17 +54,19 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
     return filteredTests
       .reverse()
       .map((test) => {
-        const valueLbs = test.result_value;
+        const valueLbs = Number(test.result_value) || 0;
         const value = weightUnit === 'kg' ? valueLbs / 2.20462 : valueLbs;
+        const validValue = isFinite(value) && value > 0 ? Math.round(value * 10) / 10 : 0;
         return {
-          value: Math.round(value * 10) / 10,
+          value: validValue,
           label: new Date(test.created_at).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
           }),
-          dataPointText: `${Math.round(value)}`,
+          dataPointText: `${Math.round(validValue)}`,
         };
-      });
+      })
+      .filter((point) => point.value > 0);
   }, [strengthTests, strengthTimeRange, weightUnit]);
 
   const workoutChartData = useMemo(() => {
@@ -121,9 +123,9 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
     return filteredTests
       .reverse()
       .map((test) => {
-        const valueLbs = test.result_value;
+        const valueLbs = Number(test.result_value) || 0;
         const value = weightUnit === 'kg' ? valueLbs / 2.20462 : valueLbs;
-        const score = Math.round(value * 10) / 10;
+        const score = isFinite(value) && value > 0 ? Math.round(value * 10) / 10 : 0;
         return {
           value: score,
           label: new Date(test.created_at).toLocaleDateString('en-US', {
@@ -132,7 +134,8 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
           }),
           dataPointText: `${score}`,
         };
-      });
+      })
+      .filter((point) => point.value > 0);
   }, [strengthTests, techniqueTimeRange, weightUnit]);
 
   const renderTimeRangeSelector = (
@@ -181,7 +184,8 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
             <Text style={styles.chartTitle}>Strength Progress</Text>
             {renderTimeRangeSelector(strengthTimeRange, setStrengthTimeRange)}
           </View>
-          <LineChart
+          {strengthChartData.length > 0 && strengthChartData.every(d => isFinite(d.value)) ? (
+            <LineChart
             data={strengthChartData}
             width={CHART_WIDTH}
             height={220}
@@ -216,6 +220,11 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
             animationDuration={800}
             animateOnDataChange
           />
+          ) : (
+            <View style={styles.errorState}>
+              <Text style={styles.errorText}>Unable to display chart data</Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -450,6 +459,16 @@ const styles = StyleSheet.create({
   premiumLockText: {
     fontSize: 14,
     color: '#CCC',
+    textAlign: 'center',
+  },
+  errorState: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#999',
     textAlign: 'center',
   },
 });

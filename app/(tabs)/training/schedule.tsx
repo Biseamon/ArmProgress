@@ -9,11 +9,11 @@ import {
   Modal,
   Platform,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
-import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CircleCheck as CheckCircle } from 'lucide-react-native';
+import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CircleCheck as CheckCircle, ArrowLeft } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface ScheduledTraining {
@@ -119,6 +119,9 @@ export default function ScheduleScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <ArrowLeft size={24} color={colors.text} />
+        </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>Training Schedule</Text>
         <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
           <Plus size={24} color="#FFF" />
@@ -305,9 +308,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     paddingTop: 60,
+    gap: 12,
+  },
+  backButton: {
+    padding: 8,
   },
   title: {
-    fontSize: 32,
+    flex: 1,
+    fontSize: 28,
     fontWeight: 'bold',
   },
   addButton: {

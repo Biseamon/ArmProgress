@@ -16,7 +16,7 @@ import { ChevronLeft, ChevronRight, X, Trash2 } from 'lucide-react-native';
 
 interface Workout {
   id: string;
-  date: string;
+  created_at: string;
   duration_minutes: number;
   notes: string;
 }
@@ -65,9 +65,9 @@ export default function CalendarScreen() {
         .from('workouts')
         .select('*')
         .eq('user_id', profile.id)
-        .gte('date', startDate)
-        .lte('date', endDate)
-        .order('date', { ascending: true }),
+        .gte('created_at', startDate)
+        .lte('created_at', endDate)
+        .order('created_at', { ascending: true }),
       supabase
         .from('cycles')
         .select('*')
@@ -95,7 +95,7 @@ export default function CalendarScreen() {
 
   const getWorkoutCountForDate = (date: Date): number => {
     const dateStr = date.toISOString().split('T')[0];
-    return workouts.filter((w) => w.date === dateStr).length;
+    return workouts.filter((w) => w.created_at.split('T')[0] === dateStr).length;
   };
 
   const isDateInCycle = (date: Date): { isInCycle: boolean; cycleName?: string } => {
@@ -218,7 +218,7 @@ export default function CalendarScreen() {
 
   const getWorkoutsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return workouts.filter((w) => w.date === dateStr);
+    return workouts.filter((w) => w.created_at.split('T')[0] === dateStr);
   };
 
   return (
