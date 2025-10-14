@@ -37,8 +37,8 @@ const lightTheme: ThemeColors = {
   warning: '#FFD700',
   error: '#FF6B6B',
   premium: '#FFD700',
-  cardBackground: '#2A2A2A',
-  cardText: '#FFFFFF',
+  cardBackground: '#FFFFFF',
+  cardText: '#1A1A1A',
   modalBackground: '#2A2A2A',
   modalText: '#FFFFFF',
 };

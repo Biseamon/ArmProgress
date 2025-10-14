@@ -377,16 +377,16 @@ export default function Training() {
                   style={styles.cycleMainContent}
                 >
                   <View style={styles.cycleHeader}>
-                    <Text style={[styles.cycleName, { color: colors.cardText }]}>{cycle.name}</Text>
+                    <Text style={[styles.cycleName, { color: colors.primary }]}>{cycle.name}</Text>
                   </View>
-                  <Text style={[styles.cycleType, { color: colors.cardText }]}>
+                  <Text style={[styles.cycleType, { color: colors.text }]}>
                     {cycle.cycle_type.replace(/_/g, ' ').toUpperCase()}
                   </Text>
-                  <Text style={[styles.cycleDates, { color: colors.cardText, opacity: 0.7 }]}>
+                  <Text style={[styles.cycleDates, { color: colors.textSecondary }]}>
                     {formatDate(cycle.start_date)} - {formatDate(cycle.end_date)}
                   </Text>
                   {cycle.description && (
-                    <Text style={[styles.cycleDescription, { color: colors.cardText, opacity: 0.8 }]} numberOfLines={2}>
+                    <Text style={[styles.cycleDescription, { color: colors.textSecondary }]} numberOfLines={2}>
                       {cycle.description}
                     </Text>
                   )}
@@ -434,10 +434,10 @@ export default function Training() {
               <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}>
                 <View style={styles.workoutHeader}>
                   <View style={styles.workoutInfo}>
-                    <Text style={[styles.workoutType, { color: colors.cardText }]}>
+                    <Text style={[styles.workoutType, { color: colors.primary }]}>
                       {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
                     </Text>
-                    <Text style={[styles.workoutDate, { color: colors.cardText, opacity: 0.6 }]}>
+                    <Text style={[styles.workoutDate, { color: colors.textTertiary }]}>
                       {formatDate(workout.created_at)}
                     </Text>
                   </View>
@@ -457,16 +457,16 @@ export default function Training() {
                   </View>
                 </View>
                 <View style={styles.workoutDetails}>
-                  <Text style={[styles.workoutDetail, { color: colors.cardText, opacity: 0.8 }]}>
+                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
                     {workout.duration_minutes} min
                   </Text>
-                  <Text style={[styles.workoutDivider, { color: colors.cardText, opacity: 0.5 }]}>•</Text>
-                  <Text style={[styles.workoutDetail, { color: colors.cardText, opacity: 0.8 }]}>
+                  <Text style={[styles.workoutDivider, { color: colors.textTertiary }]}>•</Text>
+                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
                     Intensity: {workout.intensity}/10
                   </Text>
                 </View>
                 {workout.notes && (
-                  <Text style={[styles.workoutNotes, { color: colors.cardText, opacity: 0.7 }]} numberOfLines={2}>
+                  <Text style={[styles.workoutNotes, { color: colors.textSecondary }]} numberOfLines={2}>
                     {workout.notes}
                   </Text>
                 )}

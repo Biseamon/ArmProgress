@@ -334,27 +334,27 @@ export default function Progress() {
 
         <View style={styles.section}>
           <TouchableOpacity
-            style={[styles.measurementsCard, { backgroundColor: colors.cardBackground }]}
+            style={[styles.measurementsCard, { backgroundColor: colors.surface }]}
             onPress={() => setShowMeasurements(true)}
           >
             <View style={styles.measurementsHeader}>
               <View style={styles.measurementsTitle}>
                 <Activity size={24} color="#E63946" />
-                <Text style={[styles.measurementsTitleText, { color: colors.cardText }]}>Body Measurements</Text>
+                <Text style={[styles.measurementsTitleText, { color: colors.primary }]}>Body Measurements</Text>
               </View>
-              <Text style={[styles.measurementsCount, { color: colors.cardText, opacity: 0.7 }]}>{measurements.length} entries</Text>
+              <Text style={[styles.measurementsCount, { color: colors.textSecondary }]}>{measurements.length} entries</Text>
             </View>
             {measurements.length > 0 && measurements[0] && (
               <View style={styles.latestMeasurement}>
                 <Text style={styles.latestLabel}>Latest:</Text>
                 <View style={styles.latestStats}>
                   {measurements[0].weight && (
-                    <Text style={[styles.latestStat, { color: colors.cardText }]}>
+                    <Text style={[styles.latestStat, { color: colors.text }]}>
                       {measurements[0].weight} {profile?.weight_unit || 'lbs'}
                     </Text>
                   )}
                   {measurements[0].arm_circumference && (
-                    <Text style={[styles.latestStat, { color: colors.cardText }]}>
+                    <Text style={[styles.latestStat, { color: colors.text }]}>
                       Arm: {measurements[0].arm_circumference}cm
                     </Text>
                   )}
@@ -365,7 +365,7 @@ export default function Progress() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Analytics</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Analytics</Text>
           <EnhancedProgressGraphs
             workouts={workouts}
             strengthTests={strengthTests}
@@ -376,7 +376,7 @@ export default function Progress() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Goals</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Goals</Text>
             <TouchableOpacity style={styles.addButton} onPress={handleAddGoal}>
               <Plus size={20} color="#FFF" />
             </TouchableOpacity>
@@ -398,7 +398,7 @@ export default function Progress() {
                 key={goal.id}
                 style={[
                   styles.goalCard,
-                  { backgroundColor: colors.cardBackground },
+                  { backgroundColor: colors.surface },
                   goal.is_completed && styles.goalCardCompleted,
                 ]}
               >
@@ -414,6 +414,7 @@ export default function Progress() {
                       <Text
                         style={[
                           styles.goalType,
+                          { color: colors.primary },
                           goal.is_completed && styles.goalTypeCompleted,
                         ]}
                       >
@@ -436,12 +437,12 @@ export default function Progress() {
                     </View>
                   </View>
                   {goal.deadline && (
-                    <Text style={styles.goalDeadline}>
+                    <Text style={[styles.goalDeadline, { color: colors.textSecondary }]}>
                       {new Date(goal.deadline).toLocaleDateString()}
                     </Text>
                   )}
                   <View style={styles.goalProgressRow}>
-                    <Text style={styles.goalProgress}>
+                    <Text style={[styles.goalProgress, { color: colors.text }]}>
                       {goal.current_value} / {goal.target_value}
                     </Text>
                     {!goal.is_completed && goal.current_value < goal.target_value && (
@@ -473,7 +474,7 @@ export default function Progress() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Strength Tests</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Strength Tests</Text>
             <TouchableOpacity
               style={styles.addButton}
               onPress={() => setShowTestModal(true)}
@@ -490,9 +491,9 @@ export default function Progress() {
             </View>
           ) : (
             strengthTests.map((test) => (
-              <View key={test.id} style={[styles.testCard, { backgroundColor: colors.cardBackground }]}>
+              <View key={test.id} style={[styles.testCard, { backgroundColor: colors.surface }]}>
                 <View style={styles.testHeader}>
-                  <Text style={styles.testType}>
+                  <Text style={[styles.testType, { color: colors.primary }]}>
                     {test.test_type.replace(/_/g, ' ').toUpperCase()}
                   </Text>
                   <View style={styles.actionButtons}>
@@ -510,14 +511,14 @@ export default function Progress() {
                     </TouchableOpacity>
                   </View>
                 </View>
-                <Text style={styles.testDate}>
+                <Text style={[styles.testDate, { color: colors.textSecondary }]}>
                   {new Date(test.created_at).toLocaleDateString()}
                 </Text>
-                <Text style={styles.testResult}>
+                <Text style={[styles.testResult, { color: colors.text }]}>
                   {formatWeight(test.result_value, profile?.weight_unit || 'lbs')}
                 </Text>
                 {test.notes && (
-                  <Text style={styles.testNotes}>{test.notes}</Text>
+                  <Text style={[styles.testNotes, { color: colors.textSecondary }]}>{test.notes}</Text>
                 )}
               </View>
             ))

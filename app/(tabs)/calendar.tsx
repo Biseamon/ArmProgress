@@ -425,9 +425,9 @@ export default function CalendarScreen() {
                     Workouts ({getWorkoutsForDate(selectedDate).length})
                   </Text>
                   {getWorkoutsForDate(selectedDate).map((workout) => (
-                    <View key={workout.id} style={styles.workoutCard}>
+                    <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
                       <View style={styles.workoutHeader}>
-                        <Text style={styles.workoutType}>
+                        <Text style={[styles.workoutType, { color: colors.primary }]}>
                           {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
                         </Text>
                         <TouchableOpacity onPress={() => handleDeleteWorkout(workout.id)}>
@@ -436,16 +436,16 @@ export default function CalendarScreen() {
                       </View>
                       <View style={styles.workoutStats}>
                         <View style={styles.workoutStat}>
-                          <Text style={styles.workoutStatLabel}>Duration</Text>
-                          <Text style={styles.workoutStatValue}>{workout.duration_minutes} min</Text>
+                          <Text style={[styles.workoutStatLabel, { color: colors.textTertiary }]}>Duration</Text>
+                          <Text style={[styles.workoutStatValue, { color: colors.text }]}>{workout.duration_minutes} min</Text>
                         </View>
                         <View style={styles.workoutStat}>
-                          <Text style={styles.workoutStatLabel}>Intensity</Text>
-                          <Text style={styles.workoutStatValue}>{workout.intensity}/10</Text>
+                          <Text style={[styles.workoutStatLabel, { color: colors.textTertiary }]}>Intensity</Text>
+                          <Text style={[styles.workoutStatValue, { color: colors.text }]}>{workout.intensity}/10</Text>
                         </View>
                         <View style={styles.workoutStat}>
-                          <Text style={styles.workoutStatLabel}>Time</Text>
-                          <Text style={styles.workoutStatValue}>
+                          <Text style={[styles.workoutStatLabel, { color: colors.textTertiary }]}>Time</Text>
+                          <Text style={[styles.workoutStatValue, { color: colors.text }]}>
                             {new Date(workout.created_at).toLocaleTimeString('en-US', {
                               hour: '2-digit',
                               minute: '2-digit'
@@ -454,7 +454,7 @@ export default function CalendarScreen() {
                         </View>
                       </View>
                       {workout.notes && (
-                        <Text style={styles.workoutNotes}>{workout.notes}</Text>
+                        <Text style={[styles.workoutNotes, { color: colors.textSecondary }]}>{workout.notes}</Text>
                       )}
                     </View>
                   ))}
