@@ -14,7 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { scheduleTrainingNotification, cancelNotification, requestNotificationPermissions } from '@/lib/notifications';
-import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CircleCheck as CheckCircle, ArrowLeft, Edit2 } from 'lucide-react-native';
+import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CircleCheck as CheckCircle, ArrowLeft, Pencil } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface ScheduledTraining {
@@ -244,7 +244,7 @@ export default function ScheduleScreen() {
                     />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleEdit(training)}>
-                    <Edit2 size={20} color="#2A7DE1" />
+                    <Pencil size={20} color="#2A7DE1" />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDelete(training)}>
                     <Trash2 size={20} color="#E63946" />

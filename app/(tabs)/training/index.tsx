@@ -16,7 +16,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
-import { Plus, X, Save, CreditCard as Edit2, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
+import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatWeight, convertToLbs, convertFromLbs } from '@/lib/weightUtils';
 
@@ -393,13 +393,13 @@ export default function Training() {
                 </TouchableOpacity>
                 <View style={styles.cycleActions}>
                   <TouchableOpacity
-                    style={styles.cycleActionButton}
+                    style={[styles.cycleActionButton, { backgroundColor: colors.surface }]}
                     onPress={() => handleEditCycle(cycle)}
                   >
-                    <Edit2 size={18} color="#2A7DE1" />
+                    <Pencil size={18} color="#2A7DE1" />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.cycleActionButton}
+                    style={[styles.cycleActionButton, { backgroundColor: colors.surface }]}
                     onPress={() => handleDeleteCycle(cycle)}
                   >
                     <Trash2 size={18} color="#FF6B6B" />

@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { X, TrendingUp, TrendingDown, Minus, Award } from 'lucide-react-native';
+import { useTheme } from '@/contexts/ThemeContext';
 
 type ProgressReportProps = {
   visible: boolean;
@@ -18,6 +19,8 @@ export function ProgressReport({
   goals,
   weightUnit,
 }: ProgressReportProps) {
+  const { colors } = useTheme();
+
   const calculateStrengthTrend = () => {
     if (strengthTests.length < 2) return { trend: 'insufficient', change: 0 };
 
@@ -94,9 +97,9 @@ export function ProgressReport({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
           <View style={styles.header}>
-            <Text style={styles.title}>Progress Report</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Progress Report</Text>
             <TouchableOpacity onPress={onClose}>
               <X size={24} color="#999" />
             </TouchableOpacity>
@@ -108,31 +111,31 @@ export function ProgressReport({
               <Text style={[styles.overallRating, { color: overall.color }]}>
                 {overall.rating}
               </Text>
-              <Text style={styles.overallSubtext}>Overall Performance</Text>
+              <Text style={[styles.overallSubtext, { color: colors.textSecondary }]}>Overall Performance</Text>
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Strength Progress</Text>
-              <View style={styles.card}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Strength Progress</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
                 <View style={styles.cardRow}>
                   <View style={styles.cardLeft}>
                     {getTrendIcon()}
-                    <Text style={styles.cardLabel}>Trend</Text>
+                    <Text style={[styles.cardLabel, { color: colors.textTertiary }]}>Trend</Text>
                   </View>
-                  <Text style={styles.cardValue}>{getTrendText()}</Text>
+                  <Text style={[styles.cardValue, { color: colors.text }]}>{getTrendText()}</Text>
                 </View>
-                <Text style={styles.cardSubtext}>
+                <Text style={[styles.cardSubtext, { color: colors.textSecondary }]}>
                   {strengthTests.length} strength tests recorded
                 </Text>
               </View>
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Workout Consistency</Text>
-              <View style={styles.card}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Workout Consistency</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
                 <View style={styles.cardRow}>
-                  <Text style={styles.cardLabel}>Last 30 Days</Text>
-                  <Text style={styles.cardValue}>{consistency}%</Text>
+                  <Text style={[styles.cardLabel, { color: colors.textTertiary }]}>Last 30 Days</Text>
+                  <Text style={[styles.cardValue, { color: colors.text }]}>{consistency}%</Text>
                 </View>
                 <View style={styles.progressBar}>
                   <View
@@ -145,64 +148,64 @@ export function ProgressReport({
                     ]}
                   />
                 </View>
-                <Text style={styles.cardSubtext}>
+                <Text style={[styles.cardSubtext, { color: colors.textSecondary }]}>
                   {workouts.length} total workouts
                 </Text>
               </View>
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Goal Achievement</Text>
-              <View style={styles.card}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Goal Achievement</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
                 <View style={styles.cardRow}>
                   <Award size={24} color="#FFD700" />
-                  <Text style={styles.cardValue}>{goalCompletion}%</Text>
+                  <Text style={[styles.cardValue, { color: colors.text }]}>{goalCompletion}%</Text>
                 </View>
-                <Text style={styles.cardSubtext}>
+                <Text style={[styles.cardSubtext, { color: colors.textSecondary }]}>
                   {goals.filter((g) => g.is_completed).length} of {goals.length} goals completed
                 </Text>
               </View>
             </View>
 
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Workout Metrics</Text>
-              <View style={styles.card}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Workout Metrics</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
                 <View style={styles.cardRow}>
-                  <Text style={styles.cardLabel}>Avg Duration</Text>
-                  <Text style={styles.cardValue}>{avgDuration} min</Text>
+                  <Text style={[styles.cardLabel, { color: colors.textTertiary }]}>Avg Duration</Text>
+                  <Text style={[styles.cardValue, { color: colors.text }]}>{avgDuration} min</Text>
                 </View>
-                <Text style={styles.cardSubtext}>
+                <Text style={[styles.cardSubtext, { color: colors.textSecondary }]}>
                   Per workout session
                 </Text>
               </View>
             </View>
 
             <View style={styles.recommendations}>
-              <Text style={styles.sectionTitle}>Recommendations</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Recommendations</Text>
               {Number(consistency) < 50 && (
-                <View style={styles.recommendCard}>
-                  <Text style={styles.recommendText}>
+                <View style={[styles.recommendCard, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.recommendText, { color: colors.text }]}>
                     💡 Try to train more consistently. Aim for at least 3-4 sessions per week.
                   </Text>
                 </View>
               )}
               {strengthTrend.trend === 'down' && (
-                <View style={styles.recommendCard}>
-                  <Text style={styles.recommendText}>
+                <View style={[styles.recommendCard, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.recommendText, { color: colors.text }]}>
                     💡 Your strength appears to be declining. Consider reviewing your training intensity.
                   </Text>
                 </View>
               )}
               {Number(goalCompletion) < 50 && (
-                <View style={styles.recommendCard}>
-                  <Text style={styles.recommendText}>
+                <View style={[styles.recommendCard, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.recommendText, { color: colors.text }]}>
                     💡 Set more achievable short-term goals to build momentum.
                   </Text>
                 </View>
               )}
               {Number(consistency) >= 70 && strengthTrend.trend === 'up' && (
-                <View style={styles.recommendCard}>
-                  <Text style={styles.recommendText}>
+                <View style={[styles.recommendCard, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.recommendText, { color: colors.text }]}>
                     🎉 Excellent work! Keep up the consistency and progressive overload.
                   </Text>
                 </View>
