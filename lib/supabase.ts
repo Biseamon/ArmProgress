@@ -1,84 +1,142 @@
+/**
+ * Supabase Configuration
+ *
+ * Sets up the Supabase client for database and authentication operations.
+ * Works with both cloud-hosted and self-hosted Supabase instances.
+ *
+ * Configuration is loaded from environment variables:
+ * - EXPO_PUBLIC_SUPABASE_URL: Your Supabase instance URL
+ * - EXPO_PUBLIC_SUPABASE_ANON_KEY: Your Supabase anonymous key
+ */
+
+// Required for URL handling in React Native
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 
+// Load Supabase credentials from environment variables
+// Supports both Expo config (app.json) and .env file
 const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
+// Ensure required environment variables are present
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
+/**
+ * Supabase Client Instance
+ *
+ * Use this client for all database operations throughout the app.
+ *
+ * Configuration:
+ * - autoRefreshToken: Automatically refresh expired tokens
+ * - persistSession: Save session to local storage
+ * - detectSessionInUrl: Disabled (not needed for mobile)
+ * - storage: Uses localStorage on web, AsyncStorage on mobile
+ * - storageKey: Custom key for storing session data
+ */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+    autoRefreshToken: true,      // Keep user logged in
+    persistSession: true,         // Remember session across app restarts
+    detectSessionInUrl: false,    // Not needed for mobile apps
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    storageKey: 'armwrestling-auth',
+    storageKey: 'armwrestling-auth',  // Custom storage key
   },
 });
 
+/**
+ * Database Type Definitions
+ *
+ * TypeScript types matching the database schema.
+ * These types ensure type safety when working with database records.
+ */
+
+/**
+ * User Profile
+ * Linked to Supabase auth.users table via id
+ */
 export type Profile = {
-  id: string;
-  email: string;
-  full_name: string;
-  is_premium: boolean;
-  is_test_user: boolean;
-  weight_unit: 'lbs' | 'kg';
-  created_at: string;
-  updated_at: string;
+  id: string;              // Matches auth.users.id
+  email: string;           // User's email address
+  full_name: string;       // User's display name
+  is_premium: boolean;     // Premium subscription status
+  is_test_user: boolean;   // Test user flag (gets premium features)
+  weight_unit: 'lbs' | 'kg';  // User's preferred weight unit
+  created_at: string;      // Account creation timestamp
+  updated_at: string;      // Last profile update timestamp
 };
 
+/**
+ * Workout Session
+ * Records a single training session
+ */
 export type Workout = {
-  id: string;
-  user_id: string;
-  workout_type: string;
-  duration_minutes: number;
-  intensity: number;
-  notes: string;
-  cycle_id: string | null;
-  created_at: string;
+  id: string;                 // Unique workout ID
+  user_id: string;            // Owner's user ID
+  workout_type: string;       // Type: strength, technique, conditioning, etc.
+  duration_minutes: number;   // How long the workout lasted
+  intensity: number;          // 1-10 intensity rating
+  notes: string;              // Optional workout notes
+  cycle_id: string | null;    // Associated training cycle (if any)
+  created_at: string;         // When workout was logged
 };
 
+/**
+ * Exercise within a Workout
+ * Individual exercises performed during a workout session
+ */
 export type Exercise = {
-  id: string;
-  workout_id: string;
-  exercise_name: string;
-  sets: number;
-  reps: number;
-  weight_lbs: number;
-  notes: string;
+  id: string;              // Unique exercise ID
+  workout_id: string;      // Parent workout ID
+  exercise_name: string;   // Name of the exercise
+  sets: number;            // Number of sets performed
+  reps: number;            // Reps per set
+  weight_lbs: number;      // Weight used (stored in lbs)
+  notes: string;           // Optional exercise notes
 };
 
+/**
+ * Training Goal
+ * User-defined goals with progress tracking
+ */
 export type Goal = {
-  id: string;
-  user_id: string;
-  goal_type: string;
-  target_value: number;
-  current_value: number;
-  deadline: string | null;
-  is_completed: boolean;
-  created_at: string;
+  id: string;              // Unique goal ID
+  user_id: string;         // Owner's user ID
+  goal_type: string;       // Description of the goal
+  target_value: number;    // Target to reach
+  current_value: number;   // Current progress
+  deadline: string | null; // Optional deadline date
+  is_completed: boolean;   // Whether goal is achieved
+  created_at: string;      // When goal was created
 };
 
+/**
+ * Strength Test Result
+ * Periodic strength assessments
+ */
 export type StrengthTest = {
-  id: string;
-  user_id: string;
-  test_type: string;
-  result_value: number;
-  notes: string;
-  created_at: string;
+  id: string;              // Unique test ID
+  user_id: string;         // Owner's user ID
+  test_type: string;       // Type: max_wrist_curl, table_pressure, etc.
+  result_value: number;    // Test result (weight or measurement)
+  notes: string;           // Optional test notes
+  created_at: string;      // When test was performed
 };
 
+/**
+ * Training Cycle
+ * Periodized training program with defined start/end dates
+ */
 export type Cycle = {
-  id: string;
-  user_id: string;
-  name: string;
-  description: string;
-  cycle_type: string;
-  start_date: string;
-  end_date: string;
-  is_active: boolean;
-  created_at: string;
+  id: string;              // Unique cycle ID
+  user_id: string;         // Owner's user ID
+  name: string;            // Cycle name (e.g., "Competition Prep 2024")
+  description: string;     // Optional cycle description
+  cycle_type: string;      // Type: strength, technique, recovery, etc.
+  start_date: string;      // Cycle start date
+  end_date: string;        // Cycle end date
+  is_active: boolean;      // Whether this is the current active cycle
+  created_at: string;      // When cycle was created
 };
