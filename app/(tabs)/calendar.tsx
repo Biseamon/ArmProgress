@@ -411,12 +411,31 @@ export default function CalendarScreen() {
                   {getWorkoutsForDate(selectedDate).map((workout) => (
                     <View key={workout.id} style={styles.workoutCard}>
                       <View style={styles.workoutHeader}>
-                        <Text style={styles.workoutDuration}>
-                          {workout.duration_minutes} minutes
+                        <Text style={styles.workoutType}>
+                          {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
                         </Text>
                         <TouchableOpacity onPress={() => handleDeleteWorkout(workout.id)}>
                           <Trash2 size={18} color="#E63946" />
                         </TouchableOpacity>
+                      </View>
+                      <View style={styles.workoutStats}>
+                        <View style={styles.workoutStat}>
+                          <Text style={styles.workoutStatLabel}>Duration</Text>
+                          <Text style={styles.workoutStatValue}>{workout.duration_minutes} min</Text>
+                        </View>
+                        <View style={styles.workoutStat}>
+                          <Text style={styles.workoutStatLabel}>Intensity</Text>
+                          <Text style={styles.workoutStatValue}>{workout.intensity}/10</Text>
+                        </View>
+                        <View style={styles.workoutStat}>
+                          <Text style={styles.workoutStatLabel}>Time</Text>
+                          <Text style={styles.workoutStatValue}>
+                            {new Date(workout.created_at).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </Text>
+                        </View>
                       </View>
                       {workout.notes && (
                         <Text style={styles.workoutNotes}>{workout.notes}</Text>
@@ -613,16 +632,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 12,
   },
-  workoutDuration: {
+  workoutType: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#E63946',
   },
+  workoutStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  workoutStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  workoutStatLabel: {
+    fontSize: 11,
+    color: '#999',
+    marginBottom: 4,
+  },
+  workoutStatValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFF',
+  },
   workoutNotes: {
     fontSize: 14,
     color: '#CCC',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
   },
   cycleCard: {
     backgroundColor: '#2A7DE144',

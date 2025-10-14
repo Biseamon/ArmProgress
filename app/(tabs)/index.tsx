@@ -232,7 +232,10 @@ export default function Home() {
             <TouchableOpacity
               key={training.id}
               style={[styles.trainingCard, { backgroundColor: colors.surface }]}
-              onPress={() => router.push('/(tabs)/training/schedule')}
+              onPress={() => {
+                router.push('/(tabs)/training');
+                setTimeout(() => router.push('/(tabs)/training/schedule'), 100);
+              }}
               activeOpacity={0.7}
             >
               <View style={styles.trainingHeader}>

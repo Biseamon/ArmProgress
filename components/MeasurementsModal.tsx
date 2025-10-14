@@ -1,0 +1,302 @@
+import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { X, Plus, TrendingUp, TrendingDown } from 'lucide-react-native';
+
+type Measurement = {
+  id: string;
+  weight: number | null;
+  arm_circumference: number | null;
+  forearm_circumference: number | null;
+  wrist_circumference: number | null;
+  notes: string | null;
+  measured_at: string;
+};
+
+type Props = {
+  visible: boolean;
+  onClose: () => void;
+  measurements: Measurement[];
+  onAddNew: () => void;
+  weightUnit: string;
+};
+
+export function MeasurementsModal({ visible, onClose, measurements, onAddNew, weightUnit }: Props) {
+  const calculateChange = (current: number | null, previous: number | null) => {
+    if (!current || !previous) return null;
+    const change = current - previous;
+    return {
+      value: Math.abs(change).toFixed(1),
+      isIncrease: change > 0,
+    };
+  };
+
+  const getMeasurementChange = (index: number, field: 'weight' | 'arm_circumference' | 'forearm_circumference' | 'wrist_circumference') => {
+    if (index >= measurements.length - 1) return null;
+    const current = measurements[index][field];
+    const previous = measurements[index + 1][field];
+    return calculateChange(current, previous);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Body Measurements</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.addButton} onPress={onAddNew}>
+              <Plus size={20} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onClose}>
+              <X size={24} color="#999" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView style={styles.content}>
+          {measurements.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>No measurements yet</Text>
+              <Text style={styles.emptySubtext}>Track your progress by adding measurements</Text>
+            </View>
+          ) : (
+            measurements.map((measurement, index) => (
+              <View key={measurement.id} style={styles.measurementCard}>
+                <View style={styles.measurementHeader}>
+                  <Text style={styles.measurementDate}>
+                    {new Date(measurement.measured_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                  {index === 0 && <Text style={styles.latestBadge}>Latest</Text>}
+                </View>
+
+                <View style={styles.measurementGrid}>
+                  {measurement.weight && (
+                    <View style={styles.measurementItem}>
+                      <Text style={styles.measurementLabel}>Weight</Text>
+                      <View style={styles.measurementValueRow}>
+                        <Text style={styles.measurementValue}>
+                          {measurement.weight} {weightUnit}
+                        </Text>
+                        {getMeasurementChange(index, 'weight') && (
+                          <View style={[styles.changeIndicator, getMeasurementChange(index, 'weight')!.isIncrease ? styles.changeUp : styles.changeDown]}>
+                            {getMeasurementChange(index, 'weight')!.isIncrease ? (
+                              <TrendingUp size={12} color="#10B981" />
+                            ) : (
+                              <TrendingDown size={12} color="#E63946" />
+                            )}
+                            <Text style={[styles.changeText, getMeasurementChange(index, 'weight')!.isIncrease ? styles.changeTextUp : styles.changeTextDown]}>
+                              {getMeasurementChange(index, 'weight')!.value}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {measurement.arm_circumference && (
+                    <View style={styles.measurementItem}>
+                      <Text style={styles.measurementLabel}>Arm</Text>
+                      <View style={styles.measurementValueRow}>
+                        <Text style={styles.measurementValue}>{measurement.arm_circumference} cm</Text>
+                        {getMeasurementChange(index, 'arm_circumference') && (
+                          <View style={[styles.changeIndicator, getMeasurementChange(index, 'arm_circumference')!.isIncrease ? styles.changeUp : styles.changeDown]}>
+                            {getMeasurementChange(index, 'arm_circumference')!.isIncrease ? (
+                              <TrendingUp size={12} color="#10B981" />
+                            ) : (
+                              <TrendingDown size={12} color="#E63946" />
+                            )}
+                            <Text style={[styles.changeText, getMeasurementChange(index, 'arm_circumference')!.isIncrease ? styles.changeTextUp : styles.changeTextDown]}>
+                              {getMeasurementChange(index, 'arm_circumference')!.value}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {measurement.forearm_circumference && (
+                    <View style={styles.measurementItem}>
+                      <Text style={styles.measurementLabel}>Forearm</Text>
+                      <View style={styles.measurementValueRow}>
+                        <Text style={styles.measurementValue}>{measurement.forearm_circumference} cm</Text>
+                        {getMeasurementChange(index, 'forearm_circumference') && (
+                          <View style={[styles.changeIndicator, getMeasurementChange(index, 'forearm_circumference')!.isIncrease ? styles.changeUp : styles.changeDown]}>
+                            {getMeasurementChange(index, 'forearm_circumference')!.isIncrease ? (
+                              <TrendingUp size={12} color="#10B981" />
+                            ) : (
+                              <TrendingDown size={12} color="#E63946" />
+                            )}
+                            <Text style={[styles.changeText, getMeasurementChange(index, 'forearm_circumference')!.isIncrease ? styles.changeTextUp : styles.changeTextDown]}>
+                              {getMeasurementChange(index, 'forearm_circumference')!.value}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+
+                  {measurement.wrist_circumference && (
+                    <View style={styles.measurementItem}>
+                      <Text style={styles.measurementLabel}>Wrist</Text>
+                      <View style={styles.measurementValueRow}>
+                        <Text style={styles.measurementValue}>{measurement.wrist_circumference} cm</Text>
+                        {getMeasurementChange(index, 'wrist_circumference') && (
+                          <View style={[styles.changeIndicator, getMeasurementChange(index, 'wrist_circumference')!.isIncrease ? styles.changeUp : styles.changeDown]}>
+                            {getMeasurementChange(index, 'wrist_circumference')!.isIncrease ? (
+                              <TrendingUp size={12} color="#10B981" />
+                            ) : (
+                              <TrendingDown size={12} color="#E63946" />
+                            )}
+                            <Text style={[styles.changeText, getMeasurementChange(index, 'wrist_circumference')!.isIncrease ? styles.changeTextUp : styles.changeTextDown]}>
+                              {getMeasurementChange(index, 'wrist_circumference')!.value}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                {measurement.notes && (
+                  <Text style={styles.measurementNotes}>{measurement.notes}</Text>
+                )}
+              </View>
+            ))
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#1A1A1A',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    paddingTop: 60,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  addButton: {
+    backgroundColor: '#E63946',
+    borderRadius: 20,
+    padding: 8,
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#CCC',
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#666',
+  },
+  measurementCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  measurementHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  measurementDate: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  latestBadge: {
+    backgroundColor: '#E63946',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  measurementGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  measurementItem: {
+    flex: 1,
+    minWidth: '45%',
+  },
+  measurementLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 4,
+  },
+  measurementValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  measurementValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  changeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  changeUp: {
+    backgroundColor: '#10B98122',
+  },
+  changeDown: {
+    backgroundColor: '#E6394622',
+  },
+  changeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  changeTextUp: {
+    color: '#10B981',
+  },
+  changeTextDown: {
+    color: '#E63946',
+  },
+  measurementNotes: {
+    fontSize: 14,
+    color: '#CCC',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+});
