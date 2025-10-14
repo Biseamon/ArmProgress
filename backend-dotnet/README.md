@@ -57,66 +57,133 @@ The database schema matches the current Supabase implementation:
 
 ## Setup Instructions
 
-### 1. Create the Project
-
-```bash
-cd backend-dotnet
-
-# Create the solution and project
-dotnet new webapi -n ArmWrestlingApi
-dotnet new sln -n ArmWrestlingApi
-dotnet sln add ArmWrestlingApi/ArmWrestlingApi.csproj
-
-# Add required packages
-cd ArmWrestlingApi
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
-dotnet add package Microsoft.EntityFrameworkCore.Design
-dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
-dotnet add package BCrypt.Net-Next
-dotnet add package Swashbuckle.AspNetCore
-```
-
-### 2. Configure Environment Variables
+### 1. Configure Environment Variables
 
 **Important**: Never commit sensitive credentials to version control!
 
-Create `appsettings.Development.json` (for local development):
+Copy the example configuration file:
+
+```bash
+cp appsettings.example.json appsettings.json
+```
+
+Edit `appsettings.json` with your values:
 
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Database=armwrestling;Username=postgres;Password=yourpassword"
+    "DefaultConnection": "Host=your-server.com;Port=5432;Database=postgres;Username=postgres;Password=your_password_here;SSL Mode=Require;Trust Server Certificate=true"
   },
   "Supabase": {
-    "Url": "https://your-project.supabase.co",
-    "AnonKey": "your_supabase_anon_key",
-    "ServiceRoleKey": "your_supabase_service_role_key"
+    "Url": "https://your-server.com:8000",
+    "AnonKey": "your_supabase_anon_key_here",
+    "ServiceRoleKey": "your_supabase_service_role_key_here"
   },
   "Jwt": {
-    "Key": "your-secret-key-min-32-characters-long",
+    "Key": "your-super-secret-jwt-key-at-least-32-characters-long-minimum-256-bits",
     "Issuer": "ArmWrestlingApi",
     "Audience": "ArmWrestlingApp",
     "ExpiresInDays": 30
+  },
+  "Kestrel": {
+    "Endpoints": {
+      "Http": {
+        "Url": "http://0.0.0.0:5000"
+      }
+    }
   }
 }
 ```
 
-**Note**: `appsettings.Development.json` and `appsettings.Production.json` are in `.gitignore` and should never be committed.
+**For Self-Hosted Supabase:**
+- Use your self-hosted Supabase URL (e.g., `https://your-server.com:8000`)
+- Use your PostgreSQL connection details
+- Get your API keys from Supabase dashboard
 
-### 3. Run Migrations
+**For Cloud Supabase:**
+- Use `https://your-project.supabase.co`
+- Get connection string from Supabase project settings
+
+### 2. Run Locally
 
 ```bash
-dotnet ef migrations add InitialCreate
-dotnet ef database update
-```
+# Restore packages
+dotnet restore
 
-### 4. Run the API
-
-```bash
+# Run the API
 dotnet run
 ```
 
-The API will be available at `https://localhost:7000` (or the port shown in console).
+The API will be available at `http://localhost:5000`.
+
+Access Swagger UI at: `http://localhost:5000`
+
+### 3. Running with Docker
+
+#### Option A: Using Docker CLI
+
+Build the Docker image:
+
+```bash
+docker build -t armwrestling-api .
+```
+
+Run the container:
+
+```bash
+docker run -d \
+  -p 5000:5000 \
+  -e ConnectionStrings__DefaultConnection="Host=your-server.com;Port=5432;Database=postgres;Username=postgres;Password=your_password" \
+  -e Supabase__Url="https://your-server.com:8000" \
+  -e Supabase__AnonKey="your_anon_key" \
+  -e Supabase__ServiceRoleKey="your_service_role_key" \
+  -e Jwt__Key="your_jwt_secret_key_minimum_256_bits" \
+  --name armwrestling-api \
+  armwrestling-api
+```
+
+#### Option B: Using Docker Compose
+
+Create a `.env` file based on `.env.example`:
+
+```bash
+cp .env.example .env
+# Edit .env with your values
+```
+
+Start the container:
+
+```bash
+docker-compose up -d
+```
+
+Stop the container:
+
+```bash
+docker-compose down
+```
+
+View logs:
+
+```bash
+docker-compose logs -f
+```
+
+### 4. Connecting Frontend to Local Backend
+
+Update the frontend `.env` file:
+
+```bash
+# If running locally (not Docker)
+EXPO_PUBLIC_API_URL=http://localhost:5000
+
+# If running in Docker
+EXPO_PUBLIC_API_URL=http://your-server-ip:5000
+
+# For self-hosted Supabase
+EXPO_PUBLIC_SUPABASE_URL=https://your-server.com:8000
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+```
 
 ## API Endpoints
 
@@ -181,11 +248,43 @@ Navigate to `https://localhost:7000/swagger` to access the interactive API docum
 
 ## Deployment
 
-### Docker Deployment
+### Production Deployment with Docker
 
-1. Create a `Dockerfile` in the project root
-2. Build the image: `docker build -t armwrestling-api .`
-3. Run the container: `docker run -p 7000:80 armwrestling-api`
+For production deployment on your dedicated server:
+
+```bash
+# 1. Build the production image
+docker build -t armwrestling-api:latest .
+
+# 2. Create production .env file
+cp .env.example .env
+# Edit .env with production values
+
+# 3. Run with docker-compose
+docker-compose up -d
+
+# 4. Verify the API is running
+curl http://localhost:5000/swagger
+```
+
+### Setting up with Self-Hosted Supabase
+
+1. **Install Self-Hosted Supabase** on your server following [Supabase Self-Hosting Guide](https://supabase.com/docs/guides/self-hosting)
+
+2. **Get your Supabase credentials:**
+   - Supabase URL (e.g., `https://your-server.com:8000`)
+   - Anon Key (from Supabase dashboard)
+   - Service Role Key (from Supabase dashboard)
+   - PostgreSQL connection string
+
+3. **Configure the .NET backend:**
+   - Update `appsettings.json` or `.env` with Supabase credentials
+   - Ensure database connection string points to your Supabase PostgreSQL
+
+4. **Configure the mobile app:**
+   - Update `.env` in the project root
+   - Set `EXPO_PUBLIC_SUPABASE_URL` to your self-hosted instance
+   - Set `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 
 ### Cloud Deployment Options
 
@@ -193,6 +292,7 @@ Navigate to `https://localhost:7000/swagger` to access the interactive API docum
 - **AWS Elastic Beanstalk** - Good for containerized apps
 - **Google Cloud Run** - Serverless option
 - **Railway/Render** - Simple deployment platforms
+- **Your Own Server** - Use Docker Compose for full control
 
 ## Differences from Supabase Backend
 
