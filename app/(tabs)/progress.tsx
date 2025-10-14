@@ -531,9 +531,9 @@ export default function Progress() {
         animationType="slide"
         onRequestClose={() => setShowGoalModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{editingGoal ? 'Edit Goal' : 'New Goal'}</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{editingGoal ? 'Edit Goal' : 'New Goal'}</Text>
             <TouchableOpacity onPress={() => {
               setShowGoalModal(false);
               setEditingGoal(null);
@@ -545,26 +545,26 @@ export default function Progress() {
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.label}>Goal Description</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Goal Description</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={goalType}
               onChangeText={setGoalType}
               placeholder="e.g., Win 10 matches"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={styles.label}>Target Value</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Target Value</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={targetValue}
               onChangeText={setTargetValue}
               keyboardType="number-pad"
               placeholder="10"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={styles.label}>Deadline</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Deadline</Text>
             <TouchableOpacity
               style={styles.dateButton}
               onPress={() => setShowDeadlinePicker(true)}
@@ -605,9 +605,9 @@ export default function Progress() {
         animationType="slide"
         onRequestClose={() => setShowTestModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{editingTest ? 'Edit Test' : 'Record Test'}</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{editingTest ? 'Edit Test' : 'Record Test'}</Text>
             <TouchableOpacity onPress={() => {
               setShowTestModal(false);
               setEditingTest(null);
@@ -620,7 +620,7 @@ export default function Progress() {
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.label}>Test Type</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Test Type</Text>
             <View style={styles.typeContainer}>
               {testTypes.map((type) => (
                 <TouchableOpacity
@@ -643,25 +643,25 @@ export default function Progress() {
               ))}
             </View>
 
-            <Text style={styles.label}>Result ({profile?.weight_unit || 'lbs'})</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Result ({profile?.weight_unit || 'lbs'})</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={testResult}
               onChangeText={setTestResult}
               keyboardType="decimal-pad"
               placeholder="100"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={styles.label}>Notes (Optional)</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Notes (Optional)</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={testNotes}
               onChangeText={setTestNotes}
               multiline
               numberOfLines={3}
               placeholder="How did it feel?"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
             <TouchableOpacity style={styles.saveButton} onPress={handleSaveTest}>

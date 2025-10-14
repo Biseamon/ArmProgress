@@ -483,7 +483,7 @@ export default function Training() {
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.modalBackground }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editingWorkout ? 'Edit Workout' : 'Log Workout'}
             </Text>
             <TouchableOpacity onPress={() => setShowWorkoutModal(false)}>
@@ -494,7 +494,7 @@ export default function Training() {
           <ScrollView style={styles.modalContent}>
             {cycles.length > 0 && (
               <>
-                <Text style={styles.label}>Training Cycle (Optional)</Text>
+                <Text style={[styles.label, { color: colors.text }]}>Training Cycle (Optional)</Text>
                 <View style={styles.typeContainer}>
                   <TouchableOpacity
                     style={[
@@ -535,7 +535,7 @@ export default function Training() {
               </>
             )}
 
-            <Text style={styles.label}>Workout Type</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Workout Type</Text>
             <View style={styles.typeContainer}>
               {workoutTypes.map((type) => (
                 <TouchableOpacity
@@ -558,73 +558,73 @@ export default function Training() {
               ))}
             </View>
 
-            <Text style={styles.label}>Duration (minutes)</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Duration (minutes)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={duration}
               onChangeText={setDuration}
               keyboardType="number-pad"
               placeholder="30"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={styles.label}>Intensity (1-10)</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Intensity (1-10)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={intensity}
               onChangeText={setIntensity}
               keyboardType="number-pad"
               placeholder="5"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={styles.label}>Notes</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Notes</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={notes}
               onChangeText={setNotes}
               multiline
               numberOfLines={3}
               placeholder="How did it go?"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
             <View style={styles.exercisesSection}>
               <View style={styles.exercisesHeader}>
-                <Text style={styles.label}>Exercises (Optional)</Text>
+                <Text style={[styles.label, { color: colors.text }]}>Exercises (Optional)</Text>
                 <TouchableOpacity
                   style={styles.addExerciseButton}
                   onPress={handleAddExercise}
                 >
                   <Plus size={20} color="#E63946" />
-                  <Text style={styles.addExerciseText}>Add Exercise</Text>
+                  <Text style={[styles.addExerciseText, { color: colors.primary }]}>Add Exercise</Text>
                 </TouchableOpacity>
               </View>
 
               {exercises.map((exercise, index) => (
                 <View key={index} style={styles.exerciseCard}>
                   <View style={styles.exerciseCardHeader}>
-                    <Text style={styles.exerciseCardTitle}>Exercise {index + 1}</Text>
+                    <Text style={[styles.exerciseCardTitle, { color: colors.text }]}>Exercise {index + 1}</Text>
                     <TouchableOpacity onPress={() => handleRemoveExercise(index)}>
                       <X size={20} color="#999" />
                     </TouchableOpacity>
                   </View>
 
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
                     value={exercise.exercise_name}
                     onChangeText={(val) =>
                       handleUpdateExercise(index, 'exercise_name', val)
                     }
                     placeholder="Exercise name"
-                    placeholderTextColor="#666"
+                    placeholderTextColor={colors.textTertiary}
                   />
 
                   <View style={styles.exerciseRow}>
                     <View style={styles.exerciseInputGroup}>
-                      <Text style={styles.smallLabel}>Sets</Text>
+                      <Text style={[styles.smallLabel, { color: colors.text }]}>Sets</Text>
                       <TextInput
-                        style={styles.smallInput}
+                        style={[styles.smallInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
                         value={String(exercise.sets)}
                         onChangeText={(val) =>
                           handleUpdateExercise(index, 'sets', parseInt(val) || 0)
@@ -634,9 +634,9 @@ export default function Training() {
                     </View>
 
                     <View style={styles.exerciseInputGroup}>
-                      <Text style={styles.smallLabel}>Reps</Text>
+                      <Text style={[styles.smallLabel, { color: colors.text }]}>Reps</Text>
                       <TextInput
-                        style={styles.smallInput}
+                        style={[styles.smallInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
                         value={String(exercise.reps)}
                         onChangeText={(val) =>
                           handleUpdateExercise(index, 'reps', parseInt(val) || 0)
@@ -646,9 +646,9 @@ export default function Training() {
                     </View>
 
                     <View style={styles.exerciseInputGroup}>
-                      <Text style={styles.smallLabel}>Weight ({profile?.weight_unit || 'lbs'})</Text>
+                      <Text style={[styles.smallLabel, { color: colors.text }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
                       <TextInput
-                        style={styles.smallInput}
+                        style={[styles.smallInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
                         value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
                         onChangeText={(val) => {
                           const inputValue = parseInt(val) || 0;
@@ -686,7 +686,7 @@ export default function Training() {
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.modalBackground }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editingCycle ? 'Edit Training Cycle' : 'New Training Cycle'}
             </Text>
             <TouchableOpacity onPress={() => setShowCycleModal(false)}>
@@ -695,16 +695,16 @@ export default function Training() {
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.label}>Cycle Name</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Cycle Name</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={cycleName}
               onChangeText={setCycleName}
               placeholder="e.g., Competition Prep 2025"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={styles.label}>Cycle Type</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Cycle Type</Text>
             <View style={styles.typeContainer}>
               {cycleTypes.map((type) => (
                 <TouchableOpacity
@@ -727,7 +727,7 @@ export default function Training() {
               ))}
             </View>
 
-            <Text style={styles.label}>Start Date</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Start Date</Text>
             {Platform.OS === 'web' ? (
               <input
                 type="date"
@@ -739,10 +739,10 @@ export default function Training() {
                 }}
                 style={{
                   padding: 12,
-                  backgroundColor: '#2A2A2A',
-                  border: '1px solid #444',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
                   borderRadius: 8,
-                  color: '#FFF',
+                  color: colors.text,
                   fontSize: 16,
                   marginBottom: 16,
                   fontFamily: 'inherit',
@@ -779,7 +779,7 @@ export default function Training() {
               </>
             )}
 
-            <Text style={styles.label}>End Date</Text>
+            <Text style={[styles.label, { color: colors.text }]}>End Date</Text>
             {Platform.OS === 'web' ? (
               <input
                 type="date"
@@ -791,10 +791,10 @@ export default function Training() {
                 }}
                 style={{
                   padding: 12,
-                  backgroundColor: '#2A2A2A',
-                  border: '1px solid #444',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
                   borderRadius: 8,
-                  color: '#FFF',
+                  color: colors.text,
                   fontSize: 16,
                   marginBottom: 16,
                   fontFamily: 'inherit',
@@ -831,15 +831,15 @@ export default function Training() {
               </>
             )}
 
-            <Text style={styles.label}>Description (Optional)</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Description (Optional)</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={cycleDescription}
               onChangeText={setCycleDescription}
               multiline
               numberOfLines={3}
               placeholder="Describe your training cycle..."
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
             <TouchableOpacity style={styles.saveButton} onPress={handleSaveCycle}>
