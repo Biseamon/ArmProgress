@@ -18,7 +18,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
-import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun, Weight, Heart, Camera } from 'lucide-react-native';
+import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun, Weight, Heart, Camera, BookOpen } from 'lucide-react-native';
+import { GuideModal } from '@/components/GuideModal';
 
 export default function Profile() {
   const { profile, signOut, isPremium, refreshProfile } = useAuth();
@@ -27,6 +28,7 @@ export default function Profile() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (profile?.avatar_url) {
@@ -286,6 +288,14 @@ export default function Profile() {
         </View>
 
         <TouchableOpacity
+          style={[styles.guideButton, { backgroundColor: colors.primary }]}
+          onPress={() => setShowGuide(true)}
+        >
+          <BookOpen size={22} color="#FFF" />
+          <Text style={styles.guideButtonText}>App Guide - Learn How to Use</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.donateButton, { backgroundColor: colors.surface, borderColor: '#FF6B9D' }]}
           onPress={handleDonate}
         >
@@ -301,6 +311,7 @@ export default function Profile() {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
+      <GuideModal visible={showGuide} onClose={() => setShowGuide(false)} />
     </View>
   );
 }
@@ -456,6 +467,26 @@ const styles = StyleSheet.create({
   aboutText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  guideButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 16,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  guideButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   donateButton: {
     flexDirection: 'row',
