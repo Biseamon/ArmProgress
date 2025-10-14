@@ -366,7 +366,7 @@ export default function Training() {
 
         {cycles.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Training Cycles</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Training Cycles</Text>
             {cycles.map((cycle) => (
               <View key={cycle.id} style={[styles.cycleCard, cycle.is_active && styles.cycleCardActive]}>
                 <TouchableOpacity
@@ -377,16 +377,16 @@ export default function Training() {
                   style={styles.cycleMainContent}
                 >
                   <View style={styles.cycleHeader}>
-                    <Text style={styles.cycleName}>{cycle.name}</Text>
+                    <Text style={[styles.cycleName, { color: colors.text }]}>{cycle.name}</Text>
                   </View>
-                  <Text style={styles.cycleType}>
+                  <Text style={[styles.cycleType, { color: colors.textSecondary }]}>
                     {cycle.cycle_type.replace(/_/g, ' ').toUpperCase()}
                   </Text>
-                  <Text style={styles.cycleDates}>
+                  <Text style={[styles.cycleDates, { color: colors.textSecondary }]}>
                     {formatDate(cycle.start_date)} - {formatDate(cycle.end_date)}
                   </Text>
                   {cycle.description && (
-                    <Text style={styles.cycleDescription} numberOfLines={2}>
+                    <Text style={[styles.cycleDescription, { color: colors.textSecondary }]} numberOfLines={2}>
                       {cycle.description}
                     </Text>
                   )}
@@ -423,21 +423,21 @@ export default function Training() {
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your Workouts</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Workouts</Text>
           {workouts.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No workouts yet</Text>
-              <Text style={styles.emptySubtext}>Start tracking your training!</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workouts yet</Text>
+              <Text style={[styles.emptySubtext, { color: colors.textTertiary }]}>Start tracking your training!</Text>
             </View>
           ) : (
             workouts.map((workout) => (
               <View key={workout.id} style={styles.workoutCard}>
                 <View style={styles.workoutHeader}>
                   <View style={styles.workoutInfo}>
-                    <Text style={styles.workoutType}>
+                    <Text style={[styles.workoutType, { color: colors.text }]}>
                       {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
                     </Text>
-                    <Text style={styles.workoutDate}>
+                    <Text style={[styles.workoutDate, { color: colors.textTertiary }]}>
                       {formatDate(workout.created_at)}
                     </Text>
                   </View>
@@ -457,16 +457,16 @@ export default function Training() {
                   </View>
                 </View>
                 <View style={styles.workoutDetails}>
-                  <Text style={styles.workoutDetail}>
+                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
                     {workout.duration_minutes} min
                   </Text>
-                  <Text style={styles.workoutDivider}>•</Text>
-                  <Text style={styles.workoutDetail}>
+                  <Text style={[styles.workoutDivider, { color: colors.textTertiary }]}>•</Text>
+                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
                     Intensity: {workout.intensity}/10
                   </Text>
                 </View>
                 {workout.notes && (
-                  <Text style={styles.workoutNotes} numberOfLines={2}>
+                  <Text style={[styles.workoutNotes, { color: colors.textSecondary }]} numberOfLines={2}>
                     {workout.notes}
                   </Text>
                 )}
@@ -728,59 +728,107 @@ export default function Training() {
             </View>
 
             <Text style={styles.label}>Start Date</Text>
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowStartDatePicker(true)}
-            >
-              <Text style={styles.dateButtonText}>
-                {cycleStartDate.toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              </Text>
-              <CalendarIcon size={20} color="#999" />
-            </TouchableOpacity>
-            {showStartDatePicker && (
-              <DateTimePicker
-                value={cycleStartDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(event, selectedDate) => {
-                  setShowStartDatePicker(Platform.OS === 'ios');
-                  if (selectedDate) {
-                    setCycleStartDate(selectedDate);
-                  }
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={`${cycleStartDate.getFullYear()}-${String(cycleStartDate.getMonth() + 1).padStart(2, '0')}-${String(cycleStartDate.getDate()).padStart(2, '0')}`}
+                onChange={(e) => {
+                  const [year, month, day] = e.target.value.split('-');
+                  const newDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                  setCycleStartDate(newDate);
+                }}
+                style={{
+                  padding: 12,
+                  backgroundColor: '#2A2A2A',
+                  border: '1px solid #444',
+                  borderRadius: 8,
+                  color: '#FFF',
+                  fontSize: 16,
+                  marginBottom: 16,
+                  fontFamily: 'inherit',
                 }}
               />
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowStartDatePicker(true)}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {cycleStartDate.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                  <CalendarIcon size={20} color="#999" />
+                </TouchableOpacity>
+                {showStartDatePicker && (
+                  <DateTimePicker
+                    value={cycleStartDate}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(event, selectedDate) => {
+                      setShowStartDatePicker(Platform.OS === 'ios');
+                      if (selectedDate) {
+                        setCycleStartDate(selectedDate);
+                      }
+                    }}
+                  />
+                )}
+              </>
             )}
 
             <Text style={styles.label}>End Date</Text>
-            <TouchableOpacity
-              style={styles.dateButton}
-              onPress={() => setShowEndDatePicker(true)}
-            >
-              <Text style={styles.dateButtonText}>
-                {cycleEndDate.toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              </Text>
-              <CalendarIcon size={20} color="#999" />
-            </TouchableOpacity>
-            {showEndDatePicker && (
-              <DateTimePicker
-                value={cycleEndDate}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={(event, selectedDate) => {
-                  setShowEndDatePicker(Platform.OS === 'ios');
-                  if (selectedDate) {
-                    setCycleEndDate(selectedDate);
-                  }
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={`${cycleEndDate.getFullYear()}-${String(cycleEndDate.getMonth() + 1).padStart(2, '0')}-${String(cycleEndDate.getDate()).padStart(2, '0')}`}
+                onChange={(e) => {
+                  const [year, month, day] = e.target.value.split('-');
+                  const newDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                  setCycleEndDate(newDate);
+                }}
+                style={{
+                  padding: 12,
+                  backgroundColor: '#2A2A2A',
+                  border: '1px solid #444',
+                  borderRadius: 8,
+                  color: '#FFF',
+                  fontSize: 16,
+                  marginBottom: 16,
+                  fontFamily: 'inherit',
                 }}
               />
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowEndDatePicker(true)}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {cycleEndDate.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </Text>
+                  <CalendarIcon size={20} color="#999" />
+                </TouchableOpacity>
+                {showEndDatePicker && (
+                  <DateTimePicker
+                    value={cycleEndDate}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(event, selectedDate) => {
+                      setShowEndDatePicker(Platform.OS === 'ios');
+                      if (selectedDate) {
+                        setCycleEndDate(selectedDate);
+                      }
+                    }}
+                  />
+                )}
+              </>
             )}
 
             <Text style={styles.label}>Description (Optional)</Text>

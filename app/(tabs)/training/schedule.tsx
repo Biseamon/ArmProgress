@@ -137,7 +137,10 @@ export default function ScheduleScreen() {
     const newStatus = !training.completed;
 
     if (newStatus && profile) {
-      const workoutDatetime = `${training.scheduled_date}T${training.scheduled_time}:00`;
+      const timeWithSeconds = training.scheduled_time.length === 5
+        ? `${training.scheduled_time}:00`
+        : training.scheduled_time;
+      const workoutDatetime = `${training.scheduled_date}T${timeWithSeconds}`;
 
       await supabase.from('workouts').insert({
         user_id: profile.id,
