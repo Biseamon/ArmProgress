@@ -56,7 +56,7 @@ export default function Home() {
           .select('*')
           .eq('user_id', profile.id)
           .eq('is_completed', true)
-          .order('updated_at', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(3),
       ]);
 
@@ -259,7 +259,7 @@ export default function Home() {
                 <Text style={styles.goalEmoji}>🏆</Text>
                 <View style={styles.goalInfo}>
                   <Text style={[styles.goalTitle, { color: colors.text }]}>
-                    {goal.title}
+                    {goal.goal_type}
                   </Text>
                   <Text style={[styles.goalCompleted, { color: '#10B981' }]}>
                     ✓ Completed

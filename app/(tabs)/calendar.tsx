@@ -32,8 +32,8 @@ interface Cycle {
 
 interface Goal {
   id: string;
-  title: string;
-  target_date: string;
+  goal_type: string;
+  deadline: string;
   is_completed: boolean;
 }
 
@@ -89,8 +89,8 @@ export default function CalendarScreen() {
         .from('goals')
         .select('*')
         .eq('user_id', profile.id)
-        .gte('target_date', startDate)
-        .lte('target_date', endDate),
+        .gte('deadline', startDate)
+        .lte('deadline', endDate),
       supabase
         .from('profiles')
         .select('created_at')
@@ -120,12 +120,12 @@ export default function CalendarScreen() {
 
   const getGoalCountForDate = (date: Date): number => {
     const dateStr = date.toISOString().split('T')[0];
-    return goals.filter((g) => g.target_date === dateStr).length;
+    return goals.filter((g) => g.deadline === dateStr).length;
   };
 
   const getGoalsForDate = (date: Date) => {
     const dateStr = date.toISOString().split('T')[0];
-    return goals.filter((g) => g.target_date === dateStr);
+    return goals.filter((g) => g.deadline === dateStr);
   };
 
   const isDateInCycle = (date: Date): { isInCycle: boolean; cycleName?: string } => {
@@ -434,7 +434,7 @@ export default function CalendarScreen() {
                           <Text style={styles.goalEmoji}>🎯</Text>
                           <View style={styles.goalInfo}>
                             <Text style={[styles.goalTitle, goal.is_completed && styles.goalCompleted]}>
-                              {goal.title}
+                              {goal.goal_type}
                             </Text>
                             {goal.is_completed && (
                               <Text style={styles.goalStatus}>✓ Completed</Text>
