@@ -18,9 +18,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
-import { MeasurementsModal } from '@/components/MeasurementsModal';
-import { AddMeasurementModal } from '@/components/AddMeasurementModal';
-import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun, Weight, Heart, Camera, Plus, TrendingUp } from 'lucide-react-native';
+import { Crown, User, LogOut, Shield, Info, Mail, Moon, Sun, Weight, Heart, Camera } from 'lucide-react-native';
 
 export default function Profile() {
   const { profile, signOut, isPremium, refreshProfile } = useAuth();
@@ -29,61 +27,12 @@ export default function Profile() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [showMeasurements, setShowMeasurements] = useState(false);
-  const [measurements, setMeasurements] = useState<any[]>([]);
-  const [showAddMeasurement, setShowAddMeasurement] = useState(false);
-  const [weight, setWeight] = useState('');
-  const [armCircumference, setArmCircumference] = useState('');
-  const [forearmCircumference, setForearmCircumference] = useState('');
-  const [wristCircumference, setWristCircumference] = useState('');
-  const [measurementNotes, setMeasurementNotes] = useState('');
 
   useEffect(() => {
     if (profile?.avatar_url) {
       setAvatarUrl(profile.avatar_url);
     }
-    if (profile) {
-      fetchMeasurements();
-    }
   }, [profile]);
-
-  const fetchMeasurements = async () => {
-    if (!profile) return;
-
-    const { data } = await supabase
-      .from('body_measurements')
-      .select('*')
-      .eq('user_id', profile.id)
-      .order('measured_at', { ascending: false })
-      .limit(10);
-
-    if (data) setMeasurements(data);
-  };
-
-  const handleSaveMeasurement = async () => {
-    if (!profile) return;
-
-    const newMeasurement = {
-      user_id: profile.id,
-      weight: weight ? parseFloat(weight) : null,
-      arm_circumference: armCircumference ? parseFloat(armCircumference) : null,
-      forearm_circumference: forearmCircumference ? parseFloat(forearmCircumference) : null,
-      wrist_circumference: wristCircumference ? parseFloat(wristCircumference) : null,
-      notes: measurementNotes || null,
-      measured_at: new Date().toISOString(),
-    };
-
-    await supabase.from('body_measurements').insert(newMeasurement);
-
-    setWeight('');
-    setArmCircumference('');
-    setForearmCircumference('');
-    setWristCircumference('');
-    setMeasurementNotes('');
-    setShowAddMeasurement(false);
-    fetchMeasurements();
-    Alert.alert('Success', 'Measurement saved successfully!');
-  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -281,21 +230,6 @@ export default function Profile() {
               </View>
             </View>
           </View>
-
-          <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <TouchableOpacity
-              style={styles.settingItem}
-              onPress={() => setShowMeasurements(true)}
-            >
-              <View style={styles.settingLeft}>
-                <TrendingUp size={20} color={colors.primary} />
-                <Text style={[styles.settingText, { color: colors.text }]}>Body Measurements</Text>
-              </View>
-              <Text style={[styles.settingValue, { color: colors.textTertiary }]}>
-                {measurements.length} entries
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         <View style={styles.section}>
@@ -367,33 +301,6 @@ export default function Profile() {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      <MeasurementsModal
-        visible={showMeasurements}
-        onClose={() => setShowMeasurements(false)}
-        measurements={measurements}
-        onAddNew={() => {
-          setShowMeasurements(false);
-          setShowAddMeasurement(true);
-        }}
-        weightUnit={weightUnit}
-      />
-
-      <AddMeasurementModal
-        visible={showAddMeasurement}
-        onClose={() => setShowAddMeasurement(false)}
-        onSave={handleSaveMeasurement}
-        weight={weight}
-        setWeight={setWeight}
-        armCircumference={armCircumference}
-        setArmCircumference={setArmCircumference}
-        forearmCircumference={forearmCircumference}
-        setForearmCircumference={setForearmCircumference}
-        wristCircumference={wristCircumference}
-        setWristCircumference={setWristCircumference}
-        notes={measurementNotes}
-        setNotes={setMeasurementNotes}
-        weightUnit={weightUnit}
-      />
     </View>
   );
 }

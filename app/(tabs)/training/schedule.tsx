@@ -134,7 +134,7 @@ export default function ScheduleScreen() {
     const newStatus = !training.completed;
 
     if (newStatus && profile) {
-      const workoutDate = new Date(training.scheduled_date + 'T' + training.scheduled_time);
+      const workoutDatetime = `${training.scheduled_date}T${training.scheduled_time}:00`;
 
       await supabase.from('workouts').insert({
         user_id: profile.id,
@@ -142,7 +142,7 @@ export default function ScheduleScreen() {
         duration_minutes: 60,
         intensity: 7,
         notes: `Completed scheduled training: ${training.title}${training.description ? `\n${training.description}` : ''}`,
-        created_at: workoutDate.toISOString(),
+        created_at: workoutDatetime,
       });
 
       if (training.notification_id) {

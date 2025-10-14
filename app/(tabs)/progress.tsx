@@ -20,7 +20,9 @@ import { PaywallModal } from '@/components/PaywallModal';
 import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
 import { ProgressReport } from '@/components/ProgressReport';
 import { Confetti } from '@/components/Confetti';
-import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar, Edit2, Trash2 } from 'lucide-react-native';
+import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar, Edit2, Trash2, Activity } from 'lucide-react-native';
+import { MeasurementsModal } from '@/components/MeasurementsModal';
+import { AddMeasurementModal } from '@/components/AddMeasurementModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatWeight, convertToLbs } from '@/lib/weightUtils';
 
@@ -50,6 +52,15 @@ export default function Progress() {
   const [testResult, setTestResult] = useState('');
   const [testNotes, setTestNotes] = useState('');
 
+  const [showMeasurements, setShowMeasurements] = useState(false);
+  const [measurements, setMeasurements] = useState<any[]>([]);
+  const [showAddMeasurement, setShowAddMeasurement] = useState(false);
+  const [weight, setWeight] = useState('');
+  const [armCircumference, setArmCircumference] = useState('');
+  const [forearmCircumference, setForearmCircumference] = useState('');
+  const [wristCircumference, setWristCircumference] = useState('');
+  const [measurementNotes, setMeasurementNotes] = useState('');
+
   useFocusEffect(
     useCallback(() => {
       if (profile) {
@@ -61,7 +72,7 @@ export default function Progress() {
   const fetchData = async () => {
     if (!profile) return;
 
-    const [goalsResponse, testsResponse, workoutsResponse] = await Promise.all([
+    const [goalsResponse, testsResponse, workoutsResponse, measurementsResponse] = await Promise.all([
       supabase
         .from('goals')
         .select('*')
@@ -78,13 +89,45 @@ export default function Progress() {
         .select('*')
         .eq('user_id', profile.id)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('body_measurements')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('measured_at', { ascending: false })
+        .limit(10),
     ]);
 
     if (goalsResponse.data) setGoals(goalsResponse.data);
     if (testsResponse.data) setStrengthTests(testsResponse.data);
     if (workoutsResponse.data) setWorkouts(workoutsResponse.data);
+    if (measurementsResponse.data) setMeasurements(measurementsResponse.data);
 
     setLoading(false);
+  };
+
+  const handleSaveMeasurement = async () => {
+    if (!profile) return;
+
+    const newMeasurement = {
+      user_id: profile.id,
+      weight: weight ? parseFloat(weight) : null,
+      arm_circumference: armCircumference ? parseFloat(armCircumference) : null,
+      forearm_circumference: forearmCircumference ? parseFloat(forearmCircumference) : null,
+      wrist_circumference: wristCircumference ? parseFloat(wristCircumference) : null,
+      notes: measurementNotes || null,
+      measured_at: new Date().toISOString(),
+    };
+
+    await supabase.from('body_measurements').insert(newMeasurement);
+
+    setWeight('');
+    setArmCircumference('');
+    setForearmCircumference('');
+    setWristCircumference('');
+    setMeasurementNotes('');
+    setShowAddMeasurement(false);
+    fetchData();
+    Alert.alert('Success', 'Measurement saved successfully!');
   };
 
   const handleAddGoal = () => {
@@ -288,6 +331,38 @@ export default function Progress() {
 
       <ScrollView style={styles.content}>
         <AdBanner />
+
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.measurementsCard}
+            onPress={() => setShowMeasurements(true)}
+          >
+            <View style={styles.measurementsHeader}>
+              <View style={styles.measurementsTitle}>
+                <Activity size={24} color="#E63946" />
+                <Text style={styles.measurementsTitleText}>Body Measurements</Text>
+              </View>
+              <Text style={styles.measurementsCount}>{measurements.length} entries</Text>
+            </View>
+            {measurements.length > 0 && measurements[0] && (
+              <View style={styles.latestMeasurement}>
+                <Text style={styles.latestLabel}>Latest:</Text>
+                <View style={styles.latestStats}>
+                  {measurements[0].weight && (
+                    <Text style={styles.latestStat}>
+                      {measurements[0].weight} {profile?.weight_unit || 'lbs'}
+                    </Text>
+                  )}
+                  {measurements[0].arm_circumference && (
+                    <Text style={styles.latestStat}>
+                      Arm: {measurements[0].arm_circumference}cm
+                    </Text>
+                  )}
+                </View>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Analytics</Text>
@@ -610,6 +685,34 @@ export default function Progress() {
         goals={goals}
         weightUnit={profile?.weight_unit || 'lbs'}
       />
+
+      <MeasurementsModal
+        visible={showMeasurements}
+        onClose={() => setShowMeasurements(false)}
+        measurements={measurements}
+        onAddNew={() => {
+          setShowMeasurements(false);
+          setShowAddMeasurement(true);
+        }}
+        weightUnit={profile?.weight_unit || 'lbs'}
+      />
+
+      <AddMeasurementModal
+        visible={showAddMeasurement}
+        onClose={() => setShowAddMeasurement(false)}
+        onSave={handleSaveMeasurement}
+        weight={weight}
+        setWeight={setWeight}
+        armCircumference={armCircumference}
+        setArmCircumference={setArmCircumference}
+        forearmCircumference={forearmCircumference}
+        setForearmCircumference={setForearmCircumference}
+        wristCircumference={wristCircumference}
+        setWristCircumference={setWristCircumference}
+        notes={measurementNotes}
+        setNotes={setMeasurementNotes}
+        weightUnit={profile?.weight_unit || 'lbs'}
+      />
     </View>
   );
 }
@@ -641,6 +744,53 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 24,
+  },
+  measurementsCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#E63946',
+  },
+  measurementsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  measurementsTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  measurementsTitleText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  measurementsCount: {
+    fontSize: 14,
+    color: '#999',
+  },
+  latestMeasurement: {
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+  },
+  latestLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 6,
+  },
+  latestStats: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  latestStat: {
+    fontSize: 14,
+    color: '#FFF',
+    fontWeight: '600',
   },
   sectionHeader: {
     flexDirection: 'row',

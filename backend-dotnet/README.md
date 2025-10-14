@@ -1,13 +1,17 @@
 # .NET Backend for Arm Wrestling Training App
 
-This is a .NET 8 Web API equivalent of the Supabase backend used in the Arm Wrestling Training mobile app.
+This is a .NET 8 Web API alternative to the Supabase backend. The mobile app currently uses Supabase, but this .NET backend can be used as an alternative backend.
+
+## Important Note
+
+**The mobile app is currently configured to use Supabase directly.** This .NET backend is provided as an alternative implementation for those who prefer to use .NET instead of Supabase's services.
 
 ## Architecture
 
 This backend provides:
 - RESTful API endpoints for all app functionality
-- JWT-based authentication
-- PostgreSQL database with Entity Framework Core
+- JWT-based authentication (compatible with Supabase auth or can be standalone)
+- PostgreSQL database (can connect to same database as Supabase or separate)
 - Role-based authorization (Premium vs Free users)
 
 ## Prerequisites
@@ -34,14 +38,22 @@ backend-dotnet/
 
 ## Database Schema
 
-The database mirrors the Supabase schema:
+The database schema matches the current Supabase implementation:
 
-- **users** - User profiles with authentication
+- **profiles** - User profiles (linked to Supabase auth.users or custom users table)
+  - Includes: weight_unit preference, profile_picture, avatar_url
 - **workouts** - Training session records
-- **exercises** - Exercise details within workouts
+  - Includes: workout_type, duration_minutes, intensity, notes, cycle_id
 - **cycles** - Training cycle periods
+  - Includes: name, cycle_type, start_date, end_date, description, is_active
 - **strength_tests** - Strength assessment records
+  - Includes: test_type, result (numeric), notes
 - **goals** - User training goals
+  - Includes: goal_type, target_value, current_value, deadline, is_completed
+- **scheduled_trainings** - Scheduled training sessions
+  - Includes: title, description, scheduled_date, scheduled_time, notification_enabled, notification_minutes_before, notification_id, completed
+- **body_measurements** - Body measurement tracking
+  - Includes: weight, arm_circumference, forearm_circumference, wrist_circumference, notes, measured_at
 
 ## Setup Instructions
 
@@ -64,14 +76,21 @@ dotnet add package BCrypt.Net-Next
 dotnet add package Swashbuckle.AspNetCore
 ```
 
-### 2. Configure Database Connection
+### 2. Configure Environment Variables
 
-Update `appsettings.json`:
+**Important**: Never commit sensitive credentials to version control!
+
+Create `appsettings.Development.json` (for local development):
 
 ```json
 {
   "ConnectionStrings": {
     "DefaultConnection": "Host=localhost;Database=armwrestling;Username=postgres;Password=yourpassword"
+  },
+  "Supabase": {
+    "Url": "https://your-project.supabase.co",
+    "AnonKey": "your_supabase_anon_key",
+    "ServiceRoleKey": "your_supabase_service_role_key"
   },
   "Jwt": {
     "Key": "your-secret-key-min-32-characters-long",
@@ -81,6 +100,8 @@ Update `appsettings.json`:
   }
 }
 ```
+
+**Note**: `appsettings.Development.json` and `appsettings.Production.json` are in `.gitignore` and should never be committed.
 
 ### 3. Run Migrations
 
