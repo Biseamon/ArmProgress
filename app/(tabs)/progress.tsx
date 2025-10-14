@@ -334,27 +334,27 @@ export default function Progress() {
 
         <View style={styles.section}>
           <TouchableOpacity
-            style={styles.measurementsCard}
+            style={[styles.measurementsCard, { backgroundColor: colors.cardBackground }]}
             onPress={() => setShowMeasurements(true)}
           >
             <View style={styles.measurementsHeader}>
               <View style={styles.measurementsTitle}>
                 <Activity size={24} color="#E63946" />
-                <Text style={styles.measurementsTitleText}>Body Measurements</Text>
+                <Text style={[styles.measurementsTitleText, { color: colors.cardText }]}>Body Measurements</Text>
               </View>
-              <Text style={styles.measurementsCount}>{measurements.length} entries</Text>
+              <Text style={[styles.measurementsCount, { color: colors.cardText, opacity: 0.7 }]}>{measurements.length} entries</Text>
             </View>
             {measurements.length > 0 && measurements[0] && (
               <View style={styles.latestMeasurement}>
                 <Text style={styles.latestLabel}>Latest:</Text>
                 <View style={styles.latestStats}>
                   {measurements[0].weight && (
-                    <Text style={styles.latestStat}>
+                    <Text style={[styles.latestStat, { color: colors.cardText }]}>
                       {measurements[0].weight} {profile?.weight_unit || 'lbs'}
                     </Text>
                   )}
                   {measurements[0].arm_circumference && (
-                    <Text style={styles.latestStat}>
+                    <Text style={[styles.latestStat, { color: colors.cardText }]}>
                       Arm: {measurements[0].arm_circumference}cm
                     </Text>
                   )}
@@ -398,6 +398,7 @@ export default function Progress() {
                 key={goal.id}
                 style={[
                   styles.goalCard,
+                  { backgroundColor: colors.cardBackground },
                   goal.is_completed && styles.goalCardCompleted,
                 ]}
               >
@@ -489,7 +490,7 @@ export default function Progress() {
             </View>
           ) : (
             strengthTests.map((test) => (
-              <View key={test.id} style={styles.testCard}>
+              <View key={test.id} style={[styles.testCard, { backgroundColor: colors.cardBackground }]}>
                 <View style={styles.testHeader}>
                   <Text style={styles.testType}>
                     {test.test_type.replace(/_/g, ' ').toUpperCase()}

@@ -17,6 +17,10 @@ export type ThemeColors = {
   warning: string;
   error: string;
   premium: string;
+  cardBackground: string;
+  cardText: string;
+  modalBackground: string;
+  modalText: string;
 };
 
 const lightTheme: ThemeColors = {
@@ -33,6 +37,10 @@ const lightTheme: ThemeColors = {
   warning: '#FFD700',
   error: '#FF6B6B',
   premium: '#FFD700',
+  cardBackground: '#2A2A2A',
+  cardText: '#FFFFFF',
+  modalBackground: '#2A2A2A',
+  modalText: '#FFFFFF',
 };
 
 const darkTheme: ThemeColors = {
@@ -49,6 +57,10 @@ const darkTheme: ThemeColors = {
   warning: '#FFD700',
   error: '#FF6B6B',
   premium: '#FFD700',
+  cardBackground: '#2A2A2A',
+  cardText: '#FFFFFF',
+  modalBackground: '#2A2A2A',
+  modalText: '#FFFFFF',
 };
 
 type ThemeContextType = {

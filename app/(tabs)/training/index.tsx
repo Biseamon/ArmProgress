@@ -368,7 +368,7 @@ export default function Training() {
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Training Cycles</Text>
             {cycles.map((cycle) => (
-              <View key={cycle.id} style={[styles.cycleCard, cycle.is_active && styles.cycleCardActive]}>
+              <View key={cycle.id} style={[styles.cycleCard, { backgroundColor: colors.cardBackground }, cycle.is_active && styles.cycleCardActive]}>
                 <TouchableOpacity
                   onPress={() => router.push({
                     pathname: '/(tabs)/training/cycle-details',
@@ -377,16 +377,16 @@ export default function Training() {
                   style={styles.cycleMainContent}
                 >
                   <View style={styles.cycleHeader}>
-                    <Text style={[styles.cycleName, { color: colors.text }]}>{cycle.name}</Text>
+                    <Text style={[styles.cycleName, { color: colors.cardText }]}>{cycle.name}</Text>
                   </View>
-                  <Text style={[styles.cycleType, { color: colors.textSecondary }]}>
+                  <Text style={[styles.cycleType, { color: colors.cardText }]}>
                     {cycle.cycle_type.replace(/_/g, ' ').toUpperCase()}
                   </Text>
-                  <Text style={[styles.cycleDates, { color: colors.textSecondary }]}>
+                  <Text style={[styles.cycleDates, { color: colors.cardText, opacity: 0.7 }]}>
                     {formatDate(cycle.start_date)} - {formatDate(cycle.end_date)}
                   </Text>
                   {cycle.description && (
-                    <Text style={[styles.cycleDescription, { color: colors.textSecondary }]} numberOfLines={2}>
+                    <Text style={[styles.cycleDescription, { color: colors.cardText, opacity: 0.8 }]} numberOfLines={2}>
                       {cycle.description}
                     </Text>
                   )}
@@ -431,13 +431,13 @@ export default function Training() {
             </View>
           ) : (
             workouts.map((workout) => (
-              <View key={workout.id} style={styles.workoutCard}>
+              <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}>
                 <View style={styles.workoutHeader}>
                   <View style={styles.workoutInfo}>
-                    <Text style={[styles.workoutType, { color: colors.text }]}>
+                    <Text style={[styles.workoutType, { color: colors.cardText }]}>
                       {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
                     </Text>
-                    <Text style={[styles.workoutDate, { color: colors.textTertiary }]}>
+                    <Text style={[styles.workoutDate, { color: colors.cardText, opacity: 0.6 }]}>
                       {formatDate(workout.created_at)}
                     </Text>
                   </View>
@@ -457,16 +457,16 @@ export default function Training() {
                   </View>
                 </View>
                 <View style={styles.workoutDetails}>
-                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
+                  <Text style={[styles.workoutDetail, { color: colors.cardText, opacity: 0.8 }]}>
                     {workout.duration_minutes} min
                   </Text>
-                  <Text style={[styles.workoutDivider, { color: colors.textTertiary }]}>•</Text>
-                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
+                  <Text style={[styles.workoutDivider, { color: colors.cardText, opacity: 0.5 }]}>•</Text>
+                  <Text style={[styles.workoutDetail, { color: colors.cardText, opacity: 0.8 }]}>
                     Intensity: {workout.intensity}/10
                   </Text>
                 </View>
                 {workout.notes && (
-                  <Text style={[styles.workoutNotes, { color: colors.textSecondary }]} numberOfLines={2}>
+                  <Text style={[styles.workoutNotes, { color: colors.cardText, opacity: 0.7 }]} numberOfLines={2}>
                     {workout.notes}
                   </Text>
                 )}
@@ -481,7 +481,7 @@ export default function Training() {
         animationType="slide"
         onRequestClose={() => setShowWorkoutModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.modalBackground }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>
               {editingWorkout ? 'Edit Workout' : 'Log Workout'}
@@ -684,7 +684,7 @@ export default function Training() {
         animationType="slide"
         onRequestClose={() => setShowCycleModal(false)}
       >
-        <View style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.modalBackground }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>
               {editingCycle ? 'Edit Training Cycle' : 'New Training Cycle'}

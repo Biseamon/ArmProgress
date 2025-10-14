@@ -219,18 +219,19 @@ export default function ScheduleScreen() {
           </View>
         ) : (
           trainings.map((training) => (
-            <View key={training.id} style={styles.trainingCard}>
+            <View key={training.id} style={[styles.trainingCard, { backgroundColor: colors.cardBackground }]}>
               <View style={styles.trainingHeader}>
                 <View style={styles.trainingInfo}>
                   <Text
                     style={[
                       styles.trainingTitle,
+                      { color: colors.cardText },
                       training.completed && styles.completedText,
                     ]}
                   >
                     {training.title}
                   </Text>
-                  <Text style={styles.trainingDate}>
+                  <Text style={[styles.trainingDate, { color: colors.cardText, opacity: 0.7 }]}>
                     {new Date(training.scheduled_date).toLocaleDateString()} at{' '}
                     {training.scheduled_time}
                   </Text>
@@ -251,7 +252,7 @@ export default function ScheduleScreen() {
                 </View>
               </View>
               {training.description && (
-                <Text style={styles.trainingDescription}>{training.description}</Text>
+                <Text style={[styles.trainingDescription, { color: colors.cardText, opacity: 0.8 }]}>{training.description}</Text>
               )}
               {training.notification_enabled && (
                 <View style={styles.notificationBadge}>
