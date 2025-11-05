@@ -165,7 +165,9 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
     </View>
   );
 
-  if (strengthChartData.length === 0 && workoutChartData.length === 0) {
+  const hasAnyData = strengthTests.length > 0 || workouts.length > 0;
+
+  if (!hasAnyData) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyText}>No data available yet</Text>
@@ -178,7 +180,7 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
 
   return (
     <View style={styles.container}>
-      {strengthChartData.length > 0 && (
+      {strengthTests.length > 0 && (
         <View style={styles.chartContainer}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>Strength Progress</Text>
@@ -221,20 +223,21 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
             animateOnDataChange
           />
           ) : (
-            <View style={styles.errorState}>
-              <Text style={styles.errorText}>Unable to display chart data</Text>
+            <View style={styles.emptyFilterState}>
+              <Text style={styles.emptyFilterText}>No strength tests in this time range</Text>
             </View>
           )}
         </View>
       )}
 
-      {workoutChartData.length > 0 && (
+      {workouts.length > 0 && (
         <View style={styles.chartContainer}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>Workout Frequency</Text>
             {renderTimeRangeSelector(workoutTimeRange, setWorkoutTimeRange)}
           </View>
-          <LineChart
+          {workoutChartData.length > 0 ? (
+            <LineChart
             data={workoutChartData}
             width={CHART_WIDTH}
             height={220}
@@ -269,16 +272,22 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
             animationDuration={800}
             animateOnDataChange
           />
+          ) : (
+            <View style={styles.emptyFilterState}>
+              <Text style={styles.emptyFilterText}>No workouts in this time range</Text>
+            </View>
+          )}
         </View>
       )}
 
-      {isPremium && enduranceChartData.length > 0 && (
+      {isPremium && workouts.length > 0 && (
         <View style={styles.chartContainer}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>Endurance (Duration)</Text>
             {renderTimeRangeSelector(enduranceTimeRange, setEnduranceTimeRange)}
           </View>
-          <LineChart
+          {enduranceChartData.length > 0 ? (
+            <LineChart
             data={enduranceChartData}
             width={CHART_WIDTH}
             height={220}
@@ -313,16 +322,22 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
             animationDuration={800}
             animateOnDataChange
           />
+          ) : (
+            <View style={styles.emptyFilterState}>
+              <Text style={styles.emptyFilterText}>No workouts in this time range</Text>
+            </View>
+          )}
         </View>
       )}
 
-      {isPremium && techniqueChartData.length > 0 && (
+      {isPremium && strengthTests.length > 0 && (
         <View style={styles.chartContainer}>
           <View style={styles.chartHeader}>
             <Text style={styles.chartTitle}>Technique Score</Text>
             {renderTimeRangeSelector(techniqueTimeRange, setTechniqueTimeRange)}
           </View>
-          <LineChart
+          {techniqueChartData.length > 0 ? (
+            <LineChart
             data={techniqueChartData}
             width={CHART_WIDTH}
             height={220}
@@ -357,6 +372,11 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
             animationDuration={800}
             animateOnDataChange
           />
+          ) : (
+            <View style={styles.emptyFilterState}>
+              <Text style={styles.emptyFilterText}>No strength tests in this time range</Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -470,5 +490,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#999',
     textAlign: 'center',
+  },
+  emptyFilterState: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 120,
+  },
+  emptyFilterText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
