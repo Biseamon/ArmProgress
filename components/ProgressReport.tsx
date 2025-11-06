@@ -61,8 +61,8 @@ export function ProgressReport({
   };
 
   const strengthTrend = calculateStrengthTrend();
-  const consistency = calculateWorkoutConsistency();
-  const goalCompletion = calculateGoalCompletion();
+  const consistency = Number(calculateWorkoutConsistency());
+  const goalCompletion = Number(calculateGoalCompletion());
   const avgDuration = getAverageWorkoutDuration();
 
   const getTrendIcon = () => {
@@ -142,7 +142,7 @@ export function ProgressReport({
                     style={[
                       styles.progressFill,
                       {
-                        width: `${consistency}%`,
+                        width: `${Number(consistency)}%`,
                         backgroundColor: Number(consistency) >= 70 ? '#10B981' : Number(consistency) >= 50 ? '#FFD700' : '#E63946'
                       }
                     ]}

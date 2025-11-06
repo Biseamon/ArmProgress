@@ -12,8 +12,9 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, Workout } from '@/lib/supabase';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
+import { supabase, Workout, StrengthTest } from '@/lib/supabase';
+import { ChevronLeft, ChevronRight, X, TrendingUp } from 'lucide-react-native';
+import { convertWeight, formatWeight } from '@/lib/weightUtils';
 
 interface Cycle {
   id: string;
@@ -36,6 +37,7 @@ interface DayData {
   isInCycle: boolean;
   cycleName?: string;
   goalCount: number;
+  strengthTestCount: number;
 }
 
 export default function CalendarScreen() {
@@ -44,6 +46,7 @@ export default function CalendarScreen() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
   const [scheduledTrainings, setScheduledTrainings] = useState<any[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -53,6 +56,7 @@ export default function CalendarScreen() {
   const [showWorkouts, setShowWorkouts] = useState(true);
   const [showCycles, setShowCycles] = useState(true);
   const [showGoals, setShowGoals] = useState(true);
+  const [showStrengthTests, setShowStrengthTests] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,7 +73,7 @@ export default function CalendarScreen() {
     const startDate = `${currentYear}-01-01`;
     const endDate = `${currentYear}-12-31`;
 
-    const [workoutsRes, cyclesRes, goalsRes, scheduledTrainingsRes, profileRes] = await Promise.all([
+    const [workoutsRes, cyclesRes, goalsRes, strengthTestsRes, scheduledTrainingsRes, profileRes] = await Promise.all([
       supabase
         .from('workouts')
         .select('*')
@@ -88,6 +92,13 @@ export default function CalendarScreen() {
         .gte('deadline', startDate)
         .lte('deadline', endDate),
       supabase
+        .from('strength_tests')
+        .select('*')
+        .eq('user_id', profile.id)
+        .gte('created_at', startDate)
+        .lte('created_at', endDate)
+        .order('created_at', { ascending: true }),
+      supabase
         .from('scheduled_trainings')
         .select('*')
         .eq('user_id', profile.id)
@@ -103,6 +114,7 @@ export default function CalendarScreen() {
     if (workoutsRes.data) setWorkouts(workoutsRes.data);
     if (cyclesRes.data) setCycles(cyclesRes.data);
     if (goalsRes.data) setGoals(goalsRes.data);
+    if (strengthTestsRes.data) setStrengthTests(strengthTestsRes.data);
     if (scheduledTrainingsRes.data) setScheduledTrainings(scheduledTrainingsRes.data);
 
     if (profileRes.data) {
@@ -132,12 +144,28 @@ export default function CalendarScreen() {
     return goals.filter((g) => g.deadline === dateStr).length;
   };
 
+  const getStrengthTestCountForDate = (date: Date): number => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    return strengthTests.filter((st) => st.created_at.split('T')[0] === dateStr).length;
+  };
+
   const getGoalsForDate = (date: Date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
     return goals.filter((g) => g.deadline === dateStr);
+  };
+
+  const getStrengthTestsForDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    return strengthTests.filter((st) => st.created_at.split('T')[0] === dateStr);
   };
 
   const getScheduledTrainingsForDate = (date: Date) => {
@@ -161,8 +189,8 @@ export default function CalendarScreen() {
     return { isInCycle: false };
   };
 
-  const getDayColor = (workoutCount: number, isInCycle: boolean, scheduledCount: number, isFuture: boolean): string => {
-    if (!showWorkouts && !showCycles) return colors.surface;
+  const getDayColor = (workoutCount: number, isInCycle: boolean, scheduledCount: number, strengthTestCount: number, isFuture: boolean): string => {
+    if (!showWorkouts && !showCycles && !showStrengthTests) return colors.surface;
     if (!showWorkouts && isInCycle && showCycles) return '#2A7DE144';
     if (!showCycles && workoutCount > 0 && showWorkouts) {
       if (workoutCount === 1) return '#E6394655';
@@ -172,7 +200,10 @@ export default function CalendarScreen() {
 
     if (isFuture && scheduledCount > 0) return '#FFA50055';
 
-    if (workoutCount === 0 && !isInCycle && scheduledCount === 0) return colors.surface;
+    // Priority for strength tests
+    if (strengthTestCount > 0 && showStrengthTests) return '#10B98155';
+
+    if (workoutCount === 0 && !isInCycle && scheduledCount === 0 && strengthTestCount === 0) return colors.surface;
     if (isInCycle && workoutCount === 0 && showCycles) return '#2A7DE144';
     if (workoutCount === 1 && showWorkouts) return '#E6394655';
     if (workoutCount === 2 && showWorkouts) return '#E6394688';
@@ -183,10 +214,11 @@ export default function CalendarScreen() {
   const handleDayPress = (date: Date) => {
     const workoutCount = getWorkoutCountForDate(date);
     const scheduledCount = getScheduledTrainingsForDate(date).length;
+    const strengthTestCount = getStrengthTestCountForDate(date);
     const { isInCycle } = isDateInCycle(date);
     const goalCount = getGoalCountForDate(date);
 
-    if (workoutCount > 0 || isInCycle || goalCount > 0 || scheduledCount > 0) {
+    if (workoutCount > 0 || isInCycle || goalCount > 0 || scheduledCount > 0 || strengthTestCount > 0) {
       setSelectedDate(date);
       setShowDayModal(true);
     }
@@ -223,7 +255,6 @@ export default function CalendarScreen() {
 
   const renderCalendar = () => {
     const screenWidth = Dimensions.get('window').width;
-    // Account for container padding (20px * 2 = 40) and gaps between days (4px * 6 = 24)
     const availableWidth = screenWidth - 40 - 24;
     const daySize = Math.floor(availableWidth / 7);
   
@@ -248,7 +279,6 @@ export default function CalendarScreen() {
       </View>
     ));
   
-    // Empty cells before first day of month
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(
         <View
@@ -258,7 +288,6 @@ export default function CalendarScreen() {
       );
     }
   
-    // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(currentYear, currentMonth, day);
       date.setHours(0, 0, 0, 0);
@@ -266,9 +295,10 @@ export default function CalendarScreen() {
       const workoutCount = getWorkoutCountForDate(date);
       const scheduledCount = getScheduledTrainingsForDate(date).length;
       const goalCount = getGoalCountForDate(date);
+      const strengthTestCount = getStrengthTestCountForDate(date);
       const { isInCycle, cycleName } = isDateInCycle(date);
       const isFuture = date > today;
-      const dayColor = getDayColor(workoutCount, isInCycle, scheduledCount, isFuture);
+      const dayColor = getDayColor(workoutCount, isInCycle, scheduledCount, strengthTestCount, isFuture);
   
       const isToday = date.getDate() === today.getDate() &&
                       date.getMonth() === today.getMonth() &&
@@ -292,9 +322,9 @@ export default function CalendarScreen() {
           <Text
             style={[
               styles.dayText,
-              { color: workoutCount > 0 || scheduledCount > 0 ? '#FFF' : colors.text },
-              (workoutCount > 0 || scheduledCount > 0) && styles.dayTextActive,
-              isToday && !workoutCount && { color: colors.primary, fontWeight: 'bold' },
+              { color: (workoutCount > 0 || scheduledCount > 0 || strengthTestCount > 0) ? '#FFF' : colors.text },
+              (workoutCount > 0 || scheduledCount > 0 || strengthTestCount > 0) && styles.dayTextActive,
+              isToday && !workoutCount && !strengthTestCount && { color: colors.primary, fontWeight: 'bold' },
             ]}
           >
             {day}
@@ -302,6 +332,11 @@ export default function CalendarScreen() {
           {goalCount > 0 && showGoals && (
             <View style={styles.goalIndicator}>
               <Text style={styles.goalIndicatorText}>🎯</Text>
+            </View>
+          )}
+          {strengthTestCount > 0 && showStrengthTests && (
+            <View style={styles.strengthTestIndicator}>
+              <Text style={styles.strengthTestIndicatorText}>💪</Text>
             </View>
           )}
           {scheduledCount > 0 && isFuture && (
@@ -362,87 +397,113 @@ export default function CalendarScreen() {
         <Text style={[styles.title, { color: colors.text }]}>Calendar</Text>
       </View>
 
-      <View style={styles.filterContainer}>
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            showWorkouts && styles.filterButtonActive,
-          ]}
-          onPress={() => setShowWorkouts(!showWorkouts)}
-        >
-          <Text
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScrollView}>
+        <View style={styles.filterContainer}>
+          <TouchableOpacity
             style={[
-              styles.filterText,
-              showWorkouts && styles.filterTextActive,
+              styles.filterButton,
+              showWorkouts && styles.filterButtonActive,
             ]}
+            onPress={() => setShowWorkouts(!showWorkouts)}
           >
-            Workouts
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            showCycles && styles.filterButtonActive,
-          ]}
-          onPress={() => setShowCycles(!showCycles)}
-        >
-          <Text
+            <Text
+              style={[
+                styles.filterText,
+                showWorkouts && styles.filterTextActive,
+              ]}
+            >
+              Workouts
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[
-              styles.filterText,
-              showCycles && styles.filterTextActive,
+              styles.filterButton,
+              showCycles && styles.filterButtonActive,
             ]}
+            onPress={() => setShowCycles(!showCycles)}
           >
-            Cycles
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.filterButton,
-            showGoals && styles.filterButtonActive,
-          ]}
-          onPress={() => setShowGoals(!showGoals)}
-        >
-          <Text
+            <Text
+              style={[
+                styles.filterText,
+                showCycles && styles.filterTextActive,
+              ]}
+            >
+              Cycles
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[
-              styles.filterText,
-              showGoals && styles.filterTextActive,
+              styles.filterButton,
+              showGoals && styles.filterButtonActive,
             ]}
+            onPress={() => setShowGoals(!showGoals)}
           >
-            Goals
-          </Text>
-        </TouchableOpacity>
-      </View>
+            <Text
+              style={[
+                styles.filterText,
+                showGoals && styles.filterTextActive,
+              ]}
+            >
+              Goals
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              showStrengthTests && styles.filterButtonActive,
+            ]}
+            onPress={() => setShowStrengthTests(!showStrengthTests)}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                showStrengthTests && styles.filterTextActive,
+              ]}
+            >
+              PR's
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendBox, { backgroundColor: '#2A2A2A' }]} />
-          <Text style={styles.legendText}>No activity</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.legendScrollView}>
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendBox, { backgroundColor: '#2A2A2A' }]} />
+            <Text style={styles.legendText}>No activity</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendBox, { backgroundColor: '#2A7DE144' }]}
+            />
+            <Text style={styles.legendText}>In cycle</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendBox, { backgroundColor: '#FFA50055' }]}
+            />
+            <Text style={styles.legendText}>Scheduled</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendBox, { backgroundColor: '#10B98155' }]}
+            />
+            <Text style={styles.legendText}>Test</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendBox, { backgroundColor: '#E6394655' }]}
+            />
+            <Text style={styles.legendText}>1 workout</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View
+              style={[styles.legendBox, { backgroundColor: '#E63946' }]}
+            />
+            <Text style={styles.legendText}>3+ workouts</Text>
+          </View>
         </View>
-        <View style={styles.legendItem}>
-          <View
-            style={[styles.legendBox, { backgroundColor: '#2A7DE144' }]}
-          />
-          <Text style={styles.legendText}>In cycle</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View
-            style={[styles.legendBox, { backgroundColor: '#FFA50055' }]}
-          />
-          <Text style={styles.legendText}>Scheduled</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View
-            style={[styles.legendBox, { backgroundColor: '#E6394655' }]}
-          />
-          <Text style={styles.legendText}>1 workout</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View
-            style={[styles.legendBox, { backgroundColor: '#E63946' }]}
-          />
-          <Text style={styles.legendText}>3+ workouts</Text>
-        </View>
-      </View>
+      </ScrollView>
 
       <View style={styles.content}>
         {renderCalendar()}
@@ -501,6 +562,44 @@ export default function CalendarScreen() {
                     </>
                   )}
 
+                  {getStrengthTestsForDate(selectedDate).length > 0 && (
+                    <>
+                      <Text style={[styles.modalSectionTitle, { color: colors.text }]}>
+                        Personal Records ({getStrengthTestsForDate(selectedDate).length})
+                      </Text>
+                      {getStrengthTestsForDate(selectedDate).map((test) => {
+                        const userUnit = profile?.weight_unit || 'lbs';
+                        const storedUnit = test.result_unit || 'lbs';
+                        const displayValue = convertWeight(test.result_value, storedUnit, userUnit);
+                        
+                        return (
+                          <View key={test.id} style={[styles.strengthTestCard, { backgroundColor: colors.surface }]}>
+                            <View style={styles.strengthTestHeader}>
+                              <TrendingUp size={20} color="#10B981" />
+                              <Text style={[styles.strengthTestType, { color: colors.text }]}>
+                                {test.test_type.replace(/_/g, ' ').toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text style={[styles.strengthTestResult, { color: '#10B981' }]}>
+                              {formatWeight(displayValue, userUnit)}
+                            </Text>
+                            {test.notes && (
+                              <Text style={[styles.strengthTestNotes, { color: colors.textSecondary }]}>
+                                {test.notes}
+                              </Text>
+                            )}
+                            <Text style={[styles.strengthTestTime, { color: colors.textSecondary }]}>
+                              {new Date(test.created_at).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </>
+                  )}
+
                   <Text style={[styles.modalSectionTitle, { color: colors.text }]}>
                     Workouts ({getWorkoutsForDate(selectedDate).length})
                   </Text>
@@ -547,7 +646,7 @@ export default function CalendarScreen() {
                               {goal.goal_type}
                             </Text>
                             {goal.is_completed && (
-                              <Text style={[styles.goalStatus, { color: colors.success }]}>✓ Completed</Text>
+                              <Text style={[styles.goalStatus, { color: '#10B981' }]}>✓ Completed</Text>
                             )}
                           </View>
                         </View>
@@ -593,9 +692,11 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
   },
+  filterScrollView: {
+    flexGrow: 0,
+  },
   filterContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
     gap: 12,
     paddingHorizontal: 20,
     paddingVertical: 12,
@@ -605,7 +706,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: '#2A2A2A',
-    minWidth: 120,
+    minWidth: 100,
     alignItems: 'center',
   },
   filterButtonActive: {
@@ -619,9 +720,11 @@ const styles = StyleSheet.create({
   filterTextActive: {
     color: '#FFF',
   },
+  legendScrollView: {
+    flexGrow: 0,
+  },
   legend: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingHorizontal: 20,
     paddingVertical: 12,
     gap: 12,
@@ -707,7 +810,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '60%',
+    maxHeight: '70%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -787,6 +890,14 @@ const styles = StyleSheet.create({
   goalIndicatorText: {
     fontSize: 10,
   },
+  strengthTestIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    left: 2,
+  },
+  strengthTestIndicatorText: {
+    fontSize: 10,
+  },
   goalCard: {
     backgroundColor: '#2A2A2A',
     borderRadius: 12,
@@ -862,5 +973,36 @@ const styles = StyleSheet.create({
   scheduledDescription: {
     fontSize: 14,
     color: '#CCC',
+  },
+  strengthTestCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#10B981',
+  },
+  strengthTestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  strengthTestType: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  strengthTestResult: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  strengthTestNotes: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  strengthTestTime: {
+    fontSize: 12,
   },
 });

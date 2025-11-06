@@ -100,7 +100,8 @@ export type Exercise = {
   exercise_name: string;   // Name of the exercise
   sets: number;            // Number of sets performed
   reps: number;            // Reps per set
-  weight_lbs: number;      // Weight used (stored in lbs)
+  weight_lbs: number;      // Weight used (stored in user's unit)
+  weight_unit: 'kg' | 'lbs'; // Unit the weight was stored in
   notes: string;           // Optional exercise notes
 };
 
@@ -128,7 +129,8 @@ export type StrengthTest = {
   user_id: string;         // Owner's user ID
   test_type: string;       // Type: max_wrist_curl, table_pressure, etc.
   result_value: number;    // Test result (weight or measurement)
-  notes?: string;           // Optional test notes
+  result_unit: 'kg' | 'lbs'; // Unit the result was stored in
+  notes?: string;          // Optional test notes
   created_at: string;      // When test was performed
 };
 
@@ -148,7 +150,6 @@ export type Cycle = {
   created_at: string;      // When cycle was created
 };
 
-
 export type ScheduledTraining = {
   id: string;
   user_id: string;
@@ -163,13 +164,18 @@ export type ScheduledTraining = {
   created_at: string;
 };
 
+/**
+ * Body Measurement
+ * User body measurements over time
+ */
 export type BodyMeasurement = {
   id: string;
   user_id: string;
-  weight?: number;
-  arm_circumference?: number;
-  forearm_circumference?: number;
-  wrist_circumference?: number;
+  weight?: number;         // Body weight
+  weight_unit: 'kg' | 'lbs'; // Unit for weight
+  arm_circumference?: number;      // in cm
+  forearm_circumference?: number;  // in cm
+  wrist_circumference?: number;    // in cm
   notes?: string;
   measured_at: string;
   created_at: string;

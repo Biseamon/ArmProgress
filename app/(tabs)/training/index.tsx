@@ -9,7 +9,7 @@ import {
   Modal,
   Alert,
   Platform,
-  useColorScheme, // Add this import
+  useColorScheme,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,7 +19,7 @@ import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { formatWeight, convertToLbs, convertFromLbs } from '@/lib/weightUtils';
+import { convertFromLbs, convertToLbs, convertWeight } from '@/lib/weightUtils';
 
 type Exercise = {
   exercise_name: string;
@@ -32,7 +32,7 @@ type Exercise = {
 export default function Training() {
   const { profile, isPremium } = useAuth();
   const { colors } = useTheme();
-  const colorScheme = useColorScheme(); // Add this line
+  const colorScheme = useColorScheme();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
@@ -86,7 +86,7 @@ export default function Training() {
         .eq('user_id', profile.id),
     ]);
   
-    console.log('Cycles response:', { data: cyclesRes.data, error: cyclesRes.error }); // Add this
+    console.log('Cycles response:', { data: cyclesRes.data, error: cyclesRes.error });
     
     if (workoutsRes.data) setWorkouts(workoutsRes.data);
     if (cyclesRes.data) setCycles(cyclesRes.data);
@@ -119,8 +119,24 @@ export default function Training() {
     
     if (error) {
       console.error('Error loading exercises:', error);
-    } else {
-      setExercises(exercisesData || []);
+    } else if (exercisesData) {
+      const userUnit = profile?.weight_unit || 'lbs';
+      
+      // Convert exercise weights to user's current unit preference
+      const convertedExercises = exercisesData.map(exercise => {
+        const storedUnit = exercise.weight_unit || 'lbs';
+        const convertedWeight = convertWeight(exercise.weight_lbs, storedUnit, userUnit);
+        
+        return {
+          exercise_name: exercise.exercise_name,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          weight_lbs: convertedWeight,
+          notes: exercise.notes || '',
+        };
+      });
+      
+      setExercises(convertedExercises);
     }
     
     setShowWorkoutModal(true);
@@ -161,7 +177,6 @@ export default function Training() {
     setExercises(updated);
   };
 
-  // In your index.tsx file where handleSaveWorkout is defined
   const handleSaveWorkout = async () => {
     if (!profile) {
       console.log('No profile found');
@@ -169,10 +184,11 @@ export default function Training() {
     }
     
     setSaving(true);
-    console.log('Starting save workout...'); // Debug log
+    console.log('Starting save workout...');
   
     try {
       let workoutId: string;
+      const userUnit = profile.weight_unit || 'lbs';
   
       if (editingWorkout) {
         // Update existing workout
@@ -215,7 +231,7 @@ export default function Training() {
         workoutId = workoutData.id;
       }
   
-      // Insert exercises if any exist
+      // Insert exercises if any exist - WITH UNIT TRACKING
       if (exercises.length > 0) {
         const exercisesToInsert = exercises.map(exercise => ({
           workout_id: workoutId,
@@ -223,6 +239,7 @@ export default function Training() {
           sets: exercise.sets,
           reps: exercise.reps,
           weight_lbs: exercise.weight_lbs,
+          weight_unit: userUnit,
           notes: exercise.notes || '',
         }));
   
@@ -235,7 +252,7 @@ export default function Training() {
       
       setShowWorkoutModal(false);
       resetForm();
-      await fetchData(); // Refresh the list
+      await fetchData();
     } catch (error) {
       console.error('Error saving workout:', error);
       Alert.alert('Error', 'Failed to save workout');
@@ -677,22 +694,22 @@ export default function Training() {
                         keyboardType="number-pad"
                       />
                     </View>
-
                     <View style={styles.exerciseInputGroup}>
-                      <Text style={[styles.smallLabel, { color: colors.text }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
+                      <Text style={[styles.smallLabel, { color: colors.text }]}>
+                        Weight ({profile?.weight_unit || 'lbs'})
+                      </Text>
                       <TextInput
                         style={[styles.smallInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        value={String(Math.round(exercise.weight_lbs))}
                         onChangeText={(val) => {
                           const inputValue = parseInt(val) || 0;
-                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
-                          handleUpdateExercise(index, 'weight_lbs', lbsValue);
+                          handleUpdateExercise(index, 'weight_lbs', inputValue);
                         }}
                         keyboardType="number-pad"
                       />
                     </View>
+                    </View>
                   </View>
-                </View>
               ))}
             </View>
 
@@ -801,20 +818,17 @@ export default function Training() {
                     value={cycleStartDate}
                     mode="date"
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    themeVariant={colorScheme === 'dark' ? 'dark' : 'light'} // Ensure it's either 'dark' or 'light'
+                    themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
                     textColor={colorScheme === 'dark' ? '#FFFFFF' : '#000000'}
                     accentColor={colorScheme === 'dark' ? '#E63946' : '#2A7DE1'}
                     onChange={(event, selectedDate) => {
-                      // Hide picker on Android after selection
                       if (Platform.OS === 'android') {
                         setShowStartDatePicker(false);
                       }
                       
-                      // Only update date if user didn't cancel
                       if (event.type === 'set' && selectedDate) {
                         setCycleStartDate(selectedDate);
                       } else if (event.type === 'dismissed') {
-                        // User cancelled, just hide the picker
                         setShowStartDatePicker(false);
                       }
                     }}
@@ -864,20 +878,17 @@ export default function Training() {
                     value={cycleEndDate}
                     mode="date"
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    themeVariant={colorScheme === 'dark' ? 'dark' : 'light'} // Ensure it's either 'dark' or 'light'
+                    themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
                     textColor={colorScheme === 'dark' ? '#FFFFFF' : '#000000'}
                     accentColor={colorScheme === 'dark' ? '#E63946' : '#2A7DE1'}
                     onChange={(event, selectedDate) => {
-                      // Hide picker on Android after selection
                       if (Platform.OS === 'android') {
                         setShowEndDatePicker(false);
                       }
                       
-                      // Only update date if user didn't cancel
                       if (event.type === 'set' && selectedDate) {
                         setCycleEndDate(selectedDate);
                       } else if (event.type === 'dismissed') {
-                        // User cancelled, just hide the picker
                         setShowEndDatePicker(false);
                       }
                     }}
