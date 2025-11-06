@@ -106,8 +106,11 @@ export default function Progress() {
   };
 
   const handleSaveMeasurement = async () => {
-    if (!profile) return;
-
+    if (!profile) {
+      console.log('No profile found');
+      return;
+    }
+  
     const newMeasurement = {
       user_id: profile.id,
       weight: weight ? parseFloat(weight) : null,
@@ -117,63 +120,73 @@ export default function Progress() {
       notes: measurementNotes || null,
       measured_at: new Date().toISOString(),
     };
-
-    await supabase.from('body_measurements').insert(newMeasurement);
-
+  
+    console.log('Saving measurement:', newMeasurement);
+  
+    const { data, error } = await supabase
+      .from('body_measurements')
+      .insert(newMeasurement)
+      .select();
+  
+    console.log('Save result:', { data, error });
+  
+    if (error) {
+      console.error('Error saving measurement:', error);
+      Alert.alert('Error', `Failed to save measurement: ${error.message}`);
+      return;
+    }
+  
     setWeight('');
     setArmCircumference('');
     setForearmCircumference('');
     setWristCircumference('');
     setMeasurementNotes('');
     setShowAddMeasurement(false);
-    fetchData();
+    await fetchData(); // Make sure this is awaited
     Alert.alert('Success', 'Measurement saved successfully!');
   };
 
   const handleAddGoal = () => {
-    if (!isPremium && goals.length >= 3) {
-      setShowPaywall(true);
-      return;
-    }
-    setShowGoalModal(true);
-  };
-
+      setEditingGoal(null);
+      setGoalType('');
+      setTargetValue('');
+      setDeadline(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
+      setShowGoalModal(true);
+    };
+  
   const handleSaveGoal = async () => {
-    if (!profile || !goalType || !targetValue) return;
-
-    if (editingGoal) {
-      await supabase
-        .from('goals')
-        .update({
-          goal_type: goalType,
-          target_value: parseInt(targetValue),
-          deadline: deadline.toISOString().split('T')[0],
-        })
-        .eq('id', editingGoal.id);
-    } else {
-      await supabase.from('goals').insert({
-        user_id: profile.id,
+      if (!goalType || !targetValue) {
+        Alert.alert('Error', 'Please fill in all fields.');
+        return;
+      }
+  
+      const newGoal = {
         goal_type: goalType,
-        target_value: parseInt(targetValue),
-        deadline: deadline.toISOString().split('T')[0],
+        target_value: parseFloat(targetValue),
+        deadline: deadline.toISOString(),
         current_value: 0,
         is_completed: false,
-      });
-    }
-
-    setGoalType('');
-    setTargetValue('');
-    setDeadline(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
-    setEditingGoal(null);
-    setShowGoalModal(false);
-    fetchData();
-  };
-
+        user_id: profile?.id,
+      };
+  
+      if (editingGoal) {
+        await supabase
+          .from('goals')
+          .update(newGoal)
+          .eq('id', editingGoal.id);
+      } else {
+        await supabase.from('goals').insert(newGoal);
+      }
+  
+      setShowGoalModal(false);
+      fetchData();
+    };
+  
   const handleEditGoal = (goal: Goal) => {
     setEditingGoal(goal);
     setGoalType(goal.goal_type);
     setTargetValue(goal.target_value.toString());
-    setDeadline(new Date(goal.deadline));
+    setDeadline(goal.deadline ? new Date(goal.deadline) : new Date());
     setShowGoalModal(true);
   };
 
@@ -235,34 +248,76 @@ export default function Progress() {
   };
 
   const handleSaveTest = async () => {
-    if (!profile || !testResult) return;
-
-    const resultInLbs = convertToLbs(parseFloat(testResult), profile.weight_unit || 'lbs');
-
+    if (!profile || !testResult) {
+      console.log('Missing profile or test result');
+      return;
+    }
+  
+    // Convert input to lbs for storage (database always stores in lbs)
+    let resultInLbs: number;
+    const inputValue = parseFloat(testResult);
+  
+    if (profile.weight_unit === 'kg') {
+      // User entered kg, convert to lbs for storage
+      resultInLbs = inputValue * 2.20462;
+    } else {
+      // User entered lbs, store as-is
+      resultInLbs = inputValue;
+    }
+  
+    const testData = {
+      user_id: profile.id,
+      test_type: testType,
+      result_value: resultInLbs, // Always store in lbs
+      notes: testNotes || null,
+    };
+  
+    console.log('Saving strength test:', {
+      input: testResult,
+      unit: profile.weight_unit,
+      storedValue: resultInLbs,
+    });
+  
     if (editingTest) {
-      await supabase
+      const { data, error } = await supabase
         .from('strength_tests')
         .update({
           test_type: testType,
           result_value: resultInLbs,
-          notes: testNotes,
+          notes: testNotes || null,
         })
-        .eq('id', editingTest.id);
+        .eq('id', editingTest.id)
+        .select();
+  
+      console.log('Update result:', { data, error });
+  
+      if (error) {
+        console.error('Error updating test:', error);
+        Alert.alert('Error', `Failed to update test: ${error.message}`);
+        return;
+      }
     } else {
-      await supabase.from('strength_tests').insert({
-        user_id: profile.id,
-        test_type: testType,
-        result_value: resultInLbs,
-        notes: testNotes,
-      });
+      const { data, error } = await supabase
+        .from('strength_tests')
+        .insert(testData)
+        .select();
+  
+      console.log('Insert result:', { data, error });
+  
+      if (error) {
+        console.error('Error saving test:', error);
+        Alert.alert('Error', `Failed to save test: ${error.message}`);
+        return;
+      }
     }
-
+  
     setTestType('max_wrist_curl');
     setTestResult('');
     setTestNotes('');
     setEditingTest(null);
     setShowTestModal(false);
-    fetchData();
+    await fetchData();
+    Alert.alert('Success', 'Test saved successfully!');
   };
 
   const handleEditTest = (test: StrengthTest) => {
@@ -493,33 +548,33 @@ export default function Progress() {
             strengthTests.map((test) => (
               <View key={test.id} style={[styles.testCard, { backgroundColor: colors.surface }]}>
                 <View style={styles.testHeader}>
-                  <Text style={[styles.testType, { color: colors.primary }]}>
+                  <Text style={[styles.testType, { color: colors.text }]}>
                     {test.test_type.replace(/_/g, ' ').toUpperCase()}
                   </Text>
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                      style={styles.editButton}
-                      onPress={() => handleEditTest(test)}
-                    >
-                      <Pencil size={16} color="#2A7DE1" />
+                  <View style={styles.testActions}>
+                    <TouchableOpacity onPress={() => handleEditTest(test)}>
+                      <Pencil size={18} color={colors.primary} />
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => handleDeleteTest(test.id)}
-                    >
-                      <Trash2 size={16} color="#E63946" />
+                    <TouchableOpacity onPress={() => handleDeleteTest(test.id)}>
+                      <Trash2 size={18} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
                 </View>
+                <Text style={[styles.testResult, { color: colors.primary }]}>
+                  {/* Always stored in lbs, convert if needed for display */}
+                  {profile?.weight_unit === 'kg' 
+                    ? `${(test.result_value * 0.453592).toFixed(1)} kg`
+                    : `${test.result_value.toFixed(1)} lbs`
+                  }
+                </Text>
+                {test.notes && (
+                  <Text style={[styles.testNotes, { color: colors.textSecondary }]}>
+                    {test.notes}
+                  </Text>
+                )}
                 <Text style={[styles.testDate, { color: colors.textSecondary }]}>
                   {new Date(test.created_at).toLocaleDateString()}
                 </Text>
-                <Text style={[styles.testResult, { color: colors.text }]}>
-                  {formatWeight(test.result_value, profile?.weight_unit || 'lbs')}
-                </Text>
-                {test.notes && (
-                  <Text style={[styles.testNotes, { color: colors.textSecondary }]}>{test.notes}</Text>
-                )}
               </View>
             ))
           )}
@@ -734,6 +789,10 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: 'bold',
     color: '#FFF',
+  },
+  testActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
   reportButton: {
     backgroundColor: '#2A2A2A',

@@ -87,6 +87,7 @@ export type Workout = {
   notes: string;              // Optional workout notes
   cycle_id: string | null;    // Associated training cycle (if any)
   created_at: string;         // When workout was logged
+  exercises?: { sets: number; reps: number }[]; // Add exercises property
 };
 
 /**
@@ -113,7 +114,7 @@ export type Goal = {
   goal_type: string;       // Description of the goal
   target_value: number;    // Target to reach
   current_value: number;   // Current progress
-  deadline: string | null; // Optional deadline date
+  deadline?: string | null; // Optional deadline date
   is_completed: boolean;   // Whether goal is achieved
   created_at: string;      // When goal was created
 };
@@ -127,7 +128,7 @@ export type StrengthTest = {
   user_id: string;         // Owner's user ID
   test_type: string;       // Type: max_wrist_curl, table_pressure, etc.
   result_value: number;    // Test result (weight or measurement)
-  notes: string;           // Optional test notes
+  notes?: string;           // Optional test notes
   created_at: string;      // When test was performed
 };
 
@@ -159,5 +160,17 @@ export type ScheduledTraining = {
   notification_minutes_before: number;
   notification_id: string | null;
   completed: boolean;
+  created_at: string;
+};
+
+export type BodyMeasurement = {
+  id: string;
+  user_id: string;
+  weight?: number;
+  arm_circumference?: number;
+  forearm_circumference?: number;
+  wrist_circumference?: number;
+  notes?: string;
+  measured_at: string;
   created_at: string;
 };

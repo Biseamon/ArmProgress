@@ -12,15 +12,8 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
-import { ChevronLeft, ChevronRight, X, Trash2 } from 'lucide-react-native';
-
-interface Workout {
-  id: string;
-  created_at: string;
-  duration_minutes: number;
-  notes: string;
-}
+import { supabase, Workout } from '@/lib/supabase';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 
 interface Cycle {
   id: string;
@@ -51,6 +44,7 @@ export default function CalendarScreen() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [scheduledTrainings, setScheduledTrainings] = useState<any[]>([]);
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -75,7 +69,7 @@ export default function CalendarScreen() {
     const startDate = `${currentYear}-01-01`;
     const endDate = `${currentYear}-12-31`;
 
-    const [workoutsRes, cyclesRes, goalsRes, profileRes] = await Promise.all([
+    const [workoutsRes, cyclesRes, goalsRes, scheduledTrainingsRes, profileRes] = await Promise.all([
       supabase
         .from('workouts')
         .select('*')
@@ -94,6 +88,12 @@ export default function CalendarScreen() {
         .gte('deadline', startDate)
         .lte('deadline', endDate),
       supabase
+        .from('scheduled_trainings')
+        .select('*')
+        .eq('user_id', profile.id)
+        .gte('scheduled_date', startDate)
+        .lte('scheduled_date', endDate),
+      supabase
         .from('profiles')
         .select('created_at')
         .eq('id', profile.id)
@@ -103,12 +103,13 @@ export default function CalendarScreen() {
     if (workoutsRes.data) setWorkouts(workoutsRes.data);
     if (cyclesRes.data) setCycles(cyclesRes.data);
     if (goalsRes.data) setGoals(goalsRes.data);
+    if (scheduledTrainingsRes.data) setScheduledTrainings(scheduledTrainingsRes.data);
 
     if (profileRes.data) {
       const registrationYear = new Date(profileRes.data.created_at).getFullYear();
       const currentYear = new Date().getFullYear();
       const years = [];
-      for (let year = registrationYear; year <= currentYear; year++) {
+      for (let year = registrationYear; year <= currentYear + 2; year++) {
         years.push(year);
       }
       setAvailableYears(years);
@@ -139,6 +140,14 @@ export default function CalendarScreen() {
     return goals.filter((g) => g.deadline === dateStr);
   };
 
+  const getScheduledTrainingsForDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    return scheduledTrainings.filter((t) => t.scheduled_date === dateStr);
+  };
+
   const isDateInCycle = (date: Date): { isInCycle: boolean; cycleName?: string } => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -152,7 +161,7 @@ export default function CalendarScreen() {
     return { isInCycle: false };
   };
 
-  const getDayColor = (workoutCount: number, isInCycle: boolean): string => {
+  const getDayColor = (workoutCount: number, isInCycle: boolean, scheduledCount: number, isFuture: boolean): string => {
     if (!showWorkouts && !showCycles) return colors.surface;
     if (!showWorkouts && isInCycle && showCycles) return '#2A7DE144';
     if (!showCycles && workoutCount > 0 && showWorkouts) {
@@ -160,7 +169,10 @@ export default function CalendarScreen() {
       if (workoutCount === 2) return '#E6394688';
       if (workoutCount >= 3) return '#E63946';
     }
-    if (workoutCount === 0 && !isInCycle) return colors.surface;
+
+    if (isFuture && scheduledCount > 0) return '#FFA50055';
+
+    if (workoutCount === 0 && !isInCycle && scheduledCount === 0) return colors.surface;
     if (isInCycle && workoutCount === 0 && showCycles) return '#2A7DE144';
     if (workoutCount === 1 && showWorkouts) return '#E6394655';
     if (workoutCount === 2 && showWorkouts) return '#E6394688';
@@ -170,8 +182,11 @@ export default function CalendarScreen() {
 
   const handleDayPress = (date: Date) => {
     const workoutCount = getWorkoutCountForDate(date);
+    const scheduledCount = getScheduledTrainingsForDate(date).length;
     const { isInCycle } = isDateInCycle(date);
-    if (workoutCount > 0 || isInCycle) {
+    const goalCount = getGoalCountForDate(date);
+
+    if (workoutCount > 0 || isInCycle || goalCount > 0 || scheduledCount > 0) {
       setSelectedDate(date);
       setShowDayModal(true);
     }
@@ -187,50 +202,40 @@ export default function CalendarScreen() {
   };
 
   const handleNextMonth = () => {
-    const today = new Date();
-    const isCurrentMonth = currentMonth === today.getMonth() && currentYear === today.getFullYear();
-
-    if (!isCurrentMonth) {
-      if (currentMonth === 11) {
-        setCurrentMonth(0);
-        setCurrentYear(currentYear + 1);
-      } else {
-        setCurrentMonth(currentMonth + 1);
-      }
+    if (currentMonth === 11) {
+      setCurrentMonth(0);
+      setCurrentYear(currentYear + 1);
+    } else {
+      setCurrentMonth(currentMonth + 1);
     }
   };
 
   const canGoForward = () => {
     const today = new Date();
-    return !(currentMonth === today.getMonth() && currentYear === today.getFullYear());
-  };
+    const maxYear = today.getFullYear() + 2;
+    const maxMonth = today.getMonth();
 
-  const handleDeleteWorkout = async (workoutId: string) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to delete this workout?')) {
-        await supabase.from('workouts').delete().eq('id', workoutId);
-        fetchData();
-      }
-    } else {
-      if (window.confirm('Are you sure you want to delete this workout?')) {
-        await supabase.from('workouts').delete().eq('id', workoutId);
-        fetchData();
-      }
-    }
+    if (currentYear > maxYear) return false;
+    if (currentYear === maxYear && currentMonth >= maxMonth) return false;
+
+    return true;
   };
 
   const renderCalendar = () => {
     const screenWidth = Dimensions.get('window').width;
-    const daySize = Math.floor((screenWidth - 60) / 7);
-
+    // Account for container padding (20px * 2 = 40) and gaps between days (4px * 6 = 24)
+    const availableWidth = screenWidth - 40 - 24;
+    const daySize = Math.floor(availableWidth / 7);
+  
     const firstDay = new Date(currentYear, currentMonth, 1);
     const lastDay = new Date(currentYear, currentMonth + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
-
+  
     const days = [];
-
-    // Day headers
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+  
     const dayHeaders = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const headers = dayHeaders.map((dayName, index) => (
       <View
@@ -242,7 +247,7 @@ export default function CalendarScreen() {
         </Text>
       </View>
     ));
-
+  
     // Empty cells before first day of month
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(
@@ -252,20 +257,23 @@ export default function CalendarScreen() {
         />
       );
     }
-
+  
     // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(currentYear, currentMonth, day);
+      date.setHours(0, 0, 0, 0);
+  
       const workoutCount = getWorkoutCountForDate(date);
+      const scheduledCount = getScheduledTrainingsForDate(date).length;
       const goalCount = getGoalCountForDate(date);
       const { isInCycle, cycleName } = isDateInCycle(date);
-      const dayColor = getDayColor(workoutCount, isInCycle);
-
-      const today = new Date();
+      const isFuture = date > today;
+      const dayColor = getDayColor(workoutCount, isInCycle, scheduledCount, isFuture);
+  
       const isToday = date.getDate() === today.getDate() &&
                       date.getMonth() === today.getMonth() &&
                       date.getFullYear() === today.getFullYear();
-
+  
       days.push(
         <TouchableOpacity
           key={day}
@@ -284,8 +292,8 @@ export default function CalendarScreen() {
           <Text
             style={[
               styles.dayText,
-              { color: workoutCount > 0 ? '#FFF' : colors.text },
-              workoutCount > 0 && styles.dayTextActive,
+              { color: workoutCount > 0 || scheduledCount > 0 ? '#FFF' : colors.text },
+              (workoutCount > 0 || scheduledCount > 0) && styles.dayTextActive,
               isToday && !workoutCount && { color: colors.primary, fontWeight: 'bold' },
             ]}
           >
@@ -296,10 +304,15 @@ export default function CalendarScreen() {
               <Text style={styles.goalIndicatorText}>🎯</Text>
             </View>
           )}
+          {scheduledCount > 0 && isFuture && (
+            <View style={styles.scheduledIndicator}>
+              <Text style={styles.scheduledIndicatorText}>📅</Text>
+            </View>
+          )}
         </TouchableOpacity>
       );
     }
-
+  
     return (
       <View style={styles.calendarContainer}>
         <View style={styles.monthHeader}>
@@ -309,14 +322,14 @@ export default function CalendarScreen() {
           >
             <ChevronLeft size={28} color={colors.text} />
           </TouchableOpacity>
-
+  
           <Text style={[styles.monthYearTitle, { color: colors.text }]}>
             {new Date(currentYear, currentMonth).toLocaleString('default', {
               month: 'long',
               year: 'numeric',
             })}
           </Text>
-
+  
           <TouchableOpacity
             onPress={handleNextMonth}
             disabled={!canGoForward()}
@@ -328,7 +341,7 @@ export default function CalendarScreen() {
             />
           </TouchableOpacity>
         </View>
-
+  
         <View style={styles.dayHeadersContainer}>{headers}</View>
         <View style={styles.daysContainer}>{days}</View>
       </View>
@@ -403,13 +416,19 @@ export default function CalendarScreen() {
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendBox, { backgroundColor: '#2A2A2A' }]} />
-          <Text style={styles.legendText}>No workout</Text>
+          <Text style={styles.legendText}>No activity</Text>
         </View>
         <View style={styles.legendItem}>
           <View
             style={[styles.legendBox, { backgroundColor: '#2A7DE144' }]}
           />
           <Text style={styles.legendText}>In cycle</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View
+            style={[styles.legendBox, { backgroundColor: '#FFA50055' }]}
+          />
+          <Text style={styles.legendText}>Scheduled</Text>
         </View>
         <View style={styles.legendItem}>
           <View
@@ -454,19 +473,42 @@ export default function CalendarScreen() {
             <ScrollView style={styles.modalContent}>
               {selectedDate && (
                 <>
+                  {getScheduledTrainingsForDate(selectedDate).length > 0 && (
+                    <>
+                      <Text style={[styles.modalSectionTitle, { color: colors.text }]}>
+                        Scheduled Trainings ({getScheduledTrainingsForDate(selectedDate).length})
+                      </Text>
+                      {getScheduledTrainingsForDate(selectedDate).map((training) => (
+                        <View key={training.id} style={[styles.scheduledCard, { backgroundColor: colors.surface }]}>
+                          <View style={styles.scheduledHeader}>
+                            <Text style={[styles.scheduledTitle, { color: colors.primary }]}>
+                              {training.title}
+                            </Text>
+                            <Text style={[styles.scheduledTime, { color: colors.textSecondary }]}>
+                              {new Date(`2000-01-01T${training.scheduled_time}`).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </Text>
+                          </View>
+                          {training.description && (
+                            <Text style={[styles.scheduledDescription, { color: colors.textSecondary }]}>
+                              {training.description}
+                            </Text>
+                          )}
+                        </View>
+                      ))}
+                    </>
+                  )}
+
                   <Text style={[styles.modalSectionTitle, { color: colors.text }]}>
                     Workouts ({getWorkoutsForDate(selectedDate).length})
                   </Text>
                   {getWorkoutsForDate(selectedDate).map((workout) => (
                     <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
-                      <View style={styles.workoutHeader}>
-                        <Text style={[styles.workoutType, { color: colors.primary }]}>
-                          {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
-                        </Text>
-                        <TouchableOpacity onPress={() => handleDeleteWorkout(workout.id)}>
-                          <Trash2 size={18} color="#E63946" />
-                        </TouchableOpacity>
-                      </View>
+                      <Text style={[styles.workoutType, { color: colors.primary, marginBottom: 12 }]}>
+                        {workout.workout_type?.replace(/_/g, ' ').toUpperCase() || 'WORKOUT'}
+                      </Text>
                       <View style={styles.workoutStats}>
                         <View style={styles.workoutStat}>
                           <Text style={[styles.workoutStatLabel, { color: colors.textTertiary }]}>Duration</Text>
@@ -538,6 +580,10 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  workoutType: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     padding: 20,
@@ -693,17 +739,6 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
   },
-  workoutHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  workoutType: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#E63946',
-  },
   workoutStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -792,5 +827,40 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     padding: 16,
+  },
+  scheduledIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+  },
+  scheduledIndicatorText: {
+    fontSize: 8,
+  },
+  scheduledCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFA500',
+  },
+  scheduledHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  scheduledTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  scheduledTime: {
+    fontSize: 14,
+    color: '#999',
+  },
+  scheduledDescription: {
+    fontSize: 14,
+    color: '#CCC',
   },
 });

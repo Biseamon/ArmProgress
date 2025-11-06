@@ -1,390 +1,496 @@
-import { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import { LineChart } from 'react-native-gifted-charts';
-import { StrengthTest, Workout } from '@/lib/supabase';
-import { formatWeight, convertToLbs } from '@/lib/weightUtils';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
+import { useTheme } from '@/contexts/ThemeContext';
+import { Workout, StrengthTest } from '@/lib/supabase';
+import { formatWeight } from '@/lib/weightUtils';
 
-interface Props {
-  strengthTests: StrengthTest[];
+interface EnhancedProgressGraphsProps {
   workouts: Workout[];
-  weightUnit: 'lbs' | 'kg';
-  isPremium?: boolean;
+  strengthTests: StrengthTest[];
+  weightUnit: 'kg' | 'lbs';
+  isPremium: boolean;
 }
 
-type TimeRange = 'week' | 'month' | 'year';
+export function EnhancedProgressGraphs({
+  workouts,
+  strengthTests,
+  weightUnit,
+  isPremium,
+}: EnhancedProgressGraphsProps) {
+  const { colors } = useTheme();
+  const [selectedGraph, setSelectedGraph] = useState<'strength' | 'endurance' | 'intensity' | 'volume'>('strength');
 
-const { width } = Dimensions.get('window');
-const CHART_WIDTH = width - 60;
+  const screenWidth = Dimensions.get('window').width - 40;
 
-export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, isPremium = false }: Props) {
-  const [strengthTimeRange, setStrengthTimeRange] = useState<TimeRange>('month');
-  const [workoutTimeRange, setWorkoutTimeRange] = useState<TimeRange>('month');
-  const [enduranceTimeRange, setEnduranceTimeRange] = useState<TimeRange>('month');
-  const [techniqueTimeRange, setTechniqueTimeRange] = useState<TimeRange>('month');
+  // Process strength data - FIX THE CONVERSION
+  const strengthData = strengthTests
+    .filter((test) => test.test_type === 'max_wrist_curl')
+    .slice(0, 10)
+    .reverse();
 
-  const filterDataByTimeRange = <T extends { created_at: string }>(
-    data: T[],
-    range: TimeRange
-  ): T[] => {
-    const now = new Date();
-    const cutoff = new Date();
-
-    switch (range) {
-      case 'week':
-        cutoff.setDate(now.getDate() - 7);
-        break;
-      case 'month':
-        cutoff.setMonth(now.getMonth() - 1);
-        break;
-      case 'year':
-        cutoff.setFullYear(now.getFullYear() - 1);
-        break;
+  const strengthLabels = strengthData.map((_, index) => `T${index + 1}`);
+  const strengthValues = strengthData.map((test) => {
+    // The test.result_value is ALWAYS stored in lbs in the database
+    if (weightUnit === 'kg') {
+      // Convert from lbs to kg for display
+      return test.result_value * 0.453592; // More accurate conversion
     }
+    // If displaying in lbs, use the stored value directly
+    return test.result_value;
+  });
 
-    return data.filter((item) => new Date(item.created_at) >= cutoff);
+  // Process endurance data
+  const enduranceData = workouts
+    .filter((workout) => workout.duration_minutes > 0)
+    .slice(0, 15)
+    .reverse();
+
+  const enduranceLabels = enduranceData.map((_, index) => `W${index + 1}`);
+  const enduranceValues = enduranceData.map((workout) => workout.duration_minutes);
+
+  // Process intensity data (average intensity per workout)
+  const intensityData = workouts
+    .filter((workout) => workout.intensity > 0)
+    .slice(0, 15)
+    .reverse();
+
+  const intensityLabels = intensityData.map((_, index) => `W${index + 1}`);
+  const intensityValues = intensityData.map((workout) => workout.intensity);
+
+  // Process training volume (total exercises × sets × reps per workout)
+  const volumeData = workouts
+    .filter((workout) => workout.exercises && workout.exercises.length > 0)
+    .slice(0, 15)
+    .reverse();
+
+  const volumeLabels = volumeData.map((_, index) => `W${index + 1}`);
+  const volumeValues = volumeData.map((workout) => {
+    if (!workout.exercises) return 0;
+    return workout.exercises.reduce((total: number, exercise: any) => {
+      return total + (exercise.sets * exercise.reps);
+    }, 0);
+  });
+
+  const getChartWidth = (dataPoints: number) => {
+    const minWidth = screenWidth;
+    const pointSpacing = 60;
+    const calculatedWidth = dataPoints * pointSpacing;
+    return Math.max(minWidth, calculatedWidth);
   };
 
-  const strengthChartData = useMemo(() => {
-    const filteredTests = filterDataByTimeRange(strengthTests, strengthTimeRange);
+  const strengthChartWidth = getChartWidth(strengthData.length);
+  const enduranceChartWidth = getChartWidth(enduranceData.length);
+  const intensityChartWidth = getChartWidth(intensityData.length);
+  const volumeChartWidth = getChartWidth(volumeData.length);
 
-    if (filteredTests.length === 0) {
-      return [];
-    }
+  const getChartConfig = (graphType: string) => ({
+    backgroundColor: colors.surface,
+    backgroundGradientFrom: colors.surface,
+    backgroundGradientTo: colors.surface,
+    decimalPlaces: graphType === 'intensity' ? 1 : 0,
+    color: (opacity = 1) => {
+      switch (graphType) {
+        case 'strength':
+          return `rgba(230, 57, 70, ${opacity})`; // Red
+        case 'endurance':
+          return `rgba(42, 125, 225, ${opacity})`; // Blue
+        case 'intensity':
+          return `rgba(255, 165, 0, ${opacity})`; // Orange
+        case 'volume':
+          return `rgba(16, 185, 129, ${opacity})`; // Green
+        default:
+          return `rgba(230, 57, 70, ${opacity})`;
+      }
+    },
+    labelColor: (opacity = 1) => colors.textSecondary,
+    style: {
+      borderRadius: 16,
+    },
+    propsForDots: {
+      r: '6',
+      strokeWidth: '2',
+      stroke: graphType === 'strength' ? colors.primary :
+             graphType === 'endurance' ? '#2A7DE1' :
+             graphType === 'intensity' ? '#FFA500' : '#10B981',
+    },
+    propsForBackgroundLines: {
+      strokeDasharray: '',
+      stroke: colors.border,
+      strokeWidth: 1,
+    },
+  });
 
-    return filteredTests
-      .reverse()
-      .map((test) => {
-        const valueLbs = Number(test.result_value) || 0;
-        const value = weightUnit === 'kg' ? valueLbs / 2.20462 : valueLbs;
-        const validValue = isFinite(value) && value > 0 ? Math.round(value * 10) / 10 : 0;
-        return {
-          value: validValue,
-          label: new Date(test.created_at).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-          }),
-          dataPointText: `${Math.round(validValue)}`,
-        };
-      })
-      .filter((point) => point.value > 0);
-  }, [strengthTests, strengthTimeRange, weightUnit]);
-
-  const workoutChartData = useMemo(() => {
-    const filteredWorkouts = filterDataByTimeRange(workouts, workoutTimeRange);
-
-    if (filteredWorkouts.length === 0) {
-      return [];
-    }
-
-    const workoutsByDate = filteredWorkouts.reduce((acc, workout) => {
-      const date = workout.created_at.split('T')[0];
-      acc[date] = (acc[date] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    return Object.entries(workoutsByDate)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, count]) => ({
-        value: count,
-        label: new Date(date).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        }),
-        dataPointText: `${count}`,
-      }));
-  }, [workouts, workoutTimeRange]);
-
-  const enduranceChartData = useMemo(() => {
-    const filteredWorkouts = filterDataByTimeRange(workouts, enduranceTimeRange);
-
-    if (filteredWorkouts.length === 0) {
-      return [];
-    }
-
-    return filteredWorkouts
-      .reverse()
-      .map((workout) => ({
-        value: workout.duration_minutes || 0,
-        label: new Date(workout.created_at).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        }),
-        dataPointText: `${workout.duration_minutes || 0}m`,
-      }));
-  }, [workouts, enduranceTimeRange]);
-
-  const techniqueChartData = useMemo(() => {
-    const filteredTests = filterDataByTimeRange(strengthTests, techniqueTimeRange);
-
-    if (filteredTests.length === 0) {
-      return [];
-    }
-
-    return filteredTests
-      .reverse()
-      .map((test) => {
-        const valueLbs = Number(test.result_value) || 0;
-        const value = weightUnit === 'kg' ? valueLbs / 2.20462 : valueLbs;
-        const score = isFinite(value) && value > 0 ? Math.round(value * 10) / 10 : 0;
-        return {
-          value: score,
-          label: new Date(test.created_at).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-          }),
-          dataPointText: `${score}`,
-        };
-      })
-      .filter((point) => point.value > 0);
-  }, [strengthTests, techniqueTimeRange, weightUnit]);
-
-  const renderTimeRangeSelector = (
-    currentRange: TimeRange,
-    onSelect: (range: TimeRange) => void
-  ) => (
-    <View style={styles.timeRangeSelector}>
-      {(['week', 'month', 'year'] as TimeRange[]).map((range) => (
-        <TouchableOpacity
-          key={range}
-          style={[
-            styles.timeRangeButton,
-            currentRange === range && styles.timeRangeButtonActive,
-          ]}
-          onPress={() => onSelect(range)}
-        >
-          <Text
-            style={[
-              styles.timeRangeText,
-              currentRange === range && styles.timeRangeTextActive,
-            ]}
-          >
-            {range === 'week' ? '7D' : range === 'month' ? '1M' : '1Y'}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
-  const hasAnyData = strengthTests.length > 0 || workouts.length > 0;
-
-  if (!hasAnyData) {
+  if (strengthData.length === 0 && enduranceData.length === 0 && 
+      intensityData.length === 0 && volumeData.length === 0) {
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyText}>No data available yet</Text>
-        <Text style={styles.emptySubtext}>
-          Start tracking your workouts and strength tests to see your progress
+      <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+          No data yet. Complete workouts and tests to see your progress!
         </Text>
       </View>
     );
   }
 
+  const calculateAverage = (values: number[]) => {
+    if (values.length === 0) return 0;
+    return values.reduce((a, b) => a + b, 0) / values.length;
+  };
+
+  const calculateTrend = (values: number[]) => {
+    if (values.length < 2) return 0;
+    const lastValue = values[values.length - 1];
+    const firstValue = values[0];
+    return ((lastValue - firstValue) / firstValue) * 100;
+  };
+
   return (
     <View style={styles.container}>
-      {strengthTests.length > 0 && (
-        <View style={styles.chartContainer}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>Strength Progress</Text>
-            {renderTimeRangeSelector(strengthTimeRange, setStrengthTimeRange)}
-          </View>
-          {strengthChartData.length > 0 && strengthChartData.every(d => isFinite(d.value)) ? (
+      {/* Graph Type Selector */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.selectorScroll}
+      >
+        <View style={styles.selector}>
+          <TouchableOpacity
+            style={[
+              styles.selectorButton,
+              selectedGraph === 'strength' && styles.selectorButtonActive,
+              { backgroundColor: selectedGraph === 'strength' ? '#E63946' : colors.surface }
+            ]}
+            onPress={() => setSelectedGraph('strength')}
+          >
+            <Text
+              style={[
+                styles.selectorText,
+                { color: selectedGraph === 'strength' ? '#FFF' : colors.textSecondary }
+              ]}
+            >
+              💪 Strength
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.selectorButton,
+              selectedGraph === 'endurance' && styles.selectorButtonActive,
+              { backgroundColor: selectedGraph === 'endurance' ? '#2A7DE1' : colors.surface }
+            ]}
+            onPress={() => setSelectedGraph('endurance')}
+          >
+            <Text
+              style={[
+                styles.selectorText,
+                { color: selectedGraph === 'endurance' ? '#FFF' : colors.textSecondary }
+              ]}
+            >
+              ⏱️ Duration
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.selectorButton,
+              selectedGraph === 'intensity' && styles.selectorButtonActive,
+              { backgroundColor: selectedGraph === 'intensity' ? '#FFA500' : colors.surface }
+            ]}
+            onPress={() => setSelectedGraph('intensity')}
+          >
+            <Text
+              style={[
+                styles.selectorText,
+                { color: selectedGraph === 'intensity' ? '#FFF' : colors.textSecondary }
+              ]}
+            >
+              🔥 Intensity
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.selectorButton,
+              selectedGraph === 'volume' && styles.selectorButtonActive,
+              { backgroundColor: selectedGraph === 'volume' ? '#10B981' : colors.surface }
+            ]}
+            onPress={() => setSelectedGraph('volume')}
+          >
+            <Text
+              style={[
+                styles.selectorText,
+                { color: selectedGraph === 'volume' ? '#FFF' : colors.textSecondary }
+              ]}
+            >
+              📊 Volume
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* Strength Graph */}
+      {selectedGraph === 'strength' && strengthData.length > 0 && (
+        <View style={styles.graphContainer}>
+          <Text style={[styles.graphTitle, { color: colors.text }]}>
+            Max Wrist Curl Progress
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.scrollContent}
+            style={styles.scrollView}
+          >
             <LineChart
-            data={strengthChartData}
-            width={CHART_WIDTH}
-            height={220}
-            spacing={Math.max(40, CHART_WIDTH / strengthChartData.length)}
-            initialSpacing={20}
-            endSpacing={20}
-            color="#E63946"
-            thickness={3}
-            curved
-            hideRules
-            yAxisTextStyle={styles.yAxisText}
-            xAxisLabelTextStyle={styles.xAxisText}
-            showVerticalLines
-            verticalLinesColor="rgba(255,255,255,0.1)"
-            noOfSections={4}
-            maxValue={Math.ceil(Math.max(...strengthChartData.map((d) => d.value)) * 1.1)}
-            yAxisColor="#333"
-            xAxisColor="#333"
-            dataPointsColor="#E63946"
-            dataPointsRadius={4}
-            textShiftY={-8}
-            textShiftX={-5}
-            textFontSize={10}
-            textColor="#FFF"
-            showDataPointOnPress
-            focusEnabled
-            showStripOnFocus
-            stripColor="rgba(230, 57, 70, 0.3)"
-            stripWidth={2}
-            stripHeight={220}
-            isAnimated
-            animationDuration={800}
-            animateOnDataChange
-          />
-          ) : (
-            <View style={styles.emptyFilterState}>
-              <Text style={styles.emptyFilterText}>No strength tests in this time range</Text>
+              data={{
+                labels: strengthLabels,
+                datasets: [{ data: strengthValues.length > 0 ? strengthValues : [0] }],
+              }}
+              width={strengthChartWidth}
+              height={220}
+              chartConfig={getChartConfig('strength')}
+              bezier
+              style={styles.chart}
+              withInnerLines={true}
+              withOuterLines={true}
+              withVerticalLines={true}
+              withHorizontalLines={true}
+              withVerticalLabels={true}
+              withHorizontalLabels={true}
+              withDots={true}
+              withShadow={false}
+              fromZero={false}
+              segments={4}
+            />
+          </ScrollView>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Latest</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {formatWeight(strengthValues[strengthValues.length - 1] || 0, weightUnit)}
+              </Text>
             </View>
-          )}
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Average</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {formatWeight(calculateAverage(strengthValues), weightUnit)}
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Trend</Text>
+              <Text style={[styles.statValue, { color: calculateTrend(strengthValues) >= 0 ? '#10B981' : '#EF4444' }]}>
+                {calculateTrend(strengthValues).toFixed(1)}%
+              </Text>
+            </View>
+          </View>
         </View>
       )}
 
-      {workouts.length > 0 && (
-        <View style={styles.chartContainer}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>Workout Frequency</Text>
-            {renderTimeRangeSelector(workoutTimeRange, setWorkoutTimeRange)}
-          </View>
-          {workoutChartData.length > 0 ? (
+      {/* Endurance Graph */}
+      {selectedGraph === 'endurance' && enduranceData.length > 0 && (
+        <View style={styles.graphContainer}>
+          <Text style={[styles.graphTitle, { color: colors.text }]}>
+            Workout Duration Trend
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.scrollContent}
+            style={styles.scrollView}
+          >
             <LineChart
-            data={workoutChartData}
-            width={CHART_WIDTH}
-            height={220}
-            spacing={Math.max(40, CHART_WIDTH / workoutChartData.length)}
-            initialSpacing={20}
-            endSpacing={20}
-            color="#2A7DE1"
-            thickness={3}
-            curved
-            hideRules
-            yAxisTextStyle={styles.yAxisText}
-            xAxisLabelTextStyle={styles.xAxisText}
-            showVerticalLines
-            verticalLinesColor="rgba(255,255,255,0.1)"
-            noOfSections={4}
-            maxValue={Math.ceil(Math.max(...workoutChartData.map((d) => d.value)) * 1.1)}
-            yAxisColor="#333"
-            xAxisColor="#333"
-            dataPointsColor="#2A7DE1"
-            dataPointsRadius={4}
-            textShiftY={-8}
-            textShiftX={-5}
-            textFontSize={10}
-            textColor="#FFF"
-            showDataPointOnPress
-            focusEnabled
-            showStripOnFocus
-            stripColor="rgba(42, 125, 225, 0.3)"
-            stripWidth={2}
-            stripHeight={220}
-            isAnimated
-            animationDuration={800}
-            animateOnDataChange
-          />
-          ) : (
-            <View style={styles.emptyFilterState}>
-              <Text style={styles.emptyFilterText}>No workouts in this time range</Text>
+              data={{
+                labels: enduranceLabels,
+                datasets: [{ data: enduranceValues.length > 0 ? enduranceValues : [0] }],
+              }}
+              width={enduranceChartWidth}
+              height={220}
+              chartConfig={getChartConfig('endurance')}
+              bezier
+              style={styles.chart}
+              withInnerLines={true}
+              withOuterLines={true}
+              withVerticalLines={true}
+              withHorizontalLines={true}
+              withVerticalLabels={true}
+              withHorizontalLabels={true}
+              withDots={true}
+              withShadow={false}
+              fromZero={false}
+              segments={4}
+            />
+          </ScrollView>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Latest</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {enduranceValues[enduranceValues.length - 1] || 0} min
+              </Text>
             </View>
-          )}
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Average</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {Math.round(calculateAverage(enduranceValues))} min
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {enduranceValues.reduce((a, b) => a + b, 0)} min
+              </Text>
+            </View>
+          </View>
         </View>
       )}
 
-      {isPremium && workouts.length > 0 && (
-        <View style={styles.chartContainer}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>Endurance (Duration)</Text>
-            {renderTimeRangeSelector(enduranceTimeRange, setEnduranceTimeRange)}
-          </View>
-          {enduranceChartData.length > 0 ? (
+      {/* Intensity Graph */}
+      {selectedGraph === 'intensity' && intensityData.length > 0 && (
+        <View style={styles.graphContainer}>
+          <Text style={[styles.graphTitle, { color: colors.text }]}>
+            Training Intensity Trend
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.scrollContent}
+            style={styles.scrollView}
+          >
             <LineChart
-            data={enduranceChartData}
-            width={CHART_WIDTH}
-            height={220}
-            spacing={enduranceChartData.length > 1 ? Math.max(50, (CHART_WIDTH - 40) / (enduranceChartData.length - 1)) : CHART_WIDTH - 40}
-            initialSpacing={20}
-            endSpacing={20}
-            color="#10B981"
-            thickness={3}
-            curved
-            hideRules
-            yAxisTextStyle={styles.yAxisText}
-            xAxisLabelTextStyle={styles.xAxisText}
-            showVerticalLines
-            verticalLinesColor="rgba(255,255,255,0.1)"
-            noOfSections={4}
-            maxValue={Math.ceil(Math.max(...enduranceChartData.map((d) => d.value)) * 1.1)}
-            yAxisColor="#333"
-            xAxisColor="#333"
-            dataPointsColor="#10B981"
-            dataPointsRadius={4}
-            textShiftY={-8}
-            textShiftX={-5}
-            textFontSize={10}
-            textColor="#FFF"
-            showDataPointOnPress
-            focusEnabled
-            showStripOnFocus
-            stripColor="rgba(16, 185, 129, 0.3)"
-            stripWidth={2}
-            stripHeight={220}
-            isAnimated
-            animationDuration={800}
-            animateOnDataChange
-          />
-          ) : (
-            <View style={styles.emptyFilterState}>
-              <Text style={styles.emptyFilterText}>No workouts in this time range</Text>
+              data={{
+                labels: intensityLabels,
+                datasets: [{ data: intensityValues.length > 0 ? intensityValues : [0] }],
+              }}
+              width={intensityChartWidth}
+              height={220}
+              chartConfig={getChartConfig('intensity')}
+              bezier
+              style={styles.chart}
+              withInnerLines={true}
+              withOuterLines={true}
+              withVerticalLines={true}
+              withHorizontalLines={true}
+              withVerticalLabels={true}
+              withHorizontalLabels={true}
+              withDots={true}
+              withShadow={false}
+              fromZero={true}
+              segments={4}
+              yAxisSuffix="/10"
+            />
+          </ScrollView>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Latest</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {intensityValues[intensityValues.length - 1] || 0}/10
+              </Text>
             </View>
-          )}
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Average</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {calculateAverage(intensityValues).toFixed(1)}/10
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Peak</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {Math.max(...intensityValues)}/10
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.graphNote, { color: colors.textSecondary }]}>
+            Track how hard you're pushing yourself each session
+          </Text>
         </View>
       )}
 
-      {isPremium && strengthTests.length > 0 && (
-        <View style={styles.chartContainer}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>Technique Score</Text>
-            {renderTimeRangeSelector(techniqueTimeRange, setTechniqueTimeRange)}
-          </View>
-          {techniqueChartData.length > 0 ? (
+      {/* Volume Graph */}
+      {selectedGraph === 'volume' && volumeData.length > 0 && (
+        <View style={styles.graphContainer}>
+          <Text style={[styles.graphTitle, { color: colors.text }]}>
+            Training Volume (Sets × Reps)
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.scrollContent}
+            style={styles.scrollView}
+          >
             <LineChart
-            data={techniqueChartData}
-            width={CHART_WIDTH}
-            height={220}
-            spacing={Math.max(40, CHART_WIDTH / techniqueChartData.length)}
-            initialSpacing={20}
-            endSpacing={20}
-            color="#F59E0B"
-            thickness={3}
-            curved
-            hideRules
-            yAxisTextStyle={styles.yAxisText}
-            xAxisLabelTextStyle={styles.xAxisText}
-            showVerticalLines
-            verticalLinesColor="rgba(255,255,255,0.1)"
-            noOfSections={4}
-            maxValue={Math.ceil(Math.max(...techniqueChartData.map((d) => d.value)) * 1.1)}
-            yAxisColor="#333"
-            xAxisColor="#333"
-            dataPointsColor="#F59E0B"
-            dataPointsRadius={4}
-            textShiftY={-8}
-            textShiftX={-5}
-            textFontSize={10}
-            textColor="#FFF"
-            showDataPointOnPress
-            focusEnabled
-            showStripOnFocus
-            stripColor="rgba(245, 158, 11, 0.3)"
-            stripWidth={2}
-            stripHeight={220}
-            isAnimated
-            animationDuration={800}
-            animateOnDataChange
-          />
-          ) : (
-            <View style={styles.emptyFilterState}>
-              <Text style={styles.emptyFilterText}>No strength tests in this time range</Text>
+              data={{
+                labels: volumeLabels,
+                datasets: [{ data: volumeValues.length > 0 ? volumeValues : [0] }],
+              }}
+              width={volumeChartWidth}
+              height={220}
+              chartConfig={getChartConfig('volume')}
+              bezier
+              style={styles.chart}
+              withInnerLines={true}
+              withOuterLines={true}
+              withVerticalLines={true}
+              withHorizontalLines={true}
+              withVerticalLabels={true}
+              withHorizontalLabels={true}
+              withDots={true}
+              withShadow={false}
+              fromZero={false}
+              segments={4}
+            />
+          </ScrollView>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Latest</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {volumeValues[volumeValues.length - 1] || 0}
+              </Text>
             </View>
-          )}
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Average</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {Math.round(calculateAverage(volumeValues))}
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Highest</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>
+                {Math.max(...volumeValues)}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.graphNote, { color: colors.textSecondary }]}>
+            Total reps performed across all exercises
+          </Text>
         </View>
       )}
 
-      {!isPremium && (
-        <View style={styles.premiumLockContainer}>
-          <Text style={styles.premiumLockTitle}>Unlock Premium Analytics</Text>
-          <Text style={styles.premiumLockText}>
-            Get access to Endurance and Technique tracking with premium membership
+      {/* Empty states */}
+      {selectedGraph === 'strength' && strengthData.length === 0 && (
+        <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            No strength tests recorded yet. Add a max wrist curl test to track your progress!
+          </Text>
+        </View>
+      )}
+
+      {selectedGraph === 'endurance' && enduranceData.length === 0 && (
+        <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            No workout duration data yet. Log workouts to see your endurance trends!
+          </Text>
+        </View>
+      )}
+
+      {selectedGraph === 'intensity' && intensityData.length === 0 && (
+        <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            No intensity data yet. Rate your workout intensity to track training load!
+          </Text>
+        </View>
+      )}
+
+      {selectedGraph === 'volume' && volumeData.length === 0 && (
+        <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            No volume data yet. Add exercises to your workouts to track training volume!
           </Text>
         </View>
       )}
@@ -394,113 +500,86 @@ export function EnhancedProgressGraphs({ strengthTests, workouts, weightUnit, is
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 16,
+    marginVertical: 8,
   },
-  chartContainer: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
-    padding: 16,
+  selectorScroll: {
     marginBottom: 16,
   },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  chartTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  timeRangeSelector: {
+  selector: {
     flexDirection: 'row',
     gap: 8,
+    paddingRight: 20,
   },
-  timeRangeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#1A1A1A',
+  selectorButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 100,
   },
-  timeRangeButtonActive: {
-    backgroundColor: '#E63946',
+  selectorButtonActive: {
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
-  timeRangeText: {
-    fontSize: 12,
-    color: '#999',
+  selectorText: {
+    fontSize: 14,
     fontWeight: '600',
   },
-  timeRangeTextActive: {
-    color: '#FFF',
+  graphContainer: {
+    marginBottom: 16,
   },
-  yAxisText: {
-    color: '#999',
-    fontSize: 10,
+  graphTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
   },
-  xAxisText: {
-    color: '#999',
-    fontSize: 10,
-    textAlign: 'center',
+  scrollView: {
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  emptyState: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
-    padding: 32,
-    alignItems: 'center',
-    marginVertical: 16,
+  scrollContent: {
+    paddingRight: 20,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 8,
+  chart: {
+    borderRadius: 16,
+    marginVertical: 8,
   },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-  },
-  premiumLockContainer: {
-    backgroundColor: '#2A2A2A',
-    borderRadius: 12,
-    padding: 24,
-    alignItems: 'center',
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
     marginTop: 16,
-    borderWidth: 2,
-    borderColor: '#FFD700',
+    paddingHorizontal: 8,
   },
-  premiumLockTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFD700',
-    marginBottom: 8,
-  },
-  premiumLockText: {
-    fontSize: 14,
-    color: '#CCC',
-    textAlign: 'center',
-  },
-  errorState: {
-    padding: 20,
+  statItem: {
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  errorText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
+  statLabel: {
+    fontSize: 12,
+    marginBottom: 4,
   },
-  emptyFilterState: {
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 120,
+  statValue: {
+    fontSize: 16,
+    fontWeight: '600',
   },
-  emptyFilterText: {
-    fontSize: 14,
-    color: '#666',
+  graphNote: {
+    fontSize: 12,
+    marginTop: 8,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  emptyState: {
+    padding: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
