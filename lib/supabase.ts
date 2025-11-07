@@ -119,6 +119,7 @@ export type Goal = {
   current_value: number;   // Current progress
   deadline?: string | null; // Optional deadline date
   is_completed: boolean;   // Whether goal is achieved
+  notes?: string | null;   // Optional notes about the goal
   created_at: string;      // When goal was created
 };
 

@@ -291,10 +291,9 @@ export default function Home() {
             </TouchableOpacity>
           </View>
           {activeGoals.map((goal) => (
-            <TouchableOpacity
+            <View
               key={goal.id}
               style={[styles.goalCard, { backgroundColor: colors.surface }]}
-              onPress={() => router.push('/progress')}
             >
               <View style={styles.goalHeader}>
                 <View style={styles.goalInfo}>
@@ -337,7 +336,7 @@ export default function Home() {
               <Text style={[styles.progressText, { color: colors.secondary }]}>
                 {Math.round(getProgressPercentage(goal))}% complete
               </Text>
-            </TouchableOpacity>
+            </View>
           ))}
         </View>
       )}

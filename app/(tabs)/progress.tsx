@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,8 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { writeAsStringAsync, documentDirectory, cacheDirectory } from 'expo-file-system/legacy';
 import { isAvailableAsync, shareAsync } from 'expo-sharing';
+import { captureRef } from 'react-native-view-shot';
+import * as Clipboard from 'expo-clipboard';
 
 const { width } = Dimensions.get('window');
 
@@ -51,6 +53,7 @@ export default function Progress() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalType, setGoalType] = useState('');
   const [targetValue, setTargetValue] = useState('');
+  const [goalNotes, setGoalNotes] = useState(''); // Add this line
   const [deadline, setDeadline] = useState(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
 
@@ -77,6 +80,8 @@ export default function Progress() {
 
   const [showReportModal, setShowReportModal] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
+
+  const reportRef = useRef<View>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -199,6 +204,7 @@ export default function Progress() {
       setEditingGoal(null);
       setGoalType('');
       setTargetValue('');
+      setGoalNotes(''); // Add this line
       setDeadline(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
       setShowGoalModal(true);
     };
@@ -209,22 +215,31 @@ export default function Progress() {
         return;
       }
   
-      const newGoal = {
+      const goalData = {
         goal_type: goalType,
         target_value: parseFloat(targetValue),
         deadline: deadline.toISOString(),
-        current_value: 0,
-        is_completed: false,
+        notes: goalNotes || null,
         user_id: profile?.id,
       };
   
       if (editingGoal) {
+        // When editing, include current_value and is_completed to avoid overwriting
         await supabase
           .from('goals')
-          .update(newGoal)
+          .update({
+            ...goalData,
+            current_value: editingGoal.current_value,
+            is_completed: editingGoal.is_completed,
+          })
           .eq('id', editingGoal.id);
       } else {
-        await supabase.from('goals').insert(newGoal);
+        // When creating new, set initial values
+        await supabase.from('goals').insert({
+          ...goalData,
+          current_value: 0,
+          is_completed: false,
+        });
       }
   
       setShowGoalModal(false);
@@ -235,6 +250,7 @@ export default function Progress() {
     setEditingGoal(goal);
     setGoalType(goal.goal_type);
     setTargetValue(goal.target_value.toString());
+    setGoalNotes(goal.notes || ''); // Add this line
     setDeadline(goal.deadline ? new Date(goal.deadline) : new Date());
     setShowGoalModal(true);
   };
@@ -281,19 +297,9 @@ export default function Progress() {
   };
 
   const handleToggleGoal = async (goal: Goal) => {
-    const newStatus = !goal.is_completed;
-
-    await supabase
-      .from('goals')
-      .update({ is_completed: newStatus })
-      .eq('id', goal.id);
-
-    if (newStatus) {
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 5000);
-    }
-
-    fetchData();
+    // Remove the toggle functionality - goals should only complete via increment
+    // Just do nothing or show info
+    return;
   };
 
   const handleSaveTest = async () => {
@@ -640,11 +646,11 @@ export default function Progress() {
     
     const latestForearm = recentMeasurements
       .filter(m => m.forearm_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
     
     const latestWrist = recentMeasurements
       .filter(m => m.wrist_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
     
     // Get oldest measurements for comparison (from 3 months ago)
     const oldestWeight = recentMeasurements
@@ -766,7 +772,7 @@ export default function Progress() {
         .stat-label {
             font-size: 12px;
             color: #999;
-            text-transform: uppercase;
+            text-transform: 'uppercase';
         }
         .change {
             font-size: 11px;
@@ -799,7 +805,7 @@ export default function Progress() {
         }
         .pr-name {
             font-weight: 600;
-            text-transform: uppercase;
+            text-transform: 'uppercase';
             font-size: 14px;
         }
         .pr-value {
@@ -860,7 +866,7 @@ export default function Progress() {
         <div class="section">
             <h2 class="section-title">🏆 Personal Records</h2>
             <div class="pr-list">
-                ${reportData.latestPRs.slice(0, 5).map(pr => {
+                ${reportData.latestPRs.slice(0, 4).map(pr => {
                   const userUnit = reportData.userUnit;
                   const storedUnit = pr.result_unit || 'lbs';
                   const displayValue = Math.round(convertWeight(pr.result_value, storedUnit, userUnit));
@@ -934,7 +940,7 @@ export default function Progress() {
                 <div class="stat-card">
                     <div class="stat-value">${reportData.userUnit === 'lbs' 
                       ? Math.round(convertCircumference(reportData.latestWrist.wrist_circumference!, reportData.userUnit))
-                      : reportData.latestWrist.wrist_circumference!.toFixed(1)
+                      : reportData.latestWrist.wrist_circumference!.toFixed(2)
                     }</div>
                     <div class="stat-label">Wrist (${getCircumferenceUnit(reportData.userUnit)})</div>
                     ${(() => {
@@ -999,52 +1005,87 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
   setGeneratingReport(true);
   
   try {
-    const reportData = generateReportData();
-    const htmlContent = generateHTMLReport(reportData);
-    
-    // Create file path with proper type
-    const fileName = 'progress-report.html';
-    const docDir = documentDirectory || cacheDirectory;
-    
-    if (!docDir) {
-      Alert.alert('Error', 'File system not available');
-      return;
-    }
-    
-    const htmlPath = docDir + fileName;
-    
-    await writeAsStringAsync(htmlPath, htmlContent);
-    
     if (type === 'social') {
-      if (await isAvailableAsync()) {
-        await shareAsync(htmlPath, {
-          mimeType: 'text/html',
-          dialogTitle: 'Share Your Progress',
-        });
-      } else {
-        Alert.alert('Error', 'Sharing is not available on this device');
-      }
-    } else if (type === 'pdf') {
+      // First, copy URL to clipboard
+      await Clipboard.setStringAsync('https://armwrestling.app');
+      
+      // Show alert that URL is copied
       Alert.alert(
-        'PDF Export',
-        'HTML report created. You can open it in a browser and save as PDF.',
+        '🔗 Link Copied!',
+        'The app link has been copied to your clipboard.\n\nPaste it as your caption when sharing!',
         [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: 'Share', 
+          {
+            text: 'Continue to Share',
             onPress: async () => {
+              // Now proceed with image sharing
+              if (!reportRef.current) {
+                Alert.alert('Error', 'Report not ready. Please try again.');
+                setGeneratingReport(false);
+                return;
+              }
+
+              await new Promise(resolve => setTimeout(resolve, 300));
+
+              const uri = await captureRef(reportRef.current, {
+                format: 'png',
+                quality: 1,
+                result: 'tmpfile',
+              });
+              
               if (await isAvailableAsync()) {
-                await shareAsync(htmlPath, {
-                  mimeType: 'text/html',
-                  dialogTitle: 'Export as PDF',
+                await shareAsync(uri, {
+                  mimeType: 'image/png',
+                  dialogTitle: 'Share Your Progress (paste the link as caption)',
+                  UTI: 'public.png',
                 });
               } else {
                 Alert.alert('Error', 'Sharing is not available on this device');
               }
+              
+              setGeneratingReport(false);
+              setShowReportModal(false);
+            }
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              setGeneratingReport(false);
             }
           }
         ]
       );
+      return; // Exit early to wait for user confirmation
+    } else if (type === 'pdf') {
+      // Generate HTML report and open in browser for PDF export
+      const reportData = generateReportData();
+      const htmlContent = generateHTMLReport(reportData);
+      
+      const fileName = `progress-report-${Date.now()}.html`;
+      const docDir = documentDirectory || cacheDirectory;
+      
+      if (!docDir) {
+        Alert.alert('Error', 'File system not available');
+        return;
+      }
+      
+      const htmlPath = docDir + fileName;
+      
+      await writeAsStringAsync(htmlPath, htmlContent);
+      
+      if (Platform.OS === 'web') {
+        window.open(htmlPath, '_blank');
+      } else {
+        if (await isAvailableAsync()) {
+          await shareAsync(htmlPath, {
+            mimeType: 'text/html',
+            dialogTitle: 'Open in browser to save as PDF',
+            UTI: 'public.html',
+          });
+        } else {
+          Alert.alert('Error', 'Cannot open file. Please use a file manager to open the HTML file in your browser.');
+        }
+      }
     }
     
     setShowReportModal(false);
@@ -1170,10 +1211,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   goal.is_completed && styles.goalCardCompleted,
                 ]}
               >
-                <TouchableOpacity
-                  onPress={() => handleToggleGoal(goal)}
-                  style={{ flex: 1 }}
-                >
+                <View style={{ flex: 1 }}>
                   <View style={styles.goalHeader}>
                     <View style={styles.goalInfo}>
                       {goal.is_completed && (
@@ -1209,6 +1247,11 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       {new Date(goal.deadline).toLocaleDateString()}
                     </Text>
                   )}
+                  {goal.notes && (
+                    <Text style={[styles.goalNotesText, { color: colors.textSecondary }]} numberOfLines={2}>
+                      {goal.notes}
+                    </Text>
+                  )}
                   <View style={styles.goalProgressRow}>
                     <Text style={[styles.goalProgress, { color: colors.text }]}>
                       {goal.current_value} / {goal.target_value}
@@ -1234,7 +1277,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       ]}
                     />
                   </View>
-                </TouchableOpacity>
+                </View>
               </View>
             ))
           )}
@@ -1335,6 +1378,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               setEditingGoal(null);
               setGoalType('');
               setTargetValue('');
+              setGoalNotes(''); // Add this line
             }}>
               <X size={24} color="#999" />
             </TouchableOpacity>
@@ -1357,6 +1401,17 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               onChangeText={setTargetValue}
               keyboardType="number-pad"
               placeholder="10"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Notes (Optional)</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={goalNotes}
+              onChangeText={setGoalNotes}
+              multiline
+              numberOfLines={3}
+              placeholder="Add details about this goal..."
               placeholderTextColor={colors.textTertiary}
             />
 
@@ -1528,7 +1583,11 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <View style={[styles.reportContainer, { backgroundColor: colors.surface }]}>
+            <View 
+              ref={reportRef}
+              collapsable={false}
+              style={[styles.reportContainer, { backgroundColor: colors.surface }]}
+            >
               {/* Report Header */}
               <View style={styles.reportHeader}>
                 <Text style={[styles.reportTitle, { color: colors.primary }]}>
@@ -1537,22 +1596,35 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                 <Text style={[styles.reportDate, { color: colors.textSecondary }]}>
                   Generated on {new Date().toLocaleDateString()}
                 </Text>
+                <Text style={[styles.reportDate, { color: colors.textSecondary }]}>
+                  Last 3 Months
+                </Text>
               </View>
 
               {/* Key Stats */}
               <View style={styles.reportStatsGrid}>
                 <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
                   <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                    {workouts.length}
+                    {(() => {
+                      const threeMonthsAgo = new Date();
+                      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                      return workouts.filter(w => new Date(w.created_at) > threeMonthsAgo).length;
+                    })()}
                   </Text>
                   <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
-                    Total Workouts
+                    Workouts
                   </Text>
                 </View>
                 
                 <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
                   <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                    {Math.floor(workouts.reduce((sum, w) => sum + (w.duration_minutes || 0), 0) / 60)}h
+                    {(() => {
+                      const threeMonthsAgo = new Date();
+                      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                      const recentWorkouts = workouts.filter(w => new Date(w.created_at) > threeMonthsAgo);
+                      const totalMinutes = recentWorkouts.reduce((sum, w) => sum + (w.duration_minutes || 0), 0);
+                      return Math.floor(totalMinutes / 60);
+                    })()}h
                   </Text>
                   <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
                     Training Time
@@ -1561,26 +1633,23 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                 
                 <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
                   <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                    {workouts.filter(w => {
-                      const thirtyDaysAgo = new Date();
-                      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                      return new Date(w.created_at) > thirtyDaysAgo;
-                    }).length}
+                    {(() => {
+                      const threeMonthsAgo = new Date();
+                      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+                      return strengthTests.filter(t => new Date(t.created_at) > threeMonthsAgo).length;
+                    })()}
                   </Text>
                   <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
-                    Last 30 Days
+                    PRs Set
                   </Text>
                 </View>
                 
                 <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
                   <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                    {workouts.length > 0 
-                      ? (workouts.reduce((sum, w) => sum + (w.intensity || 0), 0) / workouts.length).toFixed(1)
-                      : '0'
-                    }/10
+                    {goals.filter(g => g.is_completed).length}/{goals.length}
                   </Text>
                   <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
-                    Avg Intensity
+                    Goals
                   </Text>
                 </View>
               </View>
@@ -1591,10 +1660,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   <Text style={[styles.reportSectionTitle, { color: colors.text }]}>
                     🏆 Personal Records
                   </Text>
-                  {getLatestPRsByType().slice(0, 5).map((test) => {
+                  {getLatestPRsByType().slice(0, 4).map((test) => {
                     const userUnit = profile?.weight_unit || 'lbs';
                     const storedUnit = test.result_unit || 'lbs';
-                    const displayValue = convertWeight(test.result_value, storedUnit, userUnit);
+                    const displayValue = Math.round(convertWeight(test.result_value, storedUnit, userUnit));
                     
                     return (
                       <View key={test.id} style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
@@ -1602,7 +1671,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                           {test.test_type.replace(/_/g, ' ').toUpperCase()}
                         </Text>
                         <Text style={[styles.reportPRValue, { color: colors.primary }]}>
-                          {formatWeight(displayValue, userUnit)}
+                          {displayValue} {userUnit}
                         </Text>
                       </View>
                     );
@@ -1641,65 +1710,53 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               {measurements.length > 0 && (
                 <View style={styles.reportSection}>
                   <Text style={[styles.reportSectionTitle, { color: colors.text }]}>
-                    📏 Latest Measurements (Last 3 Months)
+                    📏 Latest Measurements
                   </Text>
-                  <View style={styles.reportStatsRow}>
-                    {measurements.filter(m => m.weight).slice(-1)[0] && (
-                      <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
-                        <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                          {Math.round(convertWeight(
-                            measurements.filter(m => m.weight).slice(-1)[0].weight!,
-                            measurements.filter(m => m.weight).slice(-1)[0].weight_unit || 'lbs',
-                            profile?.weight_unit || 'lbs'
-                          ))}
-                        </Text>
-                        <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
-                          Weight ({profile?.weight_unit})
-                        </Text>
-                      </View>
-                    )}
-                    {measurements.filter(m => m.arm_circumference).slice(-1)[0] && (
-                      <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
-                        <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                          {profile?.weight_unit === 'lbs'
-                            ? Math.round(convertCircumference(measurements.filter(m => m.arm_circumference).slice(-1)[0].arm_circumference!, profile.weight_unit))
-                            : measurements.filter(m => m.arm_circumference).slice(-1)[0].arm_circumference!.toFixed(1)
-                          }
-                        </Text>
-                        <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
-                          Arm ({getCircumferenceUnit(profile?.weight_unit || 'lbs')})
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.reportStatsRow}>
-                    {measurements.filter(m => m.forearm_circumference).slice(-1)[0] && (
-                      <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
-                        <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                          {profile?.weight_unit === 'lbs'
-                            ? Math.round(convertCircumference(measurements.filter(m => m.forearm_circumference).slice(-1)[0].forearm_circumference!, profile.weight_unit))
-                            : measurements.filter(m => m.forearm_circumference).slice(-1)[0].forearm_circumference!.toFixed(1)
-                          }
-                        </Text>
-                        <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
-                          Forearm ({getCircumferenceUnit(profile?.weight_unit || 'lbs')})
-                        </Text>
-                      </View>
-                    )}
-                    {measurements.filter(m => m.wrist_circumference).slice(-1)[0] && (
-                      <View style={[styles.reportStatCard, { backgroundColor: colors.background }]}>
-                        <Text style={[styles.reportStatValue, { color: colors.primary }]}>
-                          {profile?.weight_unit === 'lbs'
-                            ? Math.round(convertCircumference(measurements.filter(m => m.wrist_circumference).slice(-1)[0].wrist_circumference!, profile.weight_unit))
-                            : measurements.filter(m => m.wrist_circumference).slice(-1)[0].wrist_circumference!.toFixed(1)
-                          }
-                        </Text>
-                        <Text style={[styles.reportStatLabel, { color: colors.textSecondary }]}>
-                          Wrist ({getCircumferenceUnit(profile?.weight_unit || 'lbs')})
-                        </Text>
-                      </View>
-                    )}
-                  </View>
+                  {measurements[0].weight && (
+                    <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
+                      <Text style={[styles.reportPRName, { color: colors.text }]}>Weight</Text>
+                      <Text style={[styles.reportPRValue, { color: colors.primary }]}>
+                        {Math.round(convertWeight(
+                          measurements[0].weight,
+                          measurements[0].weight_unit || 'lbs',
+                          profile?.weight_unit || 'lbs'
+                        ))} {profile?.weight_unit || 'lbs'}
+                      </Text>
+                    </View>
+                  )}
+                  {measurements[0].arm_circumference && (
+                    <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
+                      <Text style={[styles.reportPRName, { color: colors.text }]}>Arm</Text>
+                      <Text style={[styles.reportPRValue, { color: colors.primary }]}>
+                        {profile?.weight_unit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs'))
+                          : convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
+                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                      </Text>
+                    </View>
+                  )}
+                  {measurements[0].forearm_circumference && (
+                    <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
+                      <Text style={[styles.reportPRName, { color: colors.text }]}>Forearm</Text>
+                      <Text style={[styles.reportPRValue, { color: colors.primary }]}>
+                        {profile?.weight_unit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].forearm_circumference, profile?.weight_unit || 'lbs'))
+                          : convertCircumference(measurements[0].forearm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
+                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                      </Text>
+                    </View>
+                  )}
+                  {measurements[0].wrist_circumference && (
+                    <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
+                      <Text style={[styles.reportPRName, { color: colors.text }]}>Wrist</Text>
+                      <Text style={[styles.reportPRValue, { color: colors.primary }]}>
+                        {profile?.weight_unit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].wrist_circumference, profile?.weight_unit || 'lbs'))
+                          : convertCircumference(measurements[0].wrist_circumference, profile?.weight_unit || 'lbs').toFixed(1)
+                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
 
@@ -1725,7 +1782,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               {/* Footer */}
               <View style={styles.reportFooter}>
                 <Text style={[styles.reportFooterText, { color: colors.textSecondary }]}>
-                  Track your arm wrestling journey
+                  Generated by
                 </Text>
                 <Text style={[styles.reportAppName, { color: colors.primary }]}>
                   ArmWrestling Pro
@@ -1743,10 +1800,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                 disabled={generatingReport}
               >
                 <Text style={styles.shareButtonText}>
-                  {generatingReport ? '⏳ Generating...' : '🌐 Share to Social Media'}
+                  {generatingReport ? '⏳ Generating...' : '📱 Share as Image'}
                 </Text>
                 <Text style={styles.shareButtonSubtext}>
-                  Share as HTML with app backlink
+                  Share as PNG image (Instagram, Facebook, X, TikTok, etc.)
                 </Text>
               </TouchableOpacity>
 
@@ -1759,7 +1816,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   📄 Export as PDF
                 </Text>
                 <Text style={styles.shareButtonSubtext}>
-                  Save or share PDF document
+                  Opens HTML in browser (use Print → Save as PDF)
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1781,15 +1838,6 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         onClose={() => setShowPaywall(false)}
         onUpgrade={() => setShowPaywall(false)}
         feature="Progress Reports"
-      />
-
-      <ProgressReport
-        visible={showReport}
-        onClose={() => setShowReport(false)}
-        strengthTests={strengthTests}
-        workouts={workouts}
-        goals={goals}
-        weightUnit={profile?.weight_unit || 'lbs'}
       />
 
       <MeasurementsModal
@@ -1864,7 +1912,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
-  section: {
+   section: {
     marginBottom: 24,
   },
   measurementsCard: {
@@ -1959,7 +2007,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize:  14,
     color: '#555',
     marginTop: 4,
   },
@@ -1998,6 +2046,12 @@ const styles = StyleSheet.create({
   goalDeadline: {
     fontSize: 12,
     color: '#999',
+  },
+  goalNotesText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginTop: 6,
+    marginBottom: 8,
   },
   goalProgressRow: {
     flexDirection: 'row',
@@ -2267,6 +2321,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 12,
     margin: 10,
+    minHeight: 'auto', // Allow full height for capture
   },
    reportHeader: {
     alignItems: 'center',
