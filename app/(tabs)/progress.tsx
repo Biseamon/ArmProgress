@@ -1139,7 +1139,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         {/* AdMob Banner Placeholder - Medium Rectangle */}
         {!isPremium && (
           <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-            <View style={styles.adBannerPlaceholder}>
+            <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
                 📱 Ad Space
               </Text>
@@ -2450,13 +2450,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   adBannerPlaceholder: {
-    padding: 40,
-    alignItems: 'center',
+    width: 300,
+    height: 250,
     justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderStyle: 'dashed',
   },
   adBannerText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: 'bold',
     marginBottom: 4,
   },
   adBannerSubtext: {

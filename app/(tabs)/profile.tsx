@@ -52,7 +52,7 @@ export default function Profile() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'], // Changed from ImagePicker.MediaTypeOptions.Images
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,
@@ -244,7 +244,7 @@ export default function Profile() {
             </View>
           </TouchableOpacity>
           <Text style={[styles.name, { color: colors.text }]}>{profile?.full_name || 'User'}</Text>
-          <Text style={[styles.email, { color: colors.textTertiary }]}>{profile?.email}</Text>
+          <Text style={[styles.email, { color: colors.textTertiary }]}>{profile?.email || 'No email'}</Text>
 
           {isPremium ? (
             <View style={[styles.premiumBadge, { backgroundColor: colors.premium }]}>

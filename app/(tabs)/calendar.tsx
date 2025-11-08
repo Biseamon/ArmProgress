@@ -529,7 +529,7 @@ export default function CalendarScreen() {
       {/* AdMob Banner Placeholder - Standard Banner */}
       {!isPremium && (
         <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-          <View style={styles.adBannerPlaceholder}>
+          <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
             <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
               📱 Ad Space
             </Text>

@@ -460,7 +460,7 @@ export default function Training() {
         {/* AdMob Banner Placeholder - Medium Rectangle */}
         {!isPremium && (
           <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-            <View style={styles.adBannerPlaceholder}>
+            <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
                 📱 Ad Space
               </Text>
@@ -1311,10 +1311,8 @@ const styles = StyleSheet.create({
     height: 250,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#2A2A2A',
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#333',
     borderStyle: 'dashed',
   },
   adBannerText: {
