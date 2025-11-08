@@ -530,13 +530,13 @@ export default function Training() {
         animationType="slide"
         onRequestClose={() => setShowWorkoutModal(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: colors.modalBackground }]}>
-          <View style={styles.modalHeader}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editingWorkout ? 'Edit Workout' : 'Log Workout'}
             </Text>
             <TouchableOpacity onPress={() => setShowWorkoutModal(false)}>
-              <X size={24} color="#999" />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -548,14 +548,16 @@ export default function Training() {
                   <TouchableOpacity
                     style={[
                       styles.typeButton,
-                      selectedCycleId === null && styles.typeButtonActive,
+                      { backgroundColor: colors.surface, borderColor: colors.border },
+                      selectedCycleId === null && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
                     ]}
                     onPress={() => setSelectedCycleId(null)}
                   >
                     <Text
                       style={[
                         styles.typeButtonText,
-                        selectedCycleId === null && styles.typeButtonTextActive,
+                        { color: colors.textSecondary },
+                        selectedCycleId === null && [styles.typeButtonTextActive, { color: '#FFF' }],
                       ]}
                     >
                       None
@@ -566,14 +568,16 @@ export default function Training() {
                       key={cycle.id}
                       style={[
                         styles.typeButton,
-                        selectedCycleId === cycle.id && styles.typeButtonActive,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        selectedCycleId === cycle.id && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
                       ]}
                       onPress={() => setSelectedCycleId(cycle.id)}
                     >
                       <Text
                         style={[
                           styles.typeButtonText,
-                          selectedCycleId === cycle.id && styles.typeButtonTextActive,
+                          { color: colors.textSecondary },
+                          selectedCycleId === cycle.id && [styles.typeButtonTextActive, { color: '#FFF' }],
                         ]}
                       >
                         {cycle.name}
@@ -591,14 +595,16 @@ export default function Training() {
                   key={type.value}
                   style={[
                     styles.typeButton,
-                    workoutType === type.value && styles.typeButtonActive,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    workoutType === type.value && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
                   ]}
                   onPress={() => setWorkoutType(type.value)}
                 >
                   <Text
                     style={[
                       styles.typeButtonText,
-                      workoutType === type.value && styles.typeButtonTextActive,
+                      { color: colors.textSecondary },
+                      workoutType === type.value && [styles.typeButtonTextActive, { color: '#FFF' }],
                     ]}
                   >
                     {type.label}
@@ -655,7 +661,7 @@ export default function Training() {
                   <View style={styles.exerciseCardHeader}>
                     <Text style={[styles.exerciseCardTitle, { color: colors.text }]}>Exercise {index + 1}</Text>
                     <TouchableOpacity onPress={() => handleRemoveExercise(index)}>
-                      <X size={20} color="#999" />
+                      <X size={20} color={colors.textSecondary} />
                     </TouchableOpacity>
                   </View>
 
@@ -733,13 +739,13 @@ export default function Training() {
         animationType="slide"
         onRequestClose={() => setShowCycleModal(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: colors.modalBackground }]}>
-          <View style={styles.modalHeader}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editingCycle ? 'Edit Training Cycle' : 'New Training Cycle'}
             </Text>
             <TouchableOpacity onPress={() => setShowCycleModal(false)}>
-              <X size={24} color="#999" />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -760,14 +766,16 @@ export default function Training() {
                   key={type.value}
                   style={[
                     styles.typeButton,
-                    cycleType === type.value && styles.typeButtonActive,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    cycleType === type.value && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
                   ]}
                   onPress={() => setCycleType(type.value)}
                 >
                   <Text
                     style={[
                       styles.typeButtonText,
-                      cycleType === type.value && styles.typeButtonTextActive,
+                      { color: colors.textSecondary },
+                      cycleType === type.value && [styles.typeButtonTextActive, { color: '#FFF' }],
                     ]}
                   >
                     {type.label}
@@ -800,17 +808,17 @@ export default function Training() {
             ) : (
               <>
                 <TouchableOpacity
-                  style={styles.dateButton}
+                  style={[styles.dateButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                   onPress={() => setShowStartDatePicker(!showStartDatePicker)}
                 >
-                  <Text style={styles.dateButtonText}>
+                  <Text style={[styles.dateButtonText, { color: colors.text }]}>
                     {cycleStartDate.toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
                     })}
                   </Text>
-                  <CalendarIcon size={20} color={showStartDatePicker ? '#E63946' : '#999'} />
+                  <CalendarIcon size={20} color={showStartDatePicker ? '#E63946' : colors.textSecondary} />
                 </TouchableOpacity>
                 {showStartDatePicker && (
                   <DateTimePicker
@@ -860,17 +868,17 @@ export default function Training() {
             ) : (
               <>
                 <TouchableOpacity
-                  style={styles.dateButton}
+                  style={[styles.dateButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                   onPress={() => setShowEndDatePicker(!showEndDatePicker)}
                 >
-                  <Text style={styles.dateButtonText}>
+                  <Text style={[styles.dateButtonText, { color: colors.text }]}>
                     {cycleEndDate.toLocaleDateString('en-US', {
                       year: 'numeric',
                       month: 'long',
                       day: 'numeric',
                     })}
                   </Text>
-                  <CalendarIcon size={20} color={showEndDatePicker ? '#E63946' : '#999'} />
+                  <CalendarIcon size={20} color={showEndDatePicker ? '#E63946' : colors.textSecondary} />
                 </TouchableOpacity>
                 {showEndDatePicker && (
                   <DateTimePicker
@@ -1148,7 +1156,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
   },
   modalTitle: {
     fontSize: 24,
@@ -1185,23 +1192,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   typeButton: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#333',
   },
   typeButtonActive: {
-    backgroundColor: '#E63946',
-    borderColor: '#E63946',
+    // Styles applied inline now for dynamic colors
   },
   typeButtonText: {
     fontSize: 14,
-    color: '#999',
   },
   typeButtonTextActive: {
-    color: '#FFF',
     fontWeight: 'bold',
   },
   exercisesSection: {
@@ -1224,10 +1226,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   exerciseCard: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
   },
   exerciseCardHeader: {
     flexDirection: 'row',
@@ -1285,18 +1287,15 @@ const styles = StyleSheet.create({
     height: 40,
   },
   dateButton: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#333',
   },
   dateButtonText: {
     fontSize: 16,
-    color: '#FFF',
   },
   adBannerContainer: {
     marginHorizontal: 20,

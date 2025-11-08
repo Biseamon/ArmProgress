@@ -1385,16 +1385,16 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         onRequestClose={() => setShowGoalModal(false)}
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>{editingGoal ? 'Edit Goal' : 'New Goal'}</Text>
             <TouchableOpacity onPress={() => {
               setShowGoalModal(false);
               setEditingGoal(null);
               setGoalType('');
               setTargetValue('');
-              setGoalNotes(''); // Add this line
+              setGoalNotes('');
             }}>
-              <X size={24} color="#999" />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -1431,17 +1431,17 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
 
             <Text style={[styles.label, { color: colors.text }]}>Deadline</Text>
             <TouchableOpacity
-              style={styles.dateButton}
+              style={[styles.dateButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => setShowDeadlinePicker(!showDeadlinePicker)}
             >
-              <Text style={styles.dateButtonText}>
+              <Text style={[styles.dateButtonText, { color: colors.text }]}>
                 {deadline.toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',
                 })}
               </Text>
-              <Calendar size={20} color="#999" />
+              <Calendar size={20} color={colors.textSecondary} />
             </TouchableOpacity>
             {showDeadlinePicker && (
               <DateTimePicker
@@ -1460,7 +1460,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               />
             )}
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveGoal}>
+            <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSaveGoal}>
               <Save size={20} color="#FFF" />
               <Text style={styles.saveButtonText}>Save Goal</Text>
             </TouchableOpacity>
@@ -1482,7 +1482,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         }}
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editingTest ? 'Update PR' : 'Record PR'}
             </Text>
@@ -1495,7 +1495,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               setTestResult('');
               setTestNotes('');
             }}>
-              <X size={24} color="#999" />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -1515,7 +1515,8 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   key={type.value}
                   style={[
                     styles.typeButton,
-                    (testType === type.value || (type.value === 'custom' && isCustomTest)) && styles.typeButtonActive,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    (testType === type.value || (type.value === 'custom' && isCustomTest)) && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
                   ]}
                   onPress={() => {
                     if (type.value === 'custom') {
@@ -1531,7 +1532,8 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   <Text
                     style={[
                       styles.typeButtonText,
-                      (testType === type.value || (type.value === 'custom' && isCustomTest)) && styles.typeButtonTextActive,
+                      { color: colors.textSecondary },
+                      (testType === type.value || (type.value === 'custom' && isCustomTest)) && [styles.typeButtonTextActive, { color: '#FFF' }],
                     ]}
                   >
                     {type.label}
@@ -1549,7 +1551,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   onChangeText={setCustomTestName}
                   placeholder="e.g., Pinch Grip, Thick Bar Curl"
                   placeholderTextColor={colors.textTertiary}
-                  editable={!editingTest} // Can't change name when updating
+                  editable={!editingTest}
                 />
               </>
             )}
@@ -1575,7 +1577,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               placeholderTextColor={colors.textTertiary}
             />
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleSaveTest}>
+            <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSaveTest}>
               <Save size={20} color="#FFF" />
               <Text style={styles.saveButtonText}>{editingTest ? 'Update PR' : 'Save PR'}</Text>
             </TouchableOpacity>
@@ -1879,7 +1881,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
           setShowAddMeasurement(false);
           setEditingMeasurement(null);
         }}
-        onSave={handleSaveMeasurement}
+               onSave={handleSaveMeasurement}
         weight={weight}
         setWeight={setWeight}
         armCircumference={armCircumference}
@@ -2159,7 +2161,6 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
   },
   modalTitle: {
     fontSize: 24,
@@ -2196,53 +2197,39 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   typeButton: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#333',
   },
   typeButtonActive: {
-    backgroundColor: '#E63946',
-    borderColor: '#E63946',
+    // Dynamic styles applied inline
   },
   typeButtonText: {
     fontSize: 14,
-    color: '#999',
   },
   typeButtonTextActive: {
-    color: '#FFF',
     fontWeight: 'bold',
   },
   saveButton: {
-    backgroundColor: '#E63946',
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap:  8,
+    gap: 8,
     marginTop: 24,
   },
-  saveButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
   dateButton: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#333',
   },
   dateButtonText: {
     fontSize: 16,
-    color: '#FFF',
   },
   tooltipModalOverlay: {
     flex: 1,
@@ -2441,6 +2428,11 @@ const styles = StyleSheet.create({
   shareButtonSubtext: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 12,
+  },
+  saveButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   adBannerContainer: {
     marginVertical: 16,

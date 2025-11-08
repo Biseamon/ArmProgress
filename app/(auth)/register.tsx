@@ -55,20 +55,20 @@ export default function Register() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Dumbbell size={60} color="#E63946" strokeWidth={2} />
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Start your strength journey today</Text>
+          <Dumbbell size={60} color={colors.primary} strokeWidth={2} />
+          <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Start your strength journey today</Text>
         </View>
 
         <View style={styles.form}>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? <Text style={[styles.errorText, { backgroundColor: colors.error + '22', color: colors.error }]}>{error}</Text> : null}
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Full Name</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Full Name</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               placeholder="John Doe"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
               value={fullName}
               onChangeText={setFullName}
               editable={!loading}
@@ -76,11 +76,11 @@ export default function Register() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Email</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               placeholder="your@email.com"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -90,11 +90,11 @@ export default function Register() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               placeholder="At least 6 characters"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -103,7 +103,7 @@ export default function Register() {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
+            style={[styles.button, { backgroundColor: colors.primary }, loading && styles.buttonDisabled]}
             onPress={handleRegister}
             disabled={loading}
           >
@@ -116,8 +116,8 @@ export default function Register() {
             onPress={() => router.push('/(auth)/login')}
             disabled={loading}
           >
-            <Text style={styles.linkText}>
-              Already have an account? <Text style={styles.linkBold}>Sign In</Text>
+            <Text style={[styles.linkText, { color: colors.textSecondary }]}>
+              Already have an account? <Text style={[styles.linkBold, { color: colors.primary }]}>Sign In</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -129,7 +129,6 @@ export default function Register() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
   },
   scrollContent: {
     flexGrow: 1,
@@ -143,12 +142,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#FFF',
     marginTop: 16,
   },
   subtitle: {
     fontSize: 16,
-    color: '#999',
     marginTop: 8,
   },
   form: {
@@ -160,20 +157,15 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFF',
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#FFF',
     borderWidth: 1,
-    borderColor: '#333',
   },
   button: {
-    backgroundColor: '#E63946',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -189,17 +181,13 @@ const styles = StyleSheet.create({
   },
   linkText: {
     textAlign: 'center',
-    color: '#999',
     marginTop: 20,
     fontSize: 14,
   },
   linkBold: {
-    color: '#E63946',
     fontWeight: 'bold',
   },
   errorText: {
-    backgroundColor: '#4A1A1A',
-    color: '#FF6B6B',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,

@@ -220,7 +220,7 @@ export default function ScheduleScreen() {
           <ArrowLeft size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: colors.text }]}>Training Schedule</Text>
-        <TouchableOpacity style={styles.addButton} onPress={() => setShowModal(true)}>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.primary }]} onPress={() => setShowModal(true)}>
           <Plus size={24} color="#FFF" />
         </TouchableOpacity>
       </View>
@@ -228,25 +228,25 @@ export default function ScheduleScreen() {
       <ScrollView style={styles.content}>
         {trainings.length === 0 ? (
           <View style={styles.emptyState}>
-            <Calendar size={48} color="#666" />
-            <Text style={styles.emptyText}>No scheduled trainings</Text>
-            <Text style={styles.emptySubtext}>Create your first training schedule!</Text>
+            <Calendar size={48} color={colors.textTertiary} />
+            <Text style={[styles.emptyText, { color: colors.text }]}>No scheduled trainings</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Create your first training schedule!</Text>
           </View>
         ) : (
           trainings.map((training) => (
-            <View key={training.id} style={[styles.trainingCard, { backgroundColor: colors.cardBackground }]}>
+            <View key={training.id} style={[styles.trainingCard, { backgroundColor: colors.surface }]}>
               <View style={styles.trainingHeader}>
                 <View style={styles.trainingInfo}>
                   <Text
                     style={[
                       styles.trainingTitle,
-                      { color: colors.cardText },
+                      { color: colors.text },
                       training.completed && styles.completedText,
                     ]}
                   >
                     {training.title}
                   </Text>
-                  <Text style={[styles.trainingDate, { color: colors.cardText, opacity: 0.7 }]}>
+                  <Text style={[styles.trainingDate, { color: colors.textSecondary }]}>
                     {new Date(training.scheduled_date).toLocaleDateString()} at{' '}
                     {training.scheduled_time}
                   </Text>
@@ -255,7 +255,7 @@ export default function ScheduleScreen() {
                   <TouchableOpacity onPress={() => handleToggleComplete(training)}>
                     <CheckCircle
                       size={20}
-                      color={training.completed ? '#10B981' : '#666'}
+                      color={training.completed ? '#10B981' : colors.textTertiary}
                     />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleEdit(training)}>
@@ -267,10 +267,10 @@ export default function ScheduleScreen() {
                 </View>
               </View>
               {training.description && (
-                <Text style={[styles.trainingDescription, { color: colors.cardText, opacity: 0.8 }]}>{training.description}</Text>
+                <Text style={[styles.trainingDescription, { color: colors.textSecondary }]}>{training.description}</Text>
               )}
               {training.notification_enabled && (
-                <View style={styles.notificationBadge}>
+                <View style={[styles.notificationBadge, { backgroundColor: '#2A7DE144' }]}>
                   <Bell size={14} color="#2A7DE1" />
                   <Text style={styles.notificationText}>
                     {training.notification_minutes_before}min before
@@ -283,36 +283,36 @@ export default function ScheduleScreen() {
       </ScrollView>
 
       <Modal visible={showModal} animationType="slide" onRequestClose={() => setShowModal(false)}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{editingTraining ? 'Edit Training' : 'Schedule Training'}</Text>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{editingTraining ? 'Edit Training' : 'Schedule Training'}</Text>
             <TouchableOpacity onPress={() => setShowModal(false)}>
-              <X size={24} color="#999" />
+              <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Text style={styles.label}>Title</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Title</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={title}
               onChangeText={setTitle}
               placeholder="Training session name"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
             />
 
-            <Text style={styles.label}>Description (Optional)</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Description (Optional)</Text>
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={description}
               onChangeText={setDescription}
               placeholder="Add details about this training"
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textTertiary}
               multiline
               numberOfLines={3}
             />
 
-            <Text style={styles.label}>Date</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Date</Text>
             {Platform.OS === 'web' ? (
               <input
                 type="date"
@@ -324,22 +324,23 @@ export default function ScheduleScreen() {
                 }}
                 style={{
                   padding: 12,
-                  backgroundColor: '#2A2A2A',
-                  border: '1px solid #444',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
                   borderRadius: 8,
-                  color: '#FFF',
+                  color: colors.text,
                   fontSize: 16,
                   marginBottom: 16,
+                  fontFamily: 'inherit',
                 }}
               />
             ) : (
               <>
                 <TouchableOpacity
-                  style={styles.dateButton}
+                  style={[styles.dateButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                   onPress={() => setShowDatePicker(!showDatePicker)}
                 >
-                  <Calendar size={20} color={showDatePicker ? '#E63946' : '#FFF'} />
-                  <Text style={styles.dateButtonText}>
+                  <Calendar size={20} color={showDatePicker ? colors.primary : colors.textSecondary} />
+                  <Text style={[styles.dateButtonText, { color: colors.text }]}>
                     {selectedDate.toLocaleDateString()}
                   </Text>
                 </TouchableOpacity>
@@ -367,7 +368,7 @@ export default function ScheduleScreen() {
               </>
             )}
 
-            <Text style={styles.label}>Time</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Time</Text>
             {Platform.OS === 'web' ? (
               <input
                 type="time"
@@ -380,22 +381,23 @@ export default function ScheduleScreen() {
                 }}
                 style={{
                   padding: 12,
-                  backgroundColor: '#2A2A2A',
-                  border: '1px solid #444',
+                  backgroundColor: colors.surface,
+                  border: `1px solid ${colors.border}`,
                   borderRadius: 8,
-                  color: '#FFF',
+                  color: colors.text,
                   fontSize: 16,
                   marginBottom: 16,
+                  fontFamily: 'inherit',
                 }}
               />
             ) : (
               <>
                 <TouchableOpacity
-                  style={styles.dateButton}
+                  style={[styles.dateButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                   onPress={() => setShowTimePicker(!showTimePicker)}
                 >
-                  <Clock size={20} color={showTimePicker ? '#E63946' : '#FFF'} />
-                  <Text style={styles.dateButtonText}>
+                  <Clock size={20} color={showTimePicker ? colors.primary : colors.textSecondary} />
+                  <Text style={[styles.dateButtonText, { color: colors.text }]}>
                     {selectedTime.toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -410,7 +412,7 @@ export default function ScheduleScreen() {
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
                     textColor={colorScheme === 'dark' ? '#FFFFFF' : '#000000'}
-                    accentColor={colorScheme === 'dark' ? '#E63946' : '#2A7DE1'} // Add accent color
+                    accentColor={colorScheme === 'dark' ? '#E63946' : '#2A7DE1'}
                     onChange={(event, time) => {
                       if (Platform.OS === 'android') {
                         setShowTimePicker(false);
@@ -433,29 +435,29 @@ export default function ScheduleScreen() {
                 onPress={() => setNotificationEnabled(!notificationEnabled)}
               >
                 {notificationEnabled ? (
-                  <Bell size={20} color="#2A7DE1" />
+                  <Bell size={20} color={colors.secondary} />
                 ) : (
-                  <BellOff size={20} color="#666" />
+                  <BellOff size={20} color={colors.textTertiary} />
                 )}
-                <Text style={styles.notificationLabel}>Enable Notification</Text>
+                <Text style={[styles.notificationLabel, { color: colors.text }]}>Enable Notification</Text>
               </TouchableOpacity>
 
               {notificationEnabled && (
                 <View>
-                  <Text style={styles.label}>Notify me (minutes before)</Text>
+                  <Text style={[styles.label, { color: colors.text }]}>Notify me (minutes before)</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
                     value={minutesBefore}
                     onChangeText={setMinutesBefore}
                     placeholder="30"
-                    placeholderTextColor="#666"
+                    placeholderTextColor={colors.textTertiary}
                     keyboardType="number-pad"
                   />
                 </View>
               )}
             </View>
 
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSave}>
               <Text style={styles.saveButtonText}>{editingTraining ? 'Update Training' : 'Schedule Training'}</Text>
             </TouchableOpacity>
           </ScrollView>
@@ -486,7 +488,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   addButton: {
-    backgroundColor: '#E63946',
     borderRadius: 12,
     padding: 12,
   },
@@ -502,16 +503,13 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFF',
     marginTop: 16,
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#999',
     marginTop: 8,
   },
   trainingCard: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
@@ -528,7 +526,6 @@ const styles = StyleSheet.create({
   trainingTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFF',
     marginBottom: 4,
   },
   completedText: {
@@ -537,11 +534,9 @@ const styles = StyleSheet.create({
   },
   trainingDate: {
     fontSize: 14,
-    color: '#999',
   },
   trainingDescription: {
     fontSize: 14,
-    color: '#CCC',
     marginBottom: 8,
   },
   actionIcons: {
@@ -564,7 +559,6 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -573,12 +567,10 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
   },
   modalTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFF',
   },
   modalContent: {
     flex: 1,
@@ -587,16 +579,14 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FFF',
     marginBottom: 8,
     marginTop: 16,
   },
   input: {
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#FFF',
+    borderWidth: 1,
   },
   textArea: {
     minHeight: 80,
@@ -606,17 +596,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#2A2A2A',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    borderWidth: 1,
   },
   dateButtonText: {
     fontSize: 16,
-    color: '#FFF',
-  },
-  notificationSection: {
-    marginTop: 16,
   },
   notificationToggle: {
     flexDirection: 'row',
@@ -626,10 +612,11 @@ const styles = StyleSheet.create({
   },
   notificationLabel: {
     fontSize: 16,
-    color: '#FFF',
+  },
+  notificationSection: {
+    marginTop: 8,
   },
   saveButton: {
-    backgroundColor: '#E63946',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
