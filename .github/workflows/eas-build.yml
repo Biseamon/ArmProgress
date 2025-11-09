@@ -1,0 +1,55 @@
+name: EAS Build
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build iOS (Development)
+        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        run: eas build --platform ios --profile development --non-interactive
+
+      - name: Build Android (Development)
+        if: github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')
+        run: eas build --platform android --profile development --non-interactive
+
+      - name: Build iOS (Production)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: eas build --platform ios --profile production --non-interactive --auto-submit
+
+      - name: Build Android (Production)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: eas build --platform android --profile production --non-interactive --auto-submit
+
+      - name: Notify success
+        if: success()
+        run: echo "Build completed successfully!"
+
+      - name: Notify failure
+        if: failure()
+        run: echo "Build failed!"
