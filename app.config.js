@@ -1,0 +1,58 @@
+// Load environment variables from .env file
+require('dotenv').config();
+
+module.exports = {
+  expo: {
+    name: "Arm Wrestling Pro",
+    slug: "arm-wrestling-pro",
+    version: "1.0.0",
+    orientation: "portrait",
+    icon: "./assets/images/icon.png",
+    scheme: "armwrestlingpro",
+    userInterfaceStyle: "automatic",
+    newArchEnabled: true,
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: "com.armwrestlingpro.app",
+      infoPlist: {
+        UIViewControllerBasedStatusBarAppearance: false,
+      },
+    },
+    android: {
+      adaptiveIcon: {
+        foregroundImage: "./assets/images/icon.png",
+        backgroundColor: "#1A1A1A",
+      },
+      package: "com.armwrestlingpro.app",
+      statusBar: {
+        barStyle: "auto",
+        backgroundColor: "#00000000",
+        translucent: true,
+      },
+    },
+    web: {
+      bundler: "metro",
+      output: "single",
+    },
+    plugins: [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      "expo-ads-admob",
+    ],
+    experiments: {
+      typedRoutes: true,
+    },
+    extra: {
+      // Environment variables - automatically loaded from .env
+      EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      EXPO_PUBLIC_REVENUECAT_IOS_KEY: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
+      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
+      EXPO_PUBLIC_STRIPE_DONATION_URL: process.env.EXPO_PUBLIC_STRIPE_DONATION_URL,
+      EXPO_PUBLIC_ENV: process.env.EXPO_PUBLIC_ENV,
+      EXPO_PUBLIC_APP_SCHEME: process.env.EXPO_PUBLIC_APP_SCHEME,
+      EXPO_PUBLIC_APP_URL: process.env.EXPO_PUBLIC_APP_URL,
+    },
+  },
+};

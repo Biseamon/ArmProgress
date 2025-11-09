@@ -1,0 +1,38 @@
+name: EAS Update (OTA)
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish EAS Update (Development)
+        run: |
+          eas update --branch development --message "Auto update from develop branch"
+
+      - name: Notify team
+        run: |
+          echo "OTA update published to development channel"
+          echo "Users will receive this update on next app launch"

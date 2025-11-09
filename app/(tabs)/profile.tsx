@@ -22,6 +22,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { BookOpen, Camera, Crown, Heart, Info, LogOut, Mail, Moon, Shield, Sun, User, Weight } from 'lucide-react-native';
 import { GuideModal } from '@/components/GuideModal';
+import { STRIPE_CONFIG, APP_CONFIG } from '@/lib/config';
 
 export default function Profile() {
   const { profile, signOut, isPremium, refreshProfile } = useAuth();
@@ -238,21 +239,20 @@ export default function Profile() {
   };
 
   const handleDonate = () => {
-    // Use your official Stripe Checkout link with a return URL to your app
-    // For Expo Go, use a deep link like: exp://127.0.0.1:19000/--/
-    // For production, use your app's custom scheme or universal link
+    // Build return URL based on platform
     let returnUrl: string;
     if (Platform.OS === 'web') {
       returnUrl = window.location.origin;
     } else if (Platform.OS === 'ios') {
-      returnUrl = 'armwrestlingpro://profile'; // iOS custom scheme
+      returnUrl = `${APP_CONFIG.scheme}://profile`;
     } else if (Platform.OS === 'android') {
-      returnUrl = 'https://armwrestling.app/profile'; // Android universal link (must be configured in Stripe and app)
+      returnUrl = `${APP_CONFIG.url}/profile`;
     } else {
-      returnUrl = 'armwrestlingpro://profile';
+      returnUrl = `${APP_CONFIG.scheme}://profile`;
     }
 
-    const stripeDonationUrl = `https://buy.stripe.com/fZu4gzfny8dr7zwfd587K00?prefilled_return_url=${encodeURIComponent(returnUrl)}`;
+    // Use configured Stripe donation URL
+    const stripeDonationUrl = `${STRIPE_CONFIG.donationUrl}?prefilled_return_url=${encodeURIComponent(returnUrl)}`;
 
     if (Platform.OS === 'web') {
       window.open(stripeDonationUrl, '_blank');

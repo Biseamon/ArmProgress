@@ -59,7 +59,9 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@types/node": "^24.10.0",
     "@types/react": "~19.1.10",
+    "dotenv": "^17.2.3",
     "typescript": "~5.9.2"
   }
 }
