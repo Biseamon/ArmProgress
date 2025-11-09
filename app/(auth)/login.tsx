@@ -21,7 +21,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle, signInWithApple, signInWithFacebook } = useAuth();
   const { colors } = useTheme();
 
   const handleLogin = async () => {
@@ -41,6 +41,30 @@ export default function Login() {
     } else {
       router.replace('/(tabs)');
     }
+  };
+
+  const handleSocialSignIn = async (provider: 'google' | 'apple' | 'facebook') => {
+    setLoading(true);
+    setError('');
+
+    let result;
+    switch (provider) {
+      case 'google':
+        result = await signInWithGoogle();
+        break;
+      case 'apple':
+        result = await signInWithApple();
+        break;
+      case 'facebook':
+        result = await signInWithFacebook();
+        break;
+    }
+
+    if (result.error) {
+      setError(result.error.message || `Failed to sign in with ${provider}`);
+      setLoading(false);
+    }
+    // Note: OAuth redirects will handle navigation automatically
   };
 
   return (
@@ -93,6 +117,38 @@ export default function Login() {
             <Text style={styles.buttonText}>
               {loading ? 'Signing in...' : 'Sign In'}
             </Text>
+          </TouchableOpacity>
+
+          <View style={styles.dividerContainer}>
+            <View style={styles.divider} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.divider} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.socialButton, styles.googleButton, loading && styles.buttonDisabled]}
+            onPress={() => handleSocialSignIn('google')}
+            disabled={loading}
+          >
+            <Text style={[styles.socialButtonText, styles.googleButtonText]}>Continue with Google</Text>
+          </TouchableOpacity>
+
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity
+              style={[styles.socialButton, styles.appleButton, loading && styles.buttonDisabled]}
+              onPress={() => handleSocialSignIn('apple')}
+              disabled={loading}
+            >
+              <Text style={[styles.socialButtonText, styles.appleButtonText]}>Continue with Apple</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.socialButton, styles.facebookButton, loading && styles.buttonDisabled]}
+            onPress={() => handleSocialSignIn('facebook')}
+            disabled={loading}
+          >
+            <Text style={[styles.socialButtonText, styles.facebookButtonText]}>Continue with Facebook</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -187,5 +243,53 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 16,
     fontSize: 14,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  divider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#333',
+  },
+  dividerText: {
+    color: '#666',
+    paddingHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  socialButton: {
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  googleButton: {
+    backgroundColor: '#FFF',
+    borderColor: '#DDD',
+  },
+  appleButton: {
+    backgroundColor: '#000',
+    borderColor: '#000',
+  },
+  facebookButton: {
+    backgroundColor: '#1877F2',
+    borderColor: '#1877F2',
+  },
+  socialButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  googleButtonText: {
+    color: '#000',
+  },
+  appleButtonText: {
+    color: '#FFF',
+  },
+  facebookButtonText: {
+    color: '#FFF',
   },
 });
