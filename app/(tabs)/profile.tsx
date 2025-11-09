@@ -79,6 +79,43 @@ export default function Profile() {
 
       console.log('Starting upload with asset:', asset.uri);
 
+      // Delete ALL old avatars for this user (to handle different file extensions)
+      try {
+        // List all files in the avatars bucket that start with the user ID
+        const { data: existingFiles, error: listError } = await supabase.storage
+          .from('avatars')
+          .list('', {
+            search: profile.id, // Search for files containing the user ID
+          });
+
+        if (listError) {
+          console.warn('Failed to list existing avatars:', listError);
+        } else if (existingFiles && existingFiles.length > 0) {
+          // Filter to only include files that match the user ID pattern (user_id.ext)
+          const userAvatars = existingFiles.filter(file =>
+            file.name.startsWith(`${profile.id}.`)
+          );
+
+          if (userAvatars.length > 0) {
+            const filesToDelete = userAvatars.map(file => file.name);
+            console.log('Deleting old avatars:', filesToDelete);
+
+            const { error: deleteError } = await supabase.storage
+              .from('avatars')
+              .remove(filesToDelete);
+
+            if (deleteError) {
+              console.warn('Failed to delete old avatars:', deleteError);
+            } else {
+              console.log('Old avatars deleted successfully');
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Error deleting old avatars:', error);
+        // Don't throw - continue with upload even if deletion fails
+      }
+
       const fileExt = asset.uri.split('.').pop()?.toLowerCase() || 'jpg';
       // Use user ID as filename for security and simplicity
       const fileName = `${profile.id}.${fileExt}`;
@@ -100,32 +137,39 @@ export default function Profile() {
 
       // Upload to Supabase Storage using base64-arraybuffer
       // This uses the authenticated session automatically
+      console.log('Uploading file to path:', filePath);
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, decode(base64), {
           contentType: `image/${fileExt}`,
-          upsert: true, // This will replace existing file
-          cacheControl: '3600',
+          upsert: true, // This will replace existing file with same name
+          cacheControl: '0', // Disable caching so new images appear immediately
         });
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
+        console.error('Upload error details:', JSON.stringify(uploadError, null, 2));
         throw uploadError;
       }
 
-      console.log('Upload successful:', uploadData);
+      console.log('Upload successful! Path:', uploadData.path);
+      console.log('Upload data:', JSON.stringify(uploadData, null, 2));
 
-      // Get public URL
+      // Get public URL with cache-busting timestamp
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
 
-      console.log('Public URL:', publicUrl);
+      // Add cache-busting timestamp to the URL stored in database
+      const timestamp = Date.now();
+      const publicUrlWithTimestamp = `${publicUrl}?t=${timestamp}`;
 
-      // Update profile in database
+      console.log('Public URL with cache-buster:', publicUrlWithTimestamp);
+
+      // Update profile in database with the timestamped URL
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: publicUrl })
+        .update({ avatar_url: publicUrlWithTimestamp })
         .eq('id', profile.id);
 
       if (updateError) {
@@ -134,10 +178,9 @@ export default function Profile() {
       }
 
       // Force immediate reload with cache busting
-      const newKey = Date.now();
-      setAvatarUrl(publicUrl);
-      setImageKey(newKey);
-      
+      setAvatarUrl(publicUrlWithTimestamp);
+      setImageKey(timestamp);
+
       await refreshProfile();
       
       console.log('Avatar updated successfully');
@@ -228,16 +271,16 @@ export default function Profile() {
             disabled={uploading}
           >
             {avatarUrl ? (
-              <Image 
-                source={{ 
-                  uri: `${avatarUrl}?t=${imageKey}`,
+              <Image
+                source={{
+                  uri: avatarUrl.includes('?t=') ? avatarUrl : `${avatarUrl}?t=${imageKey}`,
                   cache: 'reload' // Force reload
-                }} 
+                }}
                 style={styles.avatar}
                 key={`avatar-${imageKey}`}
                 onError={(e) => {
                   console.log('Image load error:', e.nativeEvent.error);
-                  console.log('Failed URL:', `${avatarUrl}?t=${imageKey}`);
+                  console.log('Failed URL:', avatarUrl);
                   // Don't clear the URL, just log the error
                 }}
                 onLoad={() => {
