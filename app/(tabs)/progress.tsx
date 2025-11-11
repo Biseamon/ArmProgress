@@ -1649,7 +1649,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         onRequestClose={() => setShowReportModal(false)}
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { paddingTop: insets.top + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Progress Report</Text>
             <TouchableOpacity onPress={() => setShowReportModal(false)}>
               <X size={24} color="#999" />
