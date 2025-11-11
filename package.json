@@ -62,6 +62,9 @@
     "@types/node": "^24.10.0",
     "@types/react": "~19.1.10",
     "dotenv": "^17.2.3",
+    "eslint-config-expo": "^10.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
     "typescript": "~5.9.2"
   }
 }

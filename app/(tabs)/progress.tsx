@@ -1443,7 +1443,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         onRequestClose={() => setShowGoalModal(false)}
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>{editingGoal ? 'Edit Goal' : 'New Goal'}</Text>
             <TouchableOpacity onPress={() => {
               setShowGoalModal(false);
@@ -1540,7 +1540,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         }}
       >
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               {editingTest ? 'Update PR' : 'Record PR'}
             </Text>
