@@ -44,7 +44,7 @@ export const REVENUECAT_CONFIG = {
 export const STRIPE_CONFIG = {
   donationUrl: getOptionalEnvVar(
     'EXPO_PUBLIC_STRIPE_DONATION_URL',
-    '***REMOVED***'
+    'https://buy.stripe.com/fZu4gzfny8dr7zwfd587K00'
   ) as string,
 } as const;
 

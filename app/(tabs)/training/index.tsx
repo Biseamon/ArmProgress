@@ -21,6 +21,7 @@ import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from '
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { convertFromLbs, convertToLbs, convertWeight } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { validateWorkout, validateExercise, validateCycle, getFirstError } from '@/lib/validation';
 
 type Exercise = {
   exercise_name: string;
@@ -199,22 +200,55 @@ export default function Training() {
       console.log('No profile found');
       return;
     }
-    
+
+    // Validate workout data
+    const workoutValidation = validateWorkout({
+      workout_type: workoutType,
+      duration_minutes: parseInt(duration) || 0,
+      intensity: parseInt(intensity) || 0,
+      notes,
+      cycle_id: selectedCycleId,
+    });
+
+    if (!workoutValidation.isValid) {
+      Alert.alert('Validation Error', getFirstError(workoutValidation) || 'Invalid workout data');
+      return;
+    }
+
+    // Validate exercises
+    for (let i = 0; i < exercises.length; i++) {
+      const exerciseValidation = validateExercise({
+        exercise_name: exercises[i].exercise_name,
+        sets: exercises[i].sets,
+        reps: exercises[i].reps,
+        weight_lbs: exercises[i].weight_lbs,
+        notes: exercises[i].notes,
+      });
+
+      if (!exerciseValidation.isValid) {
+        Alert.alert(
+          'Exercise Validation Error',
+          `Exercise ${i + 1}: ${getFirstError(exerciseValidation)}`
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     console.log('Starting save workout...');
-  
+
     try {
       let workoutId: string;
       const userUnit = profile.weight_unit || 'lbs';
-  
+
       if (editingWorkout) {
         // Update existing workout
         const { error: workoutError } = await supabase
           .from('workouts')
           .update({
             workout_type: workoutType,
-            duration_minutes: parseInt(duration) || 0,
-            intensity: parseInt(intensity) || 5,
+            duration_minutes: parseInt(duration),
+            intensity: parseInt(intensity),
             notes,
             cycle_id: selectedCycleId,
           })
@@ -236,8 +270,8 @@ export default function Training() {
           .insert({
             user_id: profile.id,
             workout_type: workoutType,
-            duration_minutes: parseInt(duration) || 0,
-            intensity: parseInt(intensity) || 5,
+            duration_minutes: parseInt(duration),
+            intensity: parseInt(intensity),
             notes,
             cycle_id: selectedCycleId,
           })
@@ -303,26 +337,26 @@ export default function Training() {
   const handleSaveCycle = async () => {
     if (!profile) return;
 
-    // Validation
-    if (!cycleName.trim()) {
-      Alert.alert('Validation Error', 'Cycle name is required.');
-      return;
-    }
-    if (!cycleType.trim()) {
-      Alert.alert('Validation Error', 'Cycle type is required.');
-      return;
-    }
-    if (cycleStartDate >= cycleEndDate) {
-      Alert.alert('Validation Error', 'Start date must be before end date.');
-      return;
-    }
-
     const formatDate = (date: Date) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     };
+
+    // Validate cycle data
+    const cycleValidation = validateCycle({
+      name: cycleName,
+      description: cycleDescription,
+      cycle_type: cycleType,
+      start_date: formatDate(cycleStartDate),
+      end_date: formatDate(cycleEndDate),
+    });
+
+    if (!cycleValidation.isValid) {
+      Alert.alert('Validation Error', getFirstError(cycleValidation) || 'Invalid cycle data');
+      return;
+    }
 
     if (editingCycle) {
       await supabase.from('cycles').update({
