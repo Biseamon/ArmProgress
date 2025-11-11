@@ -25,7 +25,7 @@ nano .env  # or use your preferred editor
 
 Replace with NEW keys:
 ```env
-EXPO_PUBLIC_SUPABASE_URL=https://yhvvynswqkxvsgtlojav.supabase.co
+EXPO_PUBLIC_SUPABASE_URL=***REMOVED***
 EXPO_PUBLIC_SUPABASE_ANON_KEY=<YOUR_NEW_KEY_HERE>
 ```
 

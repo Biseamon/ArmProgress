@@ -50,34 +50,128 @@ wget https://repo1.maven.org/maven2/com/madgag/bfg/1.14.0/bfg-1.14.0.jar
 
 #### Create a list of secrets to remove
 
-Create a file called `secrets.txt` with your exposed secrets (one per line):
-```
+**Step 1: Create secrets.txt in a safe location**
+
+This file should be created **outside your repository**, in a temporary location.
+
+```bash
+# Create a temporary directory
+mkdir ~/temp-cleanup
+cd ~/temp-cleanup
+
+# Create secrets.txt file
+cat > secrets.txt <<EOF
 yhvvynswqkxvsgtlojav.supabase.co
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlodnb5bnN3cWt4dnNndGxvamF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzA3MjEyMzksImV4cCI6MjA0NjI5NzIzOX0.YOUR_KEY_HERE
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlodnb5bnN3cWt4dnNndGxvamF2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzA3MjEyMzksImV4cCI6MjA0NjI5NzIzOX0.YOUR_OLD_KEY_HERE
+EOF
+
+# Verify it was created
+cat secrets.txt
 ```
+
+**Important**:
+- ⚠️ Add your **OLD** exposed keys here (the ones you want to remove from history)
+- ⚠️ NOT your new rotated keys!
+- One secret per line
+- Include full URLs and full keys
 
 #### Run BFG to clean the repository
 
+**Complete walkthrough with explanations:**
+
 ```bash
-# Clone a fresh copy of your repo (for safety)
-git clone --mirror https://github.com/YOUR_USERNAME/YOUR_REPO.git
+# ============================================
+# STEP 1: Navigate to temporary directory
+# ============================================
+cd ~/temp-cleanup
 
-# Go into the cloned repo
-cd YOUR_REPO.git
+# ============================================
+# STEP 2: Clone a MIRROR of your repo
+# ============================================
+# This creates a "bare" repository (no working files)
+# It's SEPARATE from your main project - just for cleaning
+# Your original repo at /Users/marincapranov/Desktop/TestApps/armtestapp-rn stays untouched!
 
-# Remove the secrets
-bfg --replace-text secrets.txt
+git clone --mirror https://github.com/YOUR_USERNAME/armtestapp-rn.git
 
-# Or remove specific files entirely
+# After this command, you'll have:
+# ~/temp-cleanup/
+#   ├── secrets.txt (your secrets file)
+#   └── armtestapp-rn.git/ (bare repository clone)
+
+# ============================================
+# STEP 3: Go into the cloned mirror
+# ============================================
+cd armtestapp-rn.git
+
+# You're now in: ~/temp-cleanup/armtestapp-rn.git
+# This is a temporary workspace - NOT your main project!
+
+# ============================================
+# STEP 4: Run BFG to remove secrets
+# ============================================
+# This finds all instances of your secrets and replaces them with "***REMOVED***"
+bfg --replace-text ../secrets.txt
+
+# Note: ../secrets.txt because secrets.txt is in the parent directory
+# The BFG output will show:
+# - How many commits were changed
+# - How many files were affected
+# - What was replaced
+
+# ============================================
+# STEP 5: (Optional) Remove entire files
+# ============================================
+# If you want to completely remove files (not just replace content):
 bfg --delete-files '.env.development'
 bfg --delete-files 'appsettings.json'
 
-# Clean up
+# This removes the files from ALL commits in history
+
+# ============================================
+# STEP 6: Clean up git internals
+# ============================================
+# These commands are necessary to finalize the cleanup
 git reflog expire --expire=now --all
 git gc --prune=now --aggressive
 
-# Force push the cleaned history
+# This may take a few minutes for large repos
+
+# ============================================
+# STEP 7: Force push the cleaned history
+# ============================================
+# ⚠️ WARNING: This rewrites your GitHub repository history!
+# ⚠️ Make sure you're ready before running this!
+
 git push --force
+
+# If you have multiple remotes or branches:
+git push origin --force --all
+git push origin --force --tags
+
+# ============================================
+# STEP 8: Clean up the temporary mirror
+# ============================================
+cd ~/temp-cleanup
+rm -rf armtestapp-rn.git
+rm secrets.txt
+
+# Your main project is now clean!
+# Go back to your main project:
+cd /Users/marincapranov/Desktop/TestApps/armtestapp-rn
+
+# ============================================
+# STEP 9: Update your local copy
+# ============================================
+# Your local repo still has the old history
+# Update it to match the cleaned GitHub repo:
+
+git fetch --all
+git reset --hard origin/main  # or origin/feat/code-improvements
+
+# ============================================
+# DONE! ✅
+# ============================================
 ```
 
 ### Option B: Git Filter-Branch (Manual Method)
@@ -184,7 +278,7 @@ const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 
 ❌ **BAD**:
 ```typescript
-const supabaseUrl = "https://yhvvynswqkxvsgtlojav.supabase.co";
+const supabaseUrl = "***REMOVED***";
 ```
 
 ---

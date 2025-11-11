@@ -83,9 +83,11 @@ docs/
 │
 ├── 🔒 Security (Critical!)
 │   ├── SECURITY_CLEANUP_GUIDE.md              # Git history cleanup
+│   ├── GIT_CLEANUP_VISUAL_GUIDE.md            # Visual guide with diagrams
 │   ├── PRODUCTION_SECURITY_CHECKLIST.md       # Pre-deployment checklist
 │   ├── SECURITY_FIXES_APPLIED.md              # Summary of fixes
-│   └── STORAGE_POLICY_SETUP.md                # Storage security
+│   ├── STORAGE_POLICY_SETUP.md                # Storage security
+│   └── SECRETS_MANAGEMENT.md                  # Managing secrets securely
 │
 ├── 🔧 Features & Integrations
 │   ├── RESET_PASSWORD_SETUP.md                # Password reset
