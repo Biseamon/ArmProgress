@@ -78,7 +78,30 @@ export default function Profile() {
         return;
       }
 
-      console.log('Starting upload with asset:', asset.uri);
+      // Validate file size (max 5MB)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+      if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+        Alert.alert(
+          'File Too Large',
+          `Image must be under 5MB. Your file is ${(asset.fileSize / 1024 / 1024).toFixed(2)}MB`
+        );
+        return;
+      }
+
+      // Validate file type
+      const fileExt = asset.uri.split('.').pop()?.toLowerCase() || '';
+      const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+      if (!validExtensions.includes(fileExt)) {
+        Alert.alert(
+          'Invalid File Type',
+          'Please select a valid image file (JPG, PNG, WebP, or GIF)'
+        );
+        return;
+      }
+
+      if (__DEV__) {
+        console.log('Starting upload with asset:', asset.uri);
+      }
 
       // Delete ALL old avatars for this user (to handle different file extensions)
       try {
@@ -117,15 +140,18 @@ export default function Profile() {
         // Don't throw - continue with upload even if deletion fails
       }
 
-      const fileExt = asset.uri.split('.').pop()?.toLowerCase() || 'jpg';
       // Use user ID as filename for security and simplicity
       const fileName = `${profile.id}.${fileExt}`;
       const filePath = fileName;
 
-      console.log('File details:', { fileName, fileExt, filePath });
+      if (__DEV__) {
+        console.log('File details:', { fileName, fileExt, filePath });
+      }
 
       // Read file as base64 using FileSystem legacy API
-      console.log('Reading file as base64...');
+      if (__DEV__) {
+        console.log('Reading file as base64...');
+      }
       const base64 = await FileSystem.readAsStringAsync(asset.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -134,11 +160,8 @@ export default function Profile() {
         throw new Error('Failed to read image file');
       }
 
-      console.log('File read successfully, converting to ArrayBuffer...');
-
       // Upload to Supabase Storage using base64-arraybuffer
       // This uses the authenticated session automatically
-      console.log('Uploading file to path:', filePath);
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, decode(base64), {
@@ -148,13 +171,16 @@ export default function Profile() {
         });
 
       if (uploadError) {
-        console.error('Upload error:', uploadError);
-        console.error('Upload error details:', JSON.stringify(uploadError, null, 2));
+        if (__DEV__) {
+          console.error('Upload error:', uploadError);
+          console.error('Upload error details:', JSON.stringify(uploadError, null, 2));
+        }
         throw uploadError;
       }
 
-      console.log('Upload successful! Path:', uploadData.path);
-      console.log('Upload data:', JSON.stringify(uploadData, null, 2));
+      if (__DEV__) {
+        console.log('Upload successful! Path:', uploadData.path);
+      }
 
       // Get public URL with cache-busting timestamp
       const { data: { publicUrl } } = supabase.storage
@@ -165,8 +191,6 @@ export default function Profile() {
       const timestamp = Date.now();
       const publicUrlWithTimestamp = `${publicUrl}?t=${timestamp}`;
 
-      console.log('Public URL with cache-buster:', publicUrlWithTimestamp);
-
       // Update profile in database with the timestamped URL
       const { error: updateError } = await supabase
         .from('profiles')
@@ -174,7 +198,9 @@ export default function Profile() {
         .eq('id', profile.id);
 
       if (updateError) {
-        console.error('Profile update error:', updateError);
+        if (__DEV__) {
+          console.error('Profile update error:', updateError);
+        }
         throw updateError;
       }
 
@@ -183,12 +209,13 @@ export default function Profile() {
       setImageKey(timestamp);
 
       await refreshProfile();
-      
-      console.log('Avatar updated successfully');
+
       Alert.alert('Success', 'Profile picture updated!');
 
     } catch (error: any) {
-      console.error('Error uploading avatar:', error);
+      if (__DEV__) {
+        console.error('Error uploading avatar:', error);
+      }
       Alert.alert(
         'Upload Failed', 
         error?.message || 'Failed to upload image. Please try again.'

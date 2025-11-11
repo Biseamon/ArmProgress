@@ -27,11 +27,17 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
-.env
+# local env files - IMPORTANT: Never commit these!
+.env*
+!.env.example
+.env.local
+.env.development
+.env.production
 
 # typescript
 *.tsbuildinfo
 
-*.development
+# backend config (if you add it back)
+appsettings.json
+appsettings.*.json
+!appsettings.example.json

@@ -1,24 +1,33 @@
-# Supabase Database
+# 🗄️ Supabase Database Setup
 
 Complete database setup for Arm Wrestling Pro.
 
-## Quick Start
+---
 
-### For New/Fresh Database
+## ⚡ Quick Setup (5 Minutes)
 
-1. Run the complete migration:
-   ```bash
-   # In Supabase SQL Editor:
-   migrations/20251110_complete_schema.sql
-   ```
+### Step 1: Run Database Migration
 
-2. Verify it worked:
-   ```sql
-   SELECT table_name FROM information_schema.tables
-   WHERE table_schema = 'public';
-   ```
+1. Go to: https://supabase.com/dashboard/project/YOUR_PROJECT/sql/new
+2. Open file: `migrations/20251110_complete_schema.sql`
+3. Copy entire contents
+4. Paste into SQL Editor
+5. Click **"Run"**
+6. Should see: "Success. No rows returned" ✅
 
-That's it! ✅
+### Step 2: Configure Storage
+
+1. Go to: https://supabase.com/dashboard/project/YOUR_PROJECT/storage/buckets
+2. Create `avatars` bucket:
+   - ✅ Public bucket
+   - File size: `5000000` (5MB)
+   - Types: `image/jpeg,image/png,image/webp,image/gif`
+
+**See**: `../STORAGE_POLICY_SETUP.md` for details.
+
+That's it! Your database is ready. 🎉
+
+---
 
 ## Files
 
