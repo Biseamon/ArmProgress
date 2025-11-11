@@ -258,32 +258,45 @@ export default function Home() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
     >
-      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-        <View style={styles.headerContent}>
-          <View style={styles.logoPlaceholder}>
-            {profile?.avatar_url ? (
-              <Image 
-                source={{ uri: `${profile.avatar_url}?t=${Date.now()}` }} 
-                style={styles.avatarImage}
-                key={`home-avatar-${profile.avatar_url}`}
-                onError={(e) => {
-                  console.log('Home avatar load error:', e.nativeEvent.error);
-                }}
-              />
-            ) : (
-              <Text style={styles.logoText}>💪</Text>
-            )}
+      <View style={[styles.header, { paddingTop: insets.top + 20, paddingHorizontal: isTablet ? 40 : 20 }]}>
+        <View style={styles.headerLeft}>
+          <View style={[styles.appLogoContainer, isTablet && styles.appLogoContainerTablet]}>
+            <Text style={[styles.appLogoText, isTablet && styles.appLogoTextTablet]}>💪</Text>
           </View>
-          <View>
-            <Text style={[styles.greeting, { color: colors.textTertiary }]}>Welcome back,</Text>
-            <Text style={[styles.name, { color: colors.text }]}>{profile?.full_name || 'Athlete'}</Text>
+          <View style={styles.profileSection}>
+            <View style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}>
+              {profile?.avatar_url ? (
+                <Image
+                  source={{ uri: `${profile.avatar_url}?t=${Date.now()}` }}
+                  style={styles.avatarImage}
+                  key={`home-avatar-${profile.avatar_url}`}
+                  onError={(e) => {
+                    console.log('Home avatar load error:', e.nativeEvent.error);
+                  }}
+                />
+              ) : (
+                <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.avatarPlaceholderText, isTablet && styles.avatarPlaceholderTextTablet]}>
+                    {profile?.full_name?.charAt(0)?.toUpperCase() || 'A'}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.userInfo}>
+              <Text style={[styles.greeting, { color: colors.textTertiary }, isTablet && styles.greetingTablet]}>Welcome back,</Text>
+              <View style={styles.nameRow}>
+                <Text style={[styles.name, { color: colors.text }, isTablet && styles.nameTablet]} numberOfLines={1}>
+                  {profile?.full_name || 'Athlete'}
+                </Text>
+                {isPremium && (
+                  <View style={[styles.premiumBadge, { backgroundColor: colors.premium }, isTablet && styles.premiumBadgeTablet]}>
+                    <Text style={[styles.premiumText, isTablet && styles.premiumTextTablet]}>PRO</Text>
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
         </View>
-        {isPremium && (
-          <View style={[styles.premiumBadge, { backgroundColor: colors.premium }]}>
-            <Text style={styles.premiumText}>PRO</Text>
-          </View>
-        )}
       </View>
 
       <AdBanner />
@@ -590,10 +603,77 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  headerContent: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+    flex: 1,
+  },
+  appLogoContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: '#2A2A2A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E63946',
+  },
+  appLogoText: {
+    fontSize: 28,
+  },
+  profileSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  avatarContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+  },
+  avatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#2A2A2A',
+  },
+  avatarPlaceholderText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#E63946',
+  },
+  userInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  greeting: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  name: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    flexShrink: 1,
+  },
+  premiumBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  premiumText: {
+    color: '#1A1A1A',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   logoPlaceholder: {
     width: 60,
@@ -608,23 +688,10 @@ const styles = StyleSheet.create({
   logoText: {
     fontSize: 30,
   },
-  greeting: {
-    fontSize: 16,
-  },
-  name: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  premiumBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  premiumText: {
-    color: '#1A1A1A',
-    fontSize: 12,
-    fontWeight: 'bold',
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -920,5 +987,35 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 30,
+  },
+  // Tablet-specific styles
+  appLogoContainerTablet: {
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+  },
+  appLogoTextTablet: {
+    fontSize: 34,
+  },
+  avatarContainerTablet: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  avatarPlaceholderTextTablet: {
+    fontSize: 22,
+  },
+  greetingTablet: {
+    fontSize: 14,
+  },
+  nameTablet: {
+    fontSize: 24,
+  },
+  premiumBadgeTablet: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  premiumTextTablet: {
+    fontSize: 11,
   },
 });
