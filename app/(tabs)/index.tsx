@@ -1,6 +1,6 @@
 // This is the home screen for Arm Wrestling Pro.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
-  useColorScheme, // Add this import
   Image,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
@@ -23,13 +22,12 @@ import { useResponsive } from '@/lib/useResponsive';
 export default function Home() {
   const { profile, isPremium } = useAuth();
   const { colors } = useTheme();
-  const colorScheme = useColorScheme(); // Add this line
   const insets = useSafeAreaInsets();
-  const { columns, isTablet } = useResponsive();
+  const { isTablet } = useResponsive();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [completedGoals, setCompletedGoals] = useState<any[]>([]);
-  const [activeGoals, setActiveGoals] = useState<any[]>([]); // Add this line
+  const [activeGoals, setActiveGoals] = useState<any[]>([]);
   const [scheduledTrainings, setScheduledTrainings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,11 +42,6 @@ export default function Home() {
       textDecorationLine: 'underline',
     },
   });
-
-  // Add this useEffect to log theme changes (optional, for debugging)
-  useEffect(() => {
-    console.log('Current theme:', colorScheme);
-  }, [colorScheme]);
 
   const fetchWorkouts = async () => {
     if (!profile) return;
@@ -169,16 +162,14 @@ export default function Home() {
     setRefreshing(false);
   };
 
-  useEffect(() => {
-    fetchWorkouts().finally(() => setLoading(false));
-  }, [profile]);
-
+  // Fetch data only when screen is focused (removes duplicate with useEffect)
+  // Only depends on profile.id to prevent unnecessary refetches
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
-        fetchWorkouts();
+      if (profile?.id) {
+        fetchWorkouts().finally(() => setLoading(false));
       }
-    }, [profile])
+    }, [profile?.id])
   );
 
   const formatDate = (dateString: string) => {

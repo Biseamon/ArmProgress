@@ -50,12 +50,13 @@ export default function CycleDetails() {
   const [notes, setNotes] = useState('');
   const [exercises, setExercises] = useState<Exercise[]>([]);
 
+  // Only refetch when screen is focused and profile.id or cycleId changes
   useFocusEffect(
     useCallback(() => {
-      if (profile && cycleId) {
+      if (profile?.id && cycleId) {
         fetchCycleData();
       }
-    }, [profile, cycleId])
+    }, [profile?.id, cycleId])
   );
 
   const fetchCycleData = async () => {

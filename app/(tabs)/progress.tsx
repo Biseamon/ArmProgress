@@ -10,7 +10,6 @@ import {
   Dimensions,
   Platform,
   Alert,
-  useColorScheme,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,7 +42,6 @@ export default function Progress() {
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
-  const colorScheme = useColorScheme();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -87,12 +85,14 @@ export default function Progress() {
 
   const reportRef = useRef<View>(null);
 
+  // Only refetch when screen is focused and profile.id changes
+  // Removed profile?.weight_unit dependency as it causes unnecessary refetches
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchData();
       }
-    }, [profile, profile?.weight_unit])
+    }, [profile?.id])
   );
 
   const fetchData = async () => {

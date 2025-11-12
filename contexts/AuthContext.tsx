@@ -5,7 +5,7 @@
  * It provides login, signup, logout functionality and maintains the current user's session.
  */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { supabase, Profile } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import * as AuthSession from 'expo-auth-session';
@@ -271,25 +271,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Determine if user has premium access (either paid premium or test user)
   const isPremium = profile?.is_premium || profile?.is_test_user || false;
 
+  // Memoize profile to prevent unnecessary re-renders in child components
+  // This ensures profile object reference only changes when actual data changes
+  const memoizedProfile = useMemo(() => profile, [
+    profile?.id,
+    profile?.email,
+    profile?.full_name,
+    profile?.avatar_url,
+    profile?.weight_unit,
+    profile?.is_premium,
+    profile?.is_test_user,
+    profile?.created_at,
+    profile?.updated_at,
+  ]);
+
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(
+    () => ({
+      session,
+      profile: memoizedProfile,
+      loading,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signInWithApple,
+      signInWithFacebook,
+      signOut,
+      resetPassword,
+      updatePassword,
+      isPremium,
+      refreshProfile,
+    }),
+    [
+      session,
+      memoizedProfile,
+      loading,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signInWithApple,
+      signInWithFacebook,
+      signOut,
+      resetPassword,
+      updatePassword,
+      isPremium,
+      refreshProfile,
+    ]
+  );
+
   // Provide all auth state and functions to child components
   return (
-    <AuthContext.Provider
-      value={{
-        session,          // Current user session
-        profile,          // User profile data
-        loading,          // Loading state
-        signIn,           // Login function
-        signUp,           // Registration function
-        signInWithGoogle, // Google OAuth login
-        signInWithApple,  // Apple OAuth login
-        signInWithFacebook, // Facebook OAuth login
-        signOut,          // Logout function
-        resetPassword,    // Send password reset email
-        updatePassword,   // Update user's password
-        isPremium,        // Premium status
-        refreshProfile,   // Refresh profile function
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

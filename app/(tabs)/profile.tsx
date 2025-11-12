@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useRevenueCat } from '@/contexts/RevenueCatContext';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,6 +28,7 @@ import { STRIPE_CONFIG, APP_CONFIG } from '@/lib/config';
 export default function Profile() {
   const { profile, signOut, isPremium, refreshProfile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
+  const { isPremium: isRevenueCatPremium, restore } = useRevenueCat();
   const router = useRouter();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
@@ -258,11 +260,36 @@ export default function Profile() {
   };
 
   const handleUpgrade = () => {
-    Alert.alert(
-      'Upgrade to Premium',
-      'Premium features include:\n\n✓ Unlimited workout tracking\n✓ Advanced analytics\n✓ No advertisements\n✓ Export data\n\nContact support to upgrade your account.',
-      [{ text: 'OK' }]
-    );
+    router.push('/paywall');
+  };
+
+  const handleManageSubscription = async () => {
+    if (Platform.OS === 'ios') {
+      Linking.openURL('https://apps.apple.com/account/subscriptions');
+    } else {
+      Linking.openURL('https://play.google.com/store/account/subscriptions');
+    }
+  };
+
+  const handleRestorePurchases = async () => {
+    try {
+      Alert.alert('Restoring Purchases', 'Please wait...');
+      const result = await restore();
+
+      if (result.success) {
+        await refreshProfile();
+        Alert.alert(
+          'Success',
+          result.isPremium
+            ? 'Your purchases have been restored!'
+            : 'No previous purchases found.'
+        );
+      } else {
+        Alert.alert('Error', result.error || 'Failed to restore purchases');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to restore purchases');
+    }
   };
 
   const handleDonate = () => {
@@ -432,7 +459,9 @@ export default function Profile() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Premium Benefits</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            {isPremium ? 'Premium Membership' : 'Premium Benefits'}
+          </Text>
 
           <View style={[styles.benefitsCard, { backgroundColor: colors.surface }]}>
             <View style={styles.benefitItem}>
@@ -456,14 +485,38 @@ export default function Profile() {
               <Text style={[styles.benefitText, { color: colors.textSecondary }]}>Priority support</Text>
             </View>
 
-            {!isPremium && (
-              <TouchableOpacity
-                style={[styles.upgradeButtonLarge, { backgroundColor: colors.premium }]}
-                onPress={handleUpgrade}
-              >
-                <Crown size={20} color="#1A1A1A" />
-                <Text style={styles.upgradeTextLarge}>Get Premium Now</Text>
-              </TouchableOpacity>
+            {isPremium ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.manageButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={handleManageSubscription}
+                >
+                  <Shield size={18} color={colors.primary} />
+                  <Text style={[styles.manageButtonText, { color: colors.text }]}>Manage Subscription</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.restoreButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={handleRestorePurchases}
+                >
+                  <Text style={[styles.restoreButtonText, { color: colors.textSecondary }]}>Restore Purchases</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={[styles.upgradeButtonLarge, { backgroundColor: colors.premium }]}
+                  onPress={handleUpgrade}
+                >
+                  <Crown size={20} color="#1A1A1A" />
+                  <Text style={styles.upgradeTextLarge}>Get Premium Now</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.restoreButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={handleRestorePurchases}
+                >
+                  <Text style={[styles.restoreButtonText, { color: colors.textSecondary }]}>Restore Purchases</Text>
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </View>
@@ -656,6 +709,31 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  manageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 1,
+  },
+  manageButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  restoreButton: {
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  restoreButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   aboutText: {
     fontSize: 14,

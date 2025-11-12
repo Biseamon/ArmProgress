@@ -63,11 +63,11 @@ export default function CalendarScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchData();
       }
       return () => {};
-    }, [profile, currentYear])
+    }, [profile?.id, currentYear])
   );
 
   const fetchData = async () => {

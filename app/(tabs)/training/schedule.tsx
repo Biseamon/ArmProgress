@@ -8,7 +8,6 @@ import {
   TextInput,
   Modal,
   Platform,
-  useColorScheme,
   Alert,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
@@ -35,7 +34,6 @@ interface ScheduledTraining {
 export default function ScheduleScreen() {
   const { profile } = useAuth();
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
-  const colorScheme = useColorScheme();
 
   const [trainings, setTrainings] = useState<ScheduledTraining[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -49,12 +47,13 @@ export default function ScheduleScreen() {
   const [notificationEnabled, setNotificationEnabled] = useState(true);
   const [minutesBefore, setMinutesBefore] = useState('30');
 
+  // Only refetch when screen is focused and profile.id changes
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchTrainings();
       }
-    }, [profile])
+    }, [profile?.id])
   );
 
   const fetchTrainings = async () => {

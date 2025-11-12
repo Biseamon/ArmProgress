@@ -9,7 +9,6 @@ import {
   Modal,
   Alert,
   Platform,
-  useColorScheme,
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,7 +33,6 @@ type Exercise = {
 export default function Training() {
   const { profile, isPremium } = useAuth();
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
-  const colorScheme = useColorScheme();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -62,12 +60,13 @@ export default function Training() {
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
+  // Only refetch when screen is focused and profile.id changes
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchData();
       }
-    }, [profile])
+    }, [profile?.id])
   );
 
   // Handle edit workout from calendar

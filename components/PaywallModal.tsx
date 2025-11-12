@@ -1,5 +1,6 @@
-import { View, Text, Modal, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, StyleSheet } from 'react-native';
 import { Crown, X } from 'lucide-react-native';
+import { router } from 'expo-router';
 
 type PaywallModalProps = {
   visible: boolean;
@@ -22,18 +23,12 @@ const premiumFeatures = [
 
 export function PaywallModal({ visible, onClose, onUpgrade, feature }: PaywallModalProps) {
   const handleUpgrade = () => {
-    const stripePaymentUrl = 'https://buy.stripe.com/test_00000000';
-
-    if (Platform.OS === 'web') {
-      window.open(stripePaymentUrl, '_blank');
-    } else {
-      Linking.openURL(stripePaymentUrl);
-    }
+    onClose();
+    router.push('/paywall');
 
     if (onUpgrade) {
       onUpgrade();
     }
-    onClose();
   };
   return (
     <Modal
@@ -65,12 +60,8 @@ export function PaywallModal({ visible, onClose, onUpgrade, feature }: PaywallMo
           </View>
 
           <TouchableOpacity style={styles.upgradeButton} onPress={handleUpgrade}>
-            <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
+            <Text style={styles.upgradeButtonText}>View Premium Plans</Text>
           </TouchableOpacity>
-
-          <Text style={styles.noteText}>
-            Note: Please configure your Stripe payment link in the code
-          </Text>
 
           <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
             <Text style={styles.cancelButtonText}>Maybe Later</Text>
