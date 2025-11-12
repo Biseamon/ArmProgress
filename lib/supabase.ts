@@ -174,12 +174,12 @@ export type ScheduledTraining = {
 export type BodyMeasurement = {
   id: string;
   user_id: string;
-  weight?: number;         // Body weight
+  weight?: number | null;         // Body weight
   weight_unit: 'kg' | 'lbs'; // Unit for weight
-  arm_circumference?: number;      // in cm
-  forearm_circumference?: number;  // in cm
-  wrist_circumference?: number;    // in cm
-  notes?: string;
+  arm_circumference?: number | null;      // in cm
+  forearm_circumference?: number | null;  // in cm
+  wrist_circumference?: number | null;    // in cm
+  notes?: string | null;
   measured_at: string;
   created_at: string;
 };

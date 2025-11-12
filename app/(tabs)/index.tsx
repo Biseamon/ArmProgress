@@ -1,6 +1,6 @@
 // This is the home screen for Arm Wrestling Pro.
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -10,28 +10,37 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase, Workout, Cycle } from '@/lib/supabase';
+import { supabase, Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { Calendar, TrendingUp, Target, Clock, Minus } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/lib/useResponsive';
+import { useHomeData } from '@/hooks/useHomeData';
+import { performOptimisticUpdate, optimisticUpdate } from '@/lib/optimisticUpdates';
+import { invalidateCache } from '@/lib/cache';
 
 export default function Home() {
   const { profile, isPremium } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [completedGoals, setCompletedGoals] = useState<any[]>([]);
-  const [activeGoals, setActiveGoals] = useState<any[]>([]);
-  const [scheduledTrainings, setScheduledTrainings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
+
+  // Use custom hook with caching - replaces all manual fetching!
+  const { data: homeData, isLoading: loading, refetch } = useHomeData(profile?.id);
+
+  // Local state for optimistic updates
+  const [optimisticGoals, setOptimisticGoals] = useState<any[]>([]);
+
+  // Extract data from hook result (with fallbacks)
+  const workouts = homeData?.recentWorkouts || [];
+  const cycles = homeData?.cycles || [];
+  const completedGoals = homeData?.completedGoals || [];
+  const scheduledTrainings = homeData?.scheduledTrainings || [];
+  const stats = homeData?.stats || {
     totalWorkouts: 0,
     thisWeek: 0,
     totalMinutes: 0,
@@ -41,136 +50,16 @@ export default function Home() {
       fontWeight: '600',
       textDecorationLine: 'underline',
     },
-  });
-
-  const fetchWorkouts = async () => {
-    if (!profile) return;
-
-    try {
-      const [recentWorkouts, allWorkouts, cyclesData, completedGoalsData, activeGoalsData, scheduledTrainingsData] = await Promise.all([
-        supabase
-          .from('workouts')
-          .select('*')
-          .eq('user_id', profile.id)
-          .order('created_at', { ascending: false })
-          .limit(10), // Changed from 5 to 10
-        supabase
-          .from('workouts')
-          .select('*')
-          .eq('user_id', profile.id),
-        supabase
-          .from('cycles')
-          .select('*')
-          .eq('user_id', profile.id)
-          .order('is_active', { ascending: false })
-          .order('start_date', { ascending: false })
-          .limit(3),
-        supabase
-          .from('goals')
-          .select('*')
-          .eq('user_id', profile.id)
-          .eq('is_completed', true)
-          .order('created_at', { ascending: false })
-          .limit(3),
-        supabase
-          .from('goals')
-          .select('*')
-          .eq('user_id', profile.id)
-          .eq('is_completed', false)
-          .order('deadline', { ascending: true })
-          .limit(5), // Add this query for active goals
-        supabase
-          .from('scheduled_trainings')
-          .select('*')
-          .eq('user_id', profile.id)
-          .eq('completed', false)
-          .gte('scheduled_date', new Date().toISOString().split('T')[0])
-          .order('scheduled_date', { ascending: true })
-          .order('scheduled_time', { ascending: true })
-          .limit(5),
-      ]);
-
-      console.log('Cycles fetched:', cyclesData); // Add this debug log
-      console.log('Scheduled trainings fetched:', scheduledTrainingsData);
-      console.log('Active goals fetched:', activeGoalsData);
-
-      if (recentWorkouts.data) {
-        setWorkouts(recentWorkouts.data);
-      }
-
-      if (allWorkouts.data) {
-        calculateStats(allWorkouts.data);
-      }
-
-      if (cyclesData.data) {
-        setCycles(cyclesData.data);
-        console.log('Cycles set:', cyclesData.data); // Add this debug log
-      }
-
-      if (completedGoalsData.data) {
-        setCompletedGoals(completedGoalsData.data);
-      }
-
-      if (activeGoalsData.data) {
-        setActiveGoals(activeGoalsData.data);
-        console.log('Active goals set:', activeGoalsData.data);
-      }
-
-      if (scheduledTrainingsData.data) {
-        setScheduledTrainings(scheduledTrainingsData.data);
-        console.log('Scheduled trainings set:', scheduledTrainingsData.data);
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
   };
 
-  const calculateStats = (workoutData: Workout[]) => {
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    const thisWeekWorkouts = workoutData.filter(
-      (w) => new Date(w.created_at) > weekAgo
-    );
-
-    const totalMinutes = workoutData.reduce(
-      (sum, w) => sum + w.duration_minutes,
-      0
-    );
-
-    const avgIntensity =
-      workoutData.length > 0
-        ? workoutData.reduce((sum, w) => sum + w.intensity, 0) / workoutData.length
-        : 0;
-
-    setStats({
-      totalWorkouts: workoutData.length,
-      thisWeek: thisWeekWorkouts.length,
-      totalMinutes,
-      avgIntensity: Math.round(avgIntensity * 10) / 10,
-      viewAll: {
-        fontSize: 14,
-        fontWeight: '600',
-        textDecorationLine: 'underline',
-      },
-    });
-  };
+  // Use optimistic state if available, otherwise use server data
+  const activeGoals = optimisticGoals.length > 0 ? optimisticGoals : homeData?.activeGoals || [];
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchWorkouts();
+    await refetch();
     setRefreshing(false);
   };
-
-  // Fetch data only when screen is focused (removes duplicate with useEffect)
-  // Only depends on profile.id to prevent unnecessary refetches
-  useFocusEffect(
-    useCallback(() => {
-      if (profile?.id) {
-        fetchWorkouts().finally(() => setLoading(false));
-      }
-    }, [profile?.id])
-  );
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -207,31 +96,94 @@ export default function Home() {
     const newValue = goal.current_value + 1;
     const isCompleted = newValue >= goal.target_value;
 
-    await supabase
-      .from('goals')
-      .update({
-        current_value: newValue,
-        is_completed: isCompleted,
-      })
-      .eq('id', goal.id);
+    // Get current goals list
+    const currentGoals = homeData?.activeGoals || [];
 
-    // Refresh data to update the UI
-    fetchWorkouts();
+    // Perform optimistic update
+    await performOptimisticUpdate(
+      `increment-goal-${goal.id}`,
+      // Optimistic update: immediately update UI
+      () => {
+        const updated = optimisticUpdate(currentGoals, goal.id, {
+          current_value: newValue,
+          is_completed: isCompleted,
+        });
+        setOptimisticGoals(updated);
+      },
+      // Rollback: restore original state on error
+      () => {
+        setOptimisticGoals(currentGoals);
+      },
+      // API call
+      async () => {
+        const { data, error } = await supabase
+          .from('goals')
+          .update({
+            current_value: newValue,
+            is_completed: isCompleted,
+          })
+          .eq('id', goal.id)
+          .select();
+
+        if (error) throw error;
+        return data;
+      },
+      // On success: invalidate cache and refetch
+      () => {
+        if (profile?.id) {
+          invalidateCache.goals(profile.id);
+        }
+        setOptimisticGoals([]); // Clear optimistic state
+        refetch();
+      }
+    );
   };
 
   const handleDecrementGoal = async (goal: any) => {
     const newValue = Math.max(goal.current_value - 1, 0);
     const isCompleted = newValue >= goal.target_value;
 
-    await supabase
-      .from('goals')
-      .update({
-        current_value: newValue,
-        is_completed: isCompleted,
-      })
-      .eq('id', goal.id);
+    // Get current goals list
+    const currentGoals = homeData?.activeGoals || [];
 
-    fetchWorkouts();
+    // Perform optimistic update
+    await performOptimisticUpdate(
+      `decrement-goal-${goal.id}`,
+      // Optimistic update: immediately update UI
+      () => {
+        const updated = optimisticUpdate(currentGoals, goal.id, {
+          current_value: newValue,
+          is_completed: isCompleted,
+        });
+        setOptimisticGoals(updated);
+      },
+      // Rollback: restore original state on error
+      () => {
+        setOptimisticGoals(currentGoals);
+      },
+      // API call
+      async () => {
+        const { data, error } = await supabase
+          .from('goals')
+          .update({
+            current_value: newValue,
+            is_completed: isCompleted,
+          })
+          .eq('id', goal.id)
+          .select();
+
+        if (error) throw error;
+        return data;
+      },
+      // On success: invalidate cache and refetch
+      () => {
+        if (profile?.id) {
+          invalidateCache.goals(profile.id);
+        }
+        setOptimisticGoals([]); // Clear optimistic state
+        refetch();
+      }
+    );
   };
 
   if (loading) {
