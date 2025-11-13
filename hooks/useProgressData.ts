@@ -4,7 +4,6 @@
 
 import { useQuery } from './useQuery';
 import { supabase, Goal, StrengthTest, Workout, Cycle, BodyMeasurement } from '@/lib/supabase';
-import { requestCache, CacheKeys } from '@/lib/cache';
 
 interface ProgressData {
   goals: Goal[];
@@ -19,23 +18,14 @@ export interface UseProgressDataResult {
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
+  invalidate: () => void;
 }
-
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Fetch all progress screen data in parallel
  */
 async function fetchProgressData(userId: string): Promise<ProgressData> {
-  const cacheKey = `progress:${userId}`;
-
-  // Check cache first
-  const cached = requestCache.get<ProgressData>(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // Fetch all data in parallel
+  // Fetch all data in parallel (no manual caching - useQuery handles it)
   const [goalsResponse, testsResponse, workoutsResponse, measurementsResponse, cyclesResponse] =
     await Promise.all([
       supabase
@@ -82,9 +72,6 @@ async function fetchProgressData(userId: string): Promise<ProgressData> {
     cycles: cyclesResponse.data || [],
   };
 
-  // Cache the result
-  requestCache.set(cacheKey, progressData, CACHE_TTL);
-
   return progressData;
 }
 
@@ -92,7 +79,7 @@ async function fetchProgressData(userId: string): Promise<ProgressData> {
  * Hook for fetching progress screen data
  */
 export function useProgressData(userId: string | undefined): UseProgressDataResult {
-  const { data, isLoading, error, refetch } = useQuery(
+  const { data, isLoading, error, refetch, invalidate } = useQuery(
     `progress:${userId}`,
     async () => {
       if (!userId) throw new Error('User ID is required');
@@ -100,8 +87,8 @@ export function useProgressData(userId: string | undefined): UseProgressDataResu
     },
     {
       enabled: !!userId,
-      cacheTime: CACHE_TTL,
-      staleTime: 60 * 1000, // 1 minute
+      cacheTime: 0, // Disable caching completely
+      staleTime: 0, // Always consider data stale - fetch fresh every time
     }
   );
 
@@ -110,5 +97,6 @@ export function useProgressData(userId: string | undefined): UseProgressDataResu
     isLoading,
     error,
     refetch,
+    invalidate,
   };
 }

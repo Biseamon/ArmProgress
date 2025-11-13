@@ -31,6 +31,7 @@ export function validateWorkout(data: WorkoutInput): ValidationResult {
 
   // Validate workout type
   const validWorkoutTypes = [
+    'table_practice',
     'strength',
     'technique',
     'conditioning',

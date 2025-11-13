@@ -5,9 +5,11 @@
  * with automatic caching and loading states.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
 import { requestCache, CacheKeys } from '@/lib/cache';
+import { AppState } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 
 interface HomeDataStats {
   totalWorkouts: number;
@@ -181,6 +183,7 @@ export function useHomeData(userId: string | undefined): UseHomeDataResult {
   const [data, setData] = useState<HomeData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const appState = useRef(AppState.currentState);
 
   const fetchData = useCallback(async () => {
     if (!userId) {
@@ -206,6 +209,30 @@ export function useHomeData(userId: string | undefined): UseHomeDataResult {
   // Fetch on mount and when userId changes
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  // Refetch when screen is focused (cache will be checked first, so this is efficient)
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) {
+        fetchData();
+      }
+    }, [userId, fetchData])
+  );
+
+  // Also refetch when app comes to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App has come to the foreground
+        fetchData();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, [fetchData]);
 
   const refetch = useCallback(async () => {

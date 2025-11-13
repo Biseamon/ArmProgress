@@ -639,7 +639,11 @@ export default function Training() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 400 }}
+          >
             {cycles.length > 0 && (
               <>
                 <Text style={[styles.label, { color: colors.text }]}>Training Cycle (Optional)</Text>
@@ -848,8 +852,12 @@ export default function Training() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
-            <Text style={[styles.label, { color: colors.text }]}>Cycle Name</Text>
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 400 }}
+          >
+              <Text style={[styles.label, { color: colors.text }]}>Cycle Name</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={cycleName}

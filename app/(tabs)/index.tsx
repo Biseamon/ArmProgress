@@ -13,14 +13,12 @@ import {
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase, Cycle } from '@/lib/supabase';
+import { Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
-import { Calendar, TrendingUp, Target, Clock, Minus } from 'lucide-react-native';
+import { Calendar, TrendingUp, Target, Clock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/lib/useResponsive';
 import { useHomeData } from '@/hooks/useHomeData';
-import { performOptimisticUpdate, optimisticUpdate } from '@/lib/optimisticUpdates';
-import { invalidateCache } from '@/lib/cache';
 
 export default function Home() {
   const { profile, isPremium } = useAuth();
@@ -32,14 +30,12 @@ export default function Home() {
   // Use custom hook with caching - replaces all manual fetching!
   const { data: homeData, isLoading: loading, refetch } = useHomeData(profile?.id);
 
-  // Local state for optimistic updates
-  const [optimisticGoals, setOptimisticGoals] = useState<any[]>([]);
-
   // Extract data from hook result (with fallbacks)
   const workouts = homeData?.recentWorkouts || [];
   const cycles = homeData?.cycles || [];
   const completedGoals = homeData?.completedGoals || [];
   const scheduledTrainings = homeData?.scheduledTrainings || [];
+  const activeGoals = homeData?.activeGoals || [];
   const stats = homeData?.stats || {
     totalWorkouts: 0,
     thisWeek: 0,
@@ -51,9 +47,6 @@ export default function Home() {
       textDecorationLine: 'underline',
     },
   };
-
-  // Use optimistic state if available, otherwise use server data
-  const activeGoals = optimisticGoals.length > 0 ? optimisticGoals : homeData?.activeGoals || [];
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -90,100 +83,6 @@ export default function Home() {
 
   const getProgressPercentage = (goal: any) => {
     return Math.min((goal.current_value / goal.target_value) * 100, 100);
-  };
-
-  const handleIncrementGoal = async (goal: any) => {
-    const newValue = goal.current_value + 1;
-    const isCompleted = newValue >= goal.target_value;
-
-    // Get current goals list
-    const currentGoals = homeData?.activeGoals || [];
-
-    // Perform optimistic update
-    await performOptimisticUpdate(
-      `increment-goal-${goal.id}`,
-      // Optimistic update: immediately update UI
-      () => {
-        const updated = optimisticUpdate(currentGoals, goal.id, {
-          current_value: newValue,
-          is_completed: isCompleted,
-        });
-        setOptimisticGoals(updated);
-      },
-      // Rollback: restore original state on error
-      () => {
-        setOptimisticGoals(currentGoals);
-      },
-      // API call
-      async () => {
-        const { data, error } = await supabase
-          .from('goals')
-          .update({
-            current_value: newValue,
-            is_completed: isCompleted,
-          })
-          .eq('id', goal.id)
-          .select();
-
-        if (error) throw error;
-        return data;
-      },
-      // On success: invalidate cache and refetch
-      () => {
-        if (profile?.id) {
-          invalidateCache.goals(profile.id);
-        }
-        setOptimisticGoals([]); // Clear optimistic state
-        refetch();
-      }
-    );
-  };
-
-  const handleDecrementGoal = async (goal: any) => {
-    const newValue = Math.max(goal.current_value - 1, 0);
-    const isCompleted = newValue >= goal.target_value;
-
-    // Get current goals list
-    const currentGoals = homeData?.activeGoals || [];
-
-    // Perform optimistic update
-    await performOptimisticUpdate(
-      `decrement-goal-${goal.id}`,
-      // Optimistic update: immediately update UI
-      () => {
-        const updated = optimisticUpdate(currentGoals, goal.id, {
-          current_value: newValue,
-          is_completed: isCompleted,
-        });
-        setOptimisticGoals(updated);
-      },
-      // Rollback: restore original state on error
-      () => {
-        setOptimisticGoals(currentGoals);
-      },
-      // API call
-      async () => {
-        const { data, error } = await supabase
-          .from('goals')
-          .update({
-            current_value: newValue,
-            is_completed: isCompleted,
-          })
-          .eq('id', goal.id)
-          .select();
-
-        if (error) throw error;
-        return data;
-      },
-      // On success: invalidate cache and refetch
-      () => {
-        if (profile?.id) {
-          invalidateCache.goals(profile.id);
-        }
-        setOptimisticGoals([]); // Clear optimistic state
-        refetch();
-      }
-    );
   };
 
   if (loading) {
@@ -294,9 +193,11 @@ export default function Home() {
             </TouchableOpacity>
           </View>
           {activeGoals.map((goal) => (
-            <View
+            <TouchableOpacity
               key={goal.id}
               style={[styles.goalCard, { backgroundColor: colors.surface }]}
+              onPress={() => router.push('/progress')}
+              activeOpacity={0.7}
             >
               <View style={styles.goalHeader}>
                 <View style={styles.goalInfo}>
@@ -314,33 +215,9 @@ export default function Home() {
                   </Text>
                 )}
               </View>
-              <View style={styles.goalProgressRow}>
-                <Text style={[styles.goalProgress, { color: colors.textSecondary }]}>
-                  {goal.current_value} / {goal.target_value}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {goal.current_value > 0 && (
-                    <TouchableOpacity
-                      style={[styles.decrementButton, { backgroundColor: '#999', marginLeft: 4 }]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleDecrementGoal(goal);
-                      }}
-                    >
-                      <Minus size={16} color="#FFF" />
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.incrementButton, { backgroundColor: colors.primary }]}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleIncrementGoal(goal);
-                    }}
-                  >
-                    <Text style={styles.incrementText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <Text style={[styles.goalProgress, { color: colors.textSecondary }]}>
+                {goal.current_value} / {goal.target_value}
+              </Text>
               <View style={[styles.progressBarContainer, { backgroundColor: colors.background }]}>
                 <View
                   style={[
@@ -352,7 +229,7 @@ export default function Home() {
               <Text style={[styles.progressText, { color: colors.secondary }]}>
                 {Math.round(getProgressPercentage(goal))}% complete
               </Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -798,38 +675,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
   },
-  goalProgressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   goalProgress: {
     fontSize: 14,
     color: '#999',
-  },
-  incrementButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#E63946',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  decrementButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#999',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
-  },
-  incrementText: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    marginBottom: 8,
   },
   emptyCard: {
     backgroundColor: '#2A2A2A',

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,11 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase, Goal, StrengthTest } from '@/lib/supabase';
-import { useProgressData } from '@/hooks/useProgressData';
+import { supabase, Goal, StrengthTest, Workout, Cycle } from '@/lib/supabase';
+import { invalidateHomeData } from '@/hooks/useHomeData';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
@@ -42,22 +43,15 @@ export default function Progress() {
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
-
-  // Use custom hook with caching
-  const { data: progressData, isLoading: loading, refetch } = useProgressData(profile?.id);
-
-  // Extract data from hook result
-  const goals = progressData?.goals || [];
-  const strengthTests = progressData?.strengthTests || [];
-  const workouts = progressData?.workouts || [];
-  const measurements = progressData?.measurements || [];
-  const cycles = progressData?.cycles || [];
-
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalType, setGoalType] = useState('');
@@ -74,6 +68,7 @@ export default function Progress() {
   const [isCustomTest, setIsCustomTest] = useState(false);
 
   const [showMeasurements, setShowMeasurements] = useState(false);
+  const [measurements, setMeasurements] = useState<any[]>([]);
   const [showAddMeasurement, setShowAddMeasurement] = useState(false);
   const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
   const [weight, setWeight] = useState('');
@@ -82,6 +77,7 @@ export default function Progress() {
   const [wristCircumference, setWristCircumference] = useState('');
   const [measurementNotes, setMeasurementNotes] = useState('');
 
+  const [cycles, setCycles] = useState<Cycle[]>([]);
   const [showTestTooltip, setShowTestTooltip] = useState(false);
   const [showGoalsTooltip, setShowGoalsTooltip] = useState(false);
 
@@ -89,6 +85,58 @@ export default function Progress() {
   const [generatingReport, setGeneratingReport] = useState(false);
 
   const reportRef = useRef<View>(null);
+
+  // Only refetch when screen is focused and profile.id changes
+  // Removed profile?.weight_unit dependency as it causes unnecessary refetches
+  useFocusEffect(
+    useCallback(() => {
+      if (profile?.id) {
+        fetchData();
+      }
+    }, [profile?.id])
+  );
+
+  const fetchData = async () => {
+    if (!profile) return;
+
+    const [goalsResponse, testsResponse, workoutsResponse, measurementsResponse, cyclesResponse] = await Promise.all([
+      supabase
+        .from('goals')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('strength_tests')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(10),
+      supabase
+        .from('workouts')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('body_measurements')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('measured_at', { ascending: false })
+        .limit(10),
+      supabase
+        .from('cycles')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('start_date', { ascending: false }),
+    ]);
+
+    if (goalsResponse.data) setGoals(goalsResponse.data);
+    if (testsResponse.data) setStrengthTests(testsResponse.data);
+    if (workoutsResponse.data) setWorkouts(workoutsResponse.data);
+    if (measurementsResponse.data) setMeasurements(measurementsResponse.data);
+    if (cyclesResponse.data) setCycles(cyclesResponse.data);
+
+    setLoading(false);
+  };
 
   const handleSaveMeasurement = async () => {
     if (!profile) {
@@ -171,7 +219,7 @@ export default function Progress() {
     setMeasurementNotes('');
     setEditingMeasurement(null);
     setShowAddMeasurement(false);
-    await refetch();
+    await fetchData();
     Alert.alert('Success', `Measurement ${editingMeasurement ? 'updated' : 'saved'} successfully!`);
   };
 
@@ -189,7 +237,7 @@ export default function Progress() {
         Alert.alert('Error', 'Please fill in all fields.');
         return;
       }
-  
+
       const goalData = {
         goal_type: goalType,
         target_value: parseFloat(targetValue),
@@ -197,7 +245,7 @@ export default function Progress() {
         notes: goalNotes || null,
         user_id: profile?.id,
       };
-  
+
       if (editingGoal) {
         // When editing, include current_value and is_completed to avoid overwriting
         await supabase
@@ -216,9 +264,14 @@ export default function Progress() {
           is_completed: false,
         });
       }
-  
+
+      // Invalidate home screen cache
+      if (profile?.id) {
+        invalidateHomeData(profile.id);
+      }
+
       setShowGoalModal(false);
-      refetch();
+      fetchData();
     };
   
   const handleEditGoal = (goal: Goal) => {
@@ -247,7 +300,12 @@ export default function Progress() {
       setTimeout(() => setShowConfetti(false), 5000);
     }
 
-    refetch();
+    // Invalidate home screen cache so it shows updated goals
+    if (profile?.id) {
+      invalidateHomeData(profile.id);
+    }
+
+    fetchData();
   };
 
   const handleDecrementGoal = async (goal: Goal) => {
@@ -262,14 +320,23 @@ export default function Progress() {
       })
       .eq('id', goal.id);
 
-    refetch();
+    // Invalidate home screen cache so it shows updated goals
+    if (profile?.id) {
+      invalidateHomeData(profile.id);
+    }
+
+    fetchData();
   };
 
   const handleDeleteGoal = async (goalId: string) => {
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this goal?')) {
         await supabase.from('goals').delete().eq('id', goalId);
-        refetch();
+        // Invalidate home screen cache
+        if (profile?.id) {
+          invalidateHomeData(profile.id);
+        }
+        fetchData();
       }
     } else {
       Alert.alert('Delete Goal', 'Are you sure you want to delete this goal?', [
@@ -279,7 +346,11 @@ export default function Progress() {
           style: 'destructive',
           onPress: async () => {
             await supabase.from('goals').delete().eq('id', goalId);
-            refetch();
+            // Invalidate home screen cache
+            if (profile?.id) {
+              invalidateHomeData(profile.id);
+            }
+            fetchData();
           },
         },
       ]);
@@ -338,7 +409,7 @@ export default function Progress() {
       setTestNotes('');
       setEditingTest(null);
       setShowTestModal(false);
-      await refetch();
+      await fetchData();
       Alert.alert('Success', 'PR saved successfully!');
     } catch (error: any) {
       console.error('Error saving test:', error);
@@ -375,7 +446,7 @@ export default function Progress() {
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this test?')) {
         await supabase.from('strength_tests').delete().eq('id', testId);
-        refetch();
+        fetchData();
       }
     } else {
       Alert.alert('Delete PR', 'Are you sure you want to delete this test?', [
@@ -385,7 +456,7 @@ export default function Progress() {
           style: 'destructive',
           onPress: async () => {
             await supabase.from('strength_tests').delete().eq('id', testId);
-            refetch();
+            fetchData();
           },
         },
       ]);
@@ -440,7 +511,7 @@ export default function Progress() {
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this measurement?')) {
         await supabase.from('body_measurements').delete().eq('id', measurementId);
-        refetch();
+        fetchData();
       }
     } else {
       Alert.alert('Delete Measurement', 'Are you sure you want to delete this measurement?', [
@@ -450,7 +521,7 @@ export default function Progress() {
           style: 'destructive',
           onPress: async () => {
             await supabase.from('body_measurements').delete().eq('id', measurementId);
-            refetch();
+            fetchData();
           },
         },
       ]);
@@ -638,15 +709,15 @@ export default function Progress() {
     
     const latestArm = recentMeasurements
       .filter(m => m.arm_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
     
     const latestForearm = recentMeasurements
       .filter(m => m.forearm_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
     
     const latestWrist = recentMeasurements
       .filter(m => m.wrist_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
     
     // Get oldest measurements for comparison (from 3 months ago)
     const oldestWeight = recentMeasurements
@@ -693,7 +764,7 @@ export default function Progress() {
   };
 
   const generateHTMLReport = (reportData: ReturnType<typeof generateReportData>) => {
-    const calculateChange = (latest: number | null | undefined, oldest: number | null | undefined) => {
+    const calculateChange = (latest: number | null, oldest: number | null) => {
       if (!latest || !oldest) return null;
       const change = ((latest - oldest) / oldest) * 100;
       return change;
@@ -1870,7 +1941,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
       <MeasurementsModal
         visible={showMeasurements}
         onClose={() => setShowMeasurements(false)}
-        measurements={measurements as any}
+        measurements={measurements}
         onAddNew={() => {
           setEditingMeasurement(null);
           setWeight('');

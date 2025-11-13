@@ -1,30 +1,52 @@
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Detect if running in Expo Go on Android
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
+const shouldEnableNotifications = !(Platform.OS === 'android' && isExpoGo);
+
+// Only import notifications if supported
+let Notifications: any = null;
+
+if (shouldEnableNotifications) {
+  try {
+    // Dynamic import to prevent loading in Expo Go on Android
+    Notifications = require('expo-notifications');
+
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to initialize notifications:', error);
+    Notifications = null;
+  }
+}
 
 export async function requestNotificationPermissions() {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === 'web' || !shouldEnableNotifications || !Notifications) {
     return { granted: false };
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
 
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    return { granted: finalStatus === 'granted' };
+  } catch (error) {
+    console.warn('Failed to request notification permissions:', error);
+    return { granted: false };
   }
-
-  return { granted: finalStatus === 'granted' };
 }
 
 export async function scheduleTrainingNotification(
@@ -34,6 +56,11 @@ export async function scheduleTrainingNotification(
   time: string, // Format: HH:MM
   minutesBefore: number = 30
 ): Promise<string | null> {
+  if (!shouldEnableNotifications || !Notifications) {
+    console.log('Notifications not available in Expo Go on Android');
+    return null;
+  }
+
   try {
     // Parse the date and time strings
     const [year, month, day] = date.split('-').map(Number);
@@ -82,7 +109,7 @@ export async function scheduleTrainingNotification(
 }
 
 export async function cancelNotification(notificationId: string) {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === 'web' || !shouldEnableNotifications || !Notifications) {
     return;
   }
 
@@ -94,7 +121,7 @@ export async function cancelNotification(notificationId: string) {
 }
 
 export async function cancelAllTrainingNotifications() {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === 'web' || !shouldEnableNotifications || !Notifications) {
     return;
   }
 
