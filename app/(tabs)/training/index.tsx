@@ -9,12 +9,13 @@ import {
   Modal,
   Alert,
   Platform,
-  useColorScheme,
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
+import { performOptimisticUpdate, optimisticDelete } from '@/lib/optimisticUpdates';
+import { invalidateCache } from '@/lib/cache';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
@@ -34,7 +35,6 @@ type Exercise = {
 export default function Training() {
   const { profile, isPremium } = useAuth();
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
-  const colorScheme = useColorScheme();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -62,12 +62,13 @@ export default function Training() {
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
+  // Only refetch when screen is focused and profile.id changes
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchData();
       }
-    }, [profile])
+    }, [profile?.id])
   );
 
   // Handle edit workout from calendar
@@ -170,8 +171,32 @@ export default function Training() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await supabase.from('workouts').delete().eq('id', workout.id);
-            fetchData();
+            // Perform optimistic update
+            await performOptimisticUpdate(
+              `delete-workout-${workout.id}`,
+              // Optimistic update: immediately remove from UI
+              () => {
+                const updated = optimisticDelete(workouts, workout.id);
+                setWorkouts(updated);
+              },
+              // Rollback: restore workout if API fails
+              () => {
+                setWorkouts([...workouts]);
+              },
+              // API call
+              async () => {
+                const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
+                if (error) throw error;
+                return true;
+              },
+              // On success: invalidate cache and refetch
+              () => {
+                if (profile?.id) {
+                  invalidateCache.workouts(profile.id);
+                }
+                fetchData();
+              }
+            );
           },
         },
       ]
@@ -614,7 +639,11 @@ export default function Training() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 400 }}
+          >
             {cycles.length > 0 && (
               <>
                 <Text style={[styles.label, { color: colors.text }]}>Training Cycle (Optional)</Text>
@@ -823,8 +852,12 @@ export default function Training() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
-            <Text style={[styles.label, { color: colors.text }]}>Cycle Name</Text>
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 400 }}
+          >
+              <Text style={[styles.label, { color: colors.text }]}>Cycle Name</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={cycleName}

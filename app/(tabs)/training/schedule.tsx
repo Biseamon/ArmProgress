@@ -8,7 +8,6 @@ import {
   TextInput,
   Modal,
   Platform,
-  useColorScheme,
   Alert,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
@@ -16,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase } from '@/lib/supabase';
 import { scheduleTrainingNotification, cancelNotification, requestNotificationPermissions } from '@/lib/notifications';
+import { invalidateHomeData } from '@/hooks/useHomeData';
 import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CircleCheck as CheckCircle, ArrowLeft, Pencil } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -35,7 +35,6 @@ interface ScheduledTraining {
 export default function ScheduleScreen() {
   const { profile } = useAuth();
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
-  const colorScheme = useColorScheme();
 
   const [trainings, setTrainings] = useState<ScheduledTraining[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -49,12 +48,13 @@ export default function ScheduleScreen() {
   const [notificationEnabled, setNotificationEnabled] = useState(true);
   const [minutesBefore, setMinutesBefore] = useState('30');
 
+  // Only refetch when screen is focused and profile.id changes
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchTrainings();
       }
-    }, [profile])
+    }, [profile?.id])
   );
 
   const fetchTrainings = async () => {
@@ -146,6 +146,9 @@ export default function ScheduleScreen() {
         });
     }
 
+    // Invalidate home cache so scheduled trainings appear immediately
+    invalidateHomeData(profile.id);
+
     setTitle('');
     setDescription('');
     setSelectedDate(new Date());
@@ -185,6 +188,11 @@ export default function ScheduleScreen() {
       .update({ completed: newStatus })
       .eq('id', training.id);
 
+    // Invalidate home cache (updates both scheduled trainings and workouts if completed)
+    if (profile) {
+      invalidateHomeData(profile.id);
+    }
+
     fetchTrainings();
   };
 
@@ -209,6 +217,12 @@ export default function ScheduleScreen() {
           await cancelNotification(training.notification_id);
         }
         await supabase.from('scheduled_trainings').delete().eq('id', training.id);
+
+        // Invalidate home cache
+        if (profile) {
+          invalidateHomeData(profile.id);
+        }
+
         fetchTrainings();
       }
     } else {
@@ -225,6 +239,12 @@ export default function ScheduleScreen() {
                 await cancelNotification(training.notification_id);
               }
               await supabase.from('scheduled_trainings').delete().eq('id', training.id);
+
+              // Invalidate home cache
+              if (profile) {
+                invalidateHomeData(profile.id);
+              }
+
               fetchTrainings();
             },
           },
@@ -311,7 +331,11 @@ export default function ScheduleScreen() {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 400 }}
+          >
             <Text style={[styles.label, { color: colors.text }]}>Title</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}

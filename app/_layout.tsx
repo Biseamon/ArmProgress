@@ -2,11 +2,13 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'react-native';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
+import { RevenueCatProvider } from '@/contexts/RevenueCatContext';
 
 function AppContent() {
   const { isDark } = useTheme();
+  const { profile } = useAuth();
 
   useEffect(() => {
     // Update status bar when theme changes
@@ -14,7 +16,7 @@ function AppContent() {
   }, [isDark]);
 
   return (
-    <>
+    <RevenueCatProvider userId={profile?.id}>
       <StatusBar
         barStyle={isDark ? 'light-content' : 'dark-content'}
         backgroundColor="transparent"
@@ -25,7 +27,7 @@ function AppContent() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
-    </>
+    </RevenueCatProvider>
   );
 }
 

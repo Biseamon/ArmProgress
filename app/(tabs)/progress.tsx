@@ -10,12 +10,12 @@ import {
   Dimensions,
   Platform,
   Alert,
-  useColorScheme,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Goal, StrengthTest, Workout, Cycle } from '@/lib/supabase';
+import { invalidateHomeData } from '@/hooks/useHomeData';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
@@ -43,7 +43,6 @@ export default function Progress() {
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
-  const colorScheme = useColorScheme();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -87,12 +86,14 @@ export default function Progress() {
 
   const reportRef = useRef<View>(null);
 
+  // Only refetch when screen is focused and profile.id changes
+  // Removed profile?.weight_unit dependency as it causes unnecessary refetches
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchData();
       }
-    }, [profile, profile?.weight_unit])
+    }, [profile?.id])
   );
 
   const fetchData = async () => {
@@ -236,7 +237,7 @@ export default function Progress() {
         Alert.alert('Error', 'Please fill in all fields.');
         return;
       }
-  
+
       const goalData = {
         goal_type: goalType,
         target_value: parseFloat(targetValue),
@@ -244,7 +245,7 @@ export default function Progress() {
         notes: goalNotes || null,
         user_id: profile?.id,
       };
-  
+
       if (editingGoal) {
         // When editing, include current_value and is_completed to avoid overwriting
         await supabase
@@ -263,7 +264,12 @@ export default function Progress() {
           is_completed: false,
         });
       }
-  
+
+      // Invalidate home screen cache
+      if (profile?.id) {
+        invalidateHomeData(profile.id);
+      }
+
       setShowGoalModal(false);
       fetchData();
     };
@@ -294,6 +300,11 @@ export default function Progress() {
       setTimeout(() => setShowConfetti(false), 5000);
     }
 
+    // Invalidate home screen cache so it shows updated goals
+    if (profile?.id) {
+      invalidateHomeData(profile.id);
+    }
+
     fetchData();
   };
 
@@ -309,6 +320,11 @@ export default function Progress() {
       })
       .eq('id', goal.id);
 
+    // Invalidate home screen cache so it shows updated goals
+    if (profile?.id) {
+      invalidateHomeData(profile.id);
+    }
+
     fetchData();
   };
 
@@ -316,6 +332,10 @@ export default function Progress() {
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this goal?')) {
         await supabase.from('goals').delete().eq('id', goalId);
+        // Invalidate home screen cache
+        if (profile?.id) {
+          invalidateHomeData(profile.id);
+        }
         fetchData();
       }
     } else {
@@ -326,6 +346,10 @@ export default function Progress() {
           style: 'destructive',
           onPress: async () => {
             await supabase.from('goals').delete().eq('id', goalId);
+            // Invalidate home screen cache
+            if (profile?.id) {
+              invalidateHomeData(profile.id);
+            }
             fetchData();
           },
         },

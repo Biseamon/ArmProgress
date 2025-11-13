@@ -14,6 +14,8 @@ import { useFocusEffect, router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, Workout, StrengthTest } from '@/lib/supabase';
+import { performOptimisticUpdate, optimisticDelete } from '@/lib/optimisticUpdates';
+import { invalidateCache } from '@/lib/cache';
 import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2 } from 'lucide-react-native';
 import { convertWeight, formatWeight } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -63,18 +65,22 @@ export default function CalendarScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (profile) {
+      if (profile?.id) {
         fetchData();
       }
       return () => {};
-    }, [profile, currentYear])
+    }, [profile?.id, currentYear, currentMonth])
   );
 
   const fetchData = async () => {
     if (!profile) return;
 
-    const startDate = `${currentYear}-01-01`;
-    const endDate = `${currentYear}-12-31`;
+    // Fetch data for current month ± 1 month (3 months total) for better performance
+    const prevMonth = new Date(currentYear, currentMonth - 1, 1);
+    const nextMonth = new Date(currentYear, currentMonth + 2, 0); // Last day of next month
+
+    const startDate = prevMonth.toISOString().split('T')[0];
+    const endDate = nextMonth.toISOString().split('T')[0];
 
     const [workoutsRes, cyclesRes, goalsRes, strengthTestsRes, scheduledTrainingsRes, profileRes] = await Promise.all([
       supabase
@@ -432,9 +438,32 @@ export default function CalendarScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await supabase.from('workouts').delete().eq('id', workout.id);
-            // Refresh data
-            fetchData();
+            // Perform optimistic update
+            await performOptimisticUpdate(
+              `delete-workout-${workout.id}`,
+              // Optimistic update: immediately remove from UI
+              () => {
+                const updated = optimisticDelete(workouts, workout.id);
+                setWorkouts(updated);
+              },
+              // Rollback: restore workout if API fails
+              () => {
+                setWorkouts([...workouts]);
+              },
+              // API call
+              async () => {
+                const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
+                if (error) throw error;
+                return true;
+              },
+              // On success: invalidate cache and refetch
+              () => {
+                if (profile?.id) {
+                  invalidateCache.workouts(profile.id);
+                }
+                fetchData();
+              }
+            );
           },
         },
       ]

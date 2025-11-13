@@ -1,6 +1,6 @@
 // This is the home screen for Arm Wrestling Pro.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -8,32 +8,35 @@ import {
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
-  useColorScheme, // Add this import
   Image,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase, Workout, Cycle } from '@/lib/supabase';
+import { Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
-import { Calendar, TrendingUp, Target, Clock, Minus } from 'lucide-react-native';
+import { Calendar, TrendingUp, Target, Clock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/lib/useResponsive';
+import { useHomeData } from '@/hooks/useHomeData';
 
 export default function Home() {
   const { profile, isPremium } = useAuth();
   const { colors } = useTheme();
-  const colorScheme = useColorScheme(); // Add this line
   const insets = useSafeAreaInsets();
-  const { columns, isTablet } = useResponsive();
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [completedGoals, setCompletedGoals] = useState<any[]>([]);
-  const [activeGoals, setActiveGoals] = useState<any[]>([]); // Add this line
-  const [scheduledTrainings, setScheduledTrainings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { isTablet } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
+
+  // Use custom hook with caching - replaces all manual fetching!
+  const { data: homeData, isLoading: loading, refetch } = useHomeData(profile?.id);
+
+  // Extract data from hook result (with fallbacks)
+  const workouts = homeData?.recentWorkouts || [];
+  const cycles = homeData?.cycles || [];
+  const completedGoals = homeData?.completedGoals || [];
+  const scheduledTrainings = homeData?.scheduledTrainings || [];
+  const activeGoals = homeData?.activeGoals || [];
+  const stats = homeData?.stats || {
     totalWorkouts: 0,
     thisWeek: 0,
     totalMinutes: 0,
@@ -43,143 +46,13 @@ export default function Home() {
       fontWeight: '600',
       textDecorationLine: 'underline',
     },
-  });
-
-  // Add this useEffect to log theme changes (optional, for debugging)
-  useEffect(() => {
-    console.log('Current theme:', colorScheme);
-  }, [colorScheme]);
-
-  const fetchWorkouts = async () => {
-    if (!profile) return;
-
-    try {
-      const [recentWorkouts, allWorkouts, cyclesData, completedGoalsData, activeGoalsData, scheduledTrainingsData] = await Promise.all([
-        supabase
-          .from('workouts')
-          .select('*')
-          .eq('user_id', profile.id)
-          .order('created_at', { ascending: false })
-          .limit(10), // Changed from 5 to 10
-        supabase
-          .from('workouts')
-          .select('*')
-          .eq('user_id', profile.id),
-        supabase
-          .from('cycles')
-          .select('*')
-          .eq('user_id', profile.id)
-          .order('is_active', { ascending: false })
-          .order('start_date', { ascending: false })
-          .limit(3),
-        supabase
-          .from('goals')
-          .select('*')
-          .eq('user_id', profile.id)
-          .eq('is_completed', true)
-          .order('created_at', { ascending: false })
-          .limit(3),
-        supabase
-          .from('goals')
-          .select('*')
-          .eq('user_id', profile.id)
-          .eq('is_completed', false)
-          .order('deadline', { ascending: true })
-          .limit(5), // Add this query for active goals
-        supabase
-          .from('scheduled_trainings')
-          .select('*')
-          .eq('user_id', profile.id)
-          .eq('completed', false)
-          .gte('scheduled_date', new Date().toISOString().split('T')[0])
-          .order('scheduled_date', { ascending: true })
-          .order('scheduled_time', { ascending: true })
-          .limit(5),
-      ]);
-
-      console.log('Cycles fetched:', cyclesData); // Add this debug log
-      console.log('Scheduled trainings fetched:', scheduledTrainingsData);
-      console.log('Active goals fetched:', activeGoalsData);
-
-      if (recentWorkouts.data) {
-        setWorkouts(recentWorkouts.data);
-      }
-
-      if (allWorkouts.data) {
-        calculateStats(allWorkouts.data);
-      }
-
-      if (cyclesData.data) {
-        setCycles(cyclesData.data);
-        console.log('Cycles set:', cyclesData.data); // Add this debug log
-      }
-
-      if (completedGoalsData.data) {
-        setCompletedGoals(completedGoalsData.data);
-      }
-
-      if (activeGoalsData.data) {
-        setActiveGoals(activeGoalsData.data);
-        console.log('Active goals set:', activeGoalsData.data);
-      }
-
-      if (scheduledTrainingsData.data) {
-        setScheduledTrainings(scheduledTrainingsData.data);
-        console.log('Scheduled trainings set:', scheduledTrainingsData.data);
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
-  };
-
-  const calculateStats = (workoutData: Workout[]) => {
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-    const thisWeekWorkouts = workoutData.filter(
-      (w) => new Date(w.created_at) > weekAgo
-    );
-
-    const totalMinutes = workoutData.reduce(
-      (sum, w) => sum + w.duration_minutes,
-      0
-    );
-
-    const avgIntensity =
-      workoutData.length > 0
-        ? workoutData.reduce((sum, w) => sum + w.intensity, 0) / workoutData.length
-        : 0;
-
-    setStats({
-      totalWorkouts: workoutData.length,
-      thisWeek: thisWeekWorkouts.length,
-      totalMinutes,
-      avgIntensity: Math.round(avgIntensity * 10) / 10,
-      viewAll: {
-        fontSize: 14,
-        fontWeight: '600',
-        textDecorationLine: 'underline',
-      },
-    });
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchWorkouts();
+    await refetch();
     setRefreshing(false);
   };
-
-  useEffect(() => {
-    fetchWorkouts().finally(() => setLoading(false));
-  }, [profile]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (profile) {
-        fetchWorkouts();
-      }
-    }, [profile])
-  );
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -210,37 +83,6 @@ export default function Home() {
 
   const getProgressPercentage = (goal: any) => {
     return Math.min((goal.current_value / goal.target_value) * 100, 100);
-  };
-
-  const handleIncrementGoal = async (goal: any) => {
-    const newValue = goal.current_value + 1;
-    const isCompleted = newValue >= goal.target_value;
-
-    await supabase
-      .from('goals')
-      .update({
-        current_value: newValue,
-        is_completed: isCompleted,
-      })
-      .eq('id', goal.id);
-
-    // Refresh data to update the UI
-    fetchWorkouts();
-  };
-
-  const handleDecrementGoal = async (goal: any) => {
-    const newValue = Math.max(goal.current_value - 1, 0);
-    const isCompleted = newValue >= goal.target_value;
-
-    await supabase
-      .from('goals')
-      .update({
-        current_value: newValue,
-        is_completed: isCompleted,
-      })
-      .eq('id', goal.id);
-
-    fetchWorkouts();
   };
 
   if (loading) {
@@ -351,9 +193,11 @@ export default function Home() {
             </TouchableOpacity>
           </View>
           {activeGoals.map((goal) => (
-            <View
+            <TouchableOpacity
               key={goal.id}
               style={[styles.goalCard, { backgroundColor: colors.surface }]}
+              onPress={() => router.push('/progress')}
+              activeOpacity={0.7}
             >
               <View style={styles.goalHeader}>
                 <View style={styles.goalInfo}>
@@ -371,33 +215,9 @@ export default function Home() {
                   </Text>
                 )}
               </View>
-              <View style={styles.goalProgressRow}>
-                <Text style={[styles.goalProgress, { color: colors.textSecondary }]}>
-                  {goal.current_value} / {goal.target_value}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {goal.current_value > 0 && (
-                    <TouchableOpacity
-                      style={[styles.decrementButton, { backgroundColor: '#999', marginLeft: 4 }]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleDecrementGoal(goal);
-                      }}
-                    >
-                      <Minus size={16} color="#FFF" />
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={[styles.incrementButton, { backgroundColor: colors.primary }]}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleIncrementGoal(goal);
-                    }}
-                  >
-                    <Text style={styles.incrementText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <Text style={[styles.goalProgress, { color: colors.textSecondary }]}>
+                {goal.current_value} / {goal.target_value}
+              </Text>
               <View style={[styles.progressBarContainer, { backgroundColor: colors.background }]}>
                 <View
                   style={[
@@ -409,7 +229,7 @@ export default function Home() {
               <Text style={[styles.progressText, { color: colors.secondary }]}>
                 {Math.round(getProgressPercentage(goal))}% complete
               </Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
@@ -855,38 +675,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
   },
-  goalProgressRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   goalProgress: {
     fontSize: 14,
     color: '#999',
-  },
-  incrementButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#E63946',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  decrementButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#999',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
-  },
-  incrementText: {
-    color: '#FFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    marginBottom: 8,
   },
   emptyCard: {
     backgroundColor: '#2A2A2A',
