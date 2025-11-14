@@ -513,6 +513,68 @@ When a goal is marked as completed (either manually or by reaching target value)
 
 ---
 
+---
+
+## Authentication & Session Persistence
+
+### How Session Persistence Works
+
+The app is configured to keep users logged in indefinitely unless they explicitly sign out. Here's how it works:
+
+**Session Storage** ([lib/supabase.ts:44-54](../lib/supabase.ts#L44-L54)):
+```typescript
+{
+  auth: {
+    autoRefreshToken: true,      // Auto-refresh tokens before expiry
+    persistSession: true,         // Save session to device storage
+    storage: AsyncStorage,        // React Native secure storage
+    storageKey: 'armwrestling-auth', // Custom storage key
+    flowType: 'pkce',            // PKCE flow for better security
+  }
+}
+```
+
+**Session Recovery** ([contexts/AuthContext.tsx:78-99](../contexts/AuthContext.tsx#L78-L99)):
+- On app startup, retrieves existing session from AsyncStorage
+- Automatically fetches user profile when session is found
+- Sets up listener for auth state changes (login, logout, token refresh)
+
+**Token Refresh**:
+- Access tokens expire after 1 hour by default (configurable in Supabase dashboard)
+- Refresh tokens are valid for 30 days by default
+- `autoRefreshToken: true` automatically refreshes tokens before they expire
+- Token refresh happens silently in the background
+
+### Why Users Might Get Logged Out
+
+1. **App Cache Cleared**: User clears app data or reinstalls the app
+2. **Token Refresh Failure**: Network issues during automatic token refresh (rare)
+3. **Manual Sign Out**: User explicitly signs out
+4. **Refresh Token Expired**: After 30 days of inactivity (configurable)
+
+### Recommended Supabase Dashboard Settings
+
+To maximize session persistence:
+
+1. **Go to your Supabase project → Authentication → Settings**
+2. **JWT Expiry**: Increase from 3600s (1 hour) to 604800s (7 days)
+   - This reduces the frequency of token refreshes
+   - Users stay logged in for up to 7 days without needing a refresh
+3. **Refresh Token Expiry**: Keep at default (2592000s = 30 days) or increase
+   - This is how long a user can remain logged in without opening the app
+   - After this time, they'll need to sign in again
+
+### Monitoring Authentication
+
+The app now logs authentication events in development mode:
+- `[Auth] User signed in` - User successfully authenticated
+- `[Auth] Token refreshed successfully` - Token auto-refreshed
+- `[Auth] User signed out` - User logged out
+
+Check console logs if users report unexpected logouts.
+
+---
+
 ## Summary
 
 All seven issues are now resolved:

@@ -52,7 +52,7 @@ export const STRIPE_CONFIG = {
  * App Configuration
  */
 export const APP_CONFIG = {
-  scheme: getOptionalEnvVar('EXPO_PUBLIC_APP_SCHEME', 'armwrestlingpro'),
+  scheme: getOptionalEnvVar('EXPO_PUBLIC_APP_SCHEME', 'armprogress'),
   url: getOptionalEnvVar('EXPO_PUBLIC_APP_URL', 'https://armwrestling.app'),
   environment: getOptionalEnvVar('EXPO_PUBLIC_ENV', __DEV__ ? 'development' : 'production'),
 } as const;
