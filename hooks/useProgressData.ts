@@ -1,9 +1,12 @@
 /**
  * Custom hook for Progress screen data fetching with caching
+ * 
+ * Now powered by React Query for automatic caching, refetching, and synchronization
  */
 
-import { useQuery } from './useQuery';
+import { useQuery } from '@tanstack/react-query';
 import { supabase, Goal, StrengthTest, Workout, Cycle, BodyMeasurement } from '@/lib/supabase';
+import { queryKeys, invalidateQueries } from '@/lib/react-query';
 
 interface ProgressData {
   goals: Goal[];
@@ -77,26 +80,32 @@ async function fetchProgressData(userId: string): Promise<ProgressData> {
 
 /**
  * Hook for fetching progress screen data
+ * 
+ * Now powered by React Query with proper caching
  */
 export function useProgressData(userId: string | undefined): UseProgressDataResult {
-  const { data, isLoading, error, refetch, invalidate } = useQuery(
-    `progress:${userId}`,
-    async () => {
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.progress(userId || ''),
+    queryFn: () => {
       if (!userId) throw new Error('User ID is required');
       return fetchProgressData(userId);
     },
-    {
-      enabled: !!userId,
-      cacheTime: 0, // Disable caching completely
-      staleTime: 0, // Always consider data stale - fetch fresh every time
-    }
-  );
+    enabled: !!userId,
+    staleTime: 2 * 60 * 1000, // 2 minutes - fresher than home data since it's updated more often
+    gcTime: 5 * 60 * 1000, // 5 minutes
+  });
 
   return {
-    data,
+    data: data ?? null, // Use nullish coalescing for better null/undefined handling
     isLoading,
-    error,
-    refetch,
-    invalidate,
+    error: error as Error | null,
+    refetch: async () => {
+      await refetch();
+    },
+    invalidate: () => {
+      if (userId) {
+        invalidateQueries.progress(userId);
+      }
+    },
   };
 }
