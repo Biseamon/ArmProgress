@@ -64,11 +64,11 @@ When building for production (standalone app or app stores):
 3. Navigate to **Authentication** → **URL Configuration**
 4. In the **Site URL** field, add:
    ```
-   armwrestlingpro://
+   armprogress://
    ```
 5. In the **Redirect URLs** section, add:
    ```
-   armwrestlingpro://(auth)/reset-password
+   armprogress://(auth)/reset-password
    ```
 6. Click **Save**
 
@@ -76,7 +76,7 @@ When building for production (standalone app or app stores):
 
 ### 2. Configure Deep Linking in Your App
 
-The app is already configured to handle the deep link `armwrestlingpro://`, but you need to ensure it's properly set up in your app configuration.
+The app is already configured to handle the deep link `armprogress://`, but you need to ensure it's properly set up in your app configuration.
 
 #### For iOS (app.json/app.config.js)
 
@@ -85,9 +85,9 @@ Your `app.json` should already have the scheme configured:
 ```json
 {
   "expo": {
-    "scheme": "armwrestlingpro",
+    "scheme": "armprogress",
     "ios": {
-      "bundleIdentifier": "com.yourcompany.armwrestlingpro"
+      "bundleIdentifier": "com.yourcompany.armprogress"
     }
   }
 }
@@ -98,9 +98,9 @@ Your `app.json` should already have the scheme configured:
 ```json
 {
   "expo": {
-    "scheme": "armwrestlingpro",
+    "scheme": "armprogress",
     "android": {
-      "package": "com.yourcompany.armwrestlingpro"
+      "package": "com.yourcompany.armprogress"
     }
   }
 }
@@ -166,7 +166,7 @@ The URL format is `exp://YOUR_LOCAL_IP:PORT`. You'll need this for the Supabase 
 #### Testing in Production
 
 1. Build and install your production app
-2. Ensure `armwrestlingpro://(auth)/reset-password` is in Supabase redirect URLs
+2. Ensure `armprogress://(auth)/reset-password` is in Supabase redirect URLs
 3. Follow the same testing steps as above
 
 ## Troubleshooting
@@ -186,7 +186,7 @@ If clicking the email link doesn't open your app:
 - **iOS**: Rebuild the app after configuring the scheme in `app.json`
 - **Android**: Make sure you've configured the package name correctly
 - **Testing**: Use a real device instead of a simulator for better deep link support
-- Check that the redirect URL in Supabase exactly matches your app's scheme (`armwrestlingpro://`)
+- Check that the redirect URL in Supabase exactly matches your app's scheme (`armprogress://`)
 
 ### Email Not Received
 

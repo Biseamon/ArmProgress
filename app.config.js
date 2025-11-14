@@ -8,12 +8,12 @@ module.exports = {
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
-    scheme: "armwrestlingpro",
+    scheme: "armprogress",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.armwrestlingpro.app",
+      bundleIdentifier: "com.armprogress.app",
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: false,
       },
@@ -23,7 +23,7 @@ module.exports = {
         foregroundImage: "./assets/images/icon.png",
         backgroundColor: "#1A1A1A",
       },
-      package: "com.armwrestlingpro.app",
+      package: "com.armprogress.app",
       statusBar: {
         barStyle: "auto",
         backgroundColor: "#00000000",
