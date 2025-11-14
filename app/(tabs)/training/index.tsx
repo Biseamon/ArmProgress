@@ -9,13 +9,15 @@ import {
   Modal,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
-import { performOptimisticUpdate, optimisticDelete } from '@/lib/optimisticUpdates';
-import { invalidateCache } from '@/lib/cache';
+import { queryKeys, invalidateQueries } from '@/lib/react-query';
+import { useWorkoutsInfinite } from '@/hooks/useWorkouts';
 import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
@@ -23,6 +25,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { convertFromLbs, convertToLbs, convertWeight } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { validateWorkout, validateExercise, validateCycle, getFirstError } from '@/lib/validation';
+import { handleError } from '@/lib/errorHandling';
 
 type Exercise = {
   exercise_name: string;
@@ -37,12 +40,45 @@ export default function Training() {
   const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
+  
+  // Use React Query hooks for data fetching with pagination
+  const {
+    data: workoutsData,
+    isLoading: workoutsLoading,
+    isFetching: workoutsFetching,
+    hasNextPage,
+    fetchNextPage,
+    refetch: refetchWorkouts,
+  } = useWorkoutsInfinite(profile?.id);
+  
+  const {
+    data: cyclesData,
+    isLoading: cyclesLoading,
+    refetch: refetchCycles,
+  } = useQuery({
+    queryKey: queryKeys.cycles.all(profile?.id || ''),
+    queryFn: async () => {
+      if (!profile?.id) return [];
+      const { data, error } = await supabase
+        .from('cycles')
+        .select('*')
+        .eq('user_id', profile.id)
+        .order('start_date', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!profile?.id,
+    staleTime: 5 * 60 * 1000,
+  });
+  
+  // Ensure data is always an array (never undefined)
+  const workouts = workoutsData || [];
+  const cycles = cyclesData || [];
+  
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCycleModal, setShowCycleModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
-  const [workoutCount, setWorkoutCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
@@ -62,21 +98,12 @@ export default function Training() {
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
-  // Only refetch when screen is focused and profile.id changes
-  useFocusEffect(
-    useCallback(() => {
-      if (profile?.id) {
-        fetchData();
-      }
-    }, [profile?.id])
-  );
-
   // Handle edit workout from calendar
   useFocusEffect(
     useCallback(() => {
       const editWorkoutId = params.editWorkoutId as string | undefined;
 
-      if (editWorkoutId && workouts.length > 0) {
+      if (editWorkoutId && workouts && workouts.length > 0) {
         const workoutToEdit = workouts.find(w => w.id === editWorkoutId);
         if (workoutToEdit) {
           // Clear the parameter to avoid re-triggering
@@ -87,33 +114,6 @@ export default function Training() {
       }
     }, [params.editWorkoutId, workouts])
   );
-
-  const fetchData = async () => {
-    if (!profile) return;
-  
-    const [workoutsRes, cyclesRes, countRes] = await Promise.all([
-      supabase
-        .from('workouts')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('cycles')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('start_date', { ascending: false }),
-      supabase
-        .from('workouts')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', profile.id),
-    ]);
-  
-    console.log('Cycles response:', { data: cyclesRes.data, error: cyclesRes.error });
-    
-    if (workoutsRes.data) setWorkouts(workoutsRes.data);
-    if (cyclesRes.data) setCycles(cyclesRes.data);
-    setWorkoutCount(countRes.count || 0);
-  };
 
   const handleStartWorkout = () => {
     // Removed premium check - workouts are unlimited for everyone!
@@ -171,32 +171,24 @@ export default function Training() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            // Perform optimistic update
-            await performOptimisticUpdate(
-              `delete-workout-${workout.id}`,
-              // Optimistic update: immediately remove from UI
-              () => {
-                const updated = optimisticDelete(workouts, workout.id);
-                setWorkouts(updated);
-              },
-              // Rollback: restore workout if API fails
-              () => {
-                setWorkouts([...workouts]);
-              },
-              // API call
-              async () => {
-                const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
-                if (error) throw error;
-                return true;
-              },
-              // On success: invalidate cache and refetch
-              () => {
-                if (profile?.id) {
-                  invalidateCache.workouts(profile.id);
-                }
-                fetchData();
+            try {
+              // Delete from database
+              const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
+              
+              if (error) {
+                console.error('Error deleting workout:', error);
+                Alert.alert('Error', 'Failed to delete workout');
+                return;
               }
-            );
+              
+              // Invalidate cache to trigger refetch
+              if (profile?.id) {
+                invalidateQueries.workouts(profile.id);
+              }
+            } catch (error) {
+              const errorMessage = handleError(error);
+              Alert.alert('Error', errorMessage);
+            }
           },
         },
       ]
@@ -328,10 +320,13 @@ export default function Training() {
       
       setShowWorkoutModal(false);
       resetForm();
-      await fetchData();
+      // Invalidate cache to refetch workouts
+      if (profile?.id) {
+        invalidateQueries.workouts(profile.id);
+      }
     } catch (error) {
-      console.error('Error saving workout:', error);
-      Alert.alert('Error', 'Failed to save workout');
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     } finally {
       setSaving(false);
     }
@@ -406,14 +401,19 @@ export default function Training() {
     setShowCycleModal(false);
     resetCycleForm();
     setEditingCycle(null);
-    fetchData();
+    // Invalidate cache to refetch cycles
+    if (profile?.id) {
+      invalidateQueries.cycles(profile.id);
+    }
   };
 
   const handleDeleteCycle = async (cycle: Cycle) => {
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this cycle?')) {
         await supabase.from('cycles').delete().eq('id', cycle.id);
-        fetchData();
+        if (profile?.id) {
+          invalidateQueries.cycles(profile.id);
+        }
       }
     } else {
       Alert.alert('Delete Cycle', 'Are you sure you want to delete this cycle?', [
@@ -423,7 +423,9 @@ export default function Training() {
           style: 'destructive',
           onPress: async () => {
             await supabase.from('cycles').delete().eq('id', cycle.id);
-            fetchData();
+            if (profile?.id) {
+              invalidateQueries.cycles(profile.id);
+            }
           },
         },
       ]);
@@ -438,7 +440,10 @@ export default function Training() {
       .update({ is_active: !cycle.is_active })
       .eq('id', cycle.id);
 
-    fetchData();
+    // Invalidate cache to refetch cycles
+    if (profile?.id) {
+      invalidateQueries.cycles(profile.id);
+    }
   };
 
   const resetForm = () => {
@@ -571,55 +576,88 @@ export default function Training() {
         )}
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Workouts</Text>
-          {workouts.length === 0 ? (
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Workouts</Text>
+            <Text style={[styles.workoutCount, { color: colors.textSecondary }]}>
+              {workouts?.length || 0} loaded
+            </Text>
+          </View>
+          
+          {workoutsLoading && workouts.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading workouts...</Text>
+            </View>
+          ) : workouts.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workouts yet</Text>
               <Text style={[styles.emptySubtext, { color: colors.textTertiary }]}>Start tracking your training!</Text>
             </View>
           ) : (
-            workouts.map((workout) => (
-              <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}>
-                <View style={styles.workoutHeader}>
-                  <View style={styles.workoutInfo}>
-                    <Text style={[styles.workoutType, { color: colors.primary }]}>
-                      {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
+            <>
+              {workouts.map((workout) => (
+                <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}>
+                  <View style={styles.workoutHeader}>
+                    <View style={styles.workoutInfo}>
+                      <Text style={[styles.workoutType, { color: colors.primary }]}>
+                        {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
+                      </Text>
+                      <Text style={[styles.workoutDate, { color: colors.textTertiary }]}>
+                        {formatDate(workout.created_at)}
+                      </Text>
+                    </View>
+                    <View style={styles.workoutActions}>
+                      <TouchableOpacity
+                        style={styles.iconButton}
+                        onPress={() => handleEditWorkout(workout)}
+                      >
+                        <Pencil size={18} color="#E63946" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.iconButton}
+                        onPress={() => handleDeleteWorkout(workout)}
+                      >
+                        <Trash2 size={18} color="#FF6B6B" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={styles.workoutDetails}>
+                    <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
+                      {workout.duration_minutes} min
                     </Text>
-                    <Text style={[styles.workoutDate, { color: colors.textTertiary }]}>
-                      {formatDate(workout.created_at)}
+                    <Text style={[styles.workoutDivider, { color: colors.textTertiary }]}>•</Text>
+                    <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
+                      Intensity: {workout.intensity}/10
                     </Text>
                   </View>
-                  <View style={styles.workoutActions}>
-                    <TouchableOpacity
-                      style={styles.iconButton}
-                      onPress={() => handleEditWorkout(workout)}
-                    >
-                      <Pencil size={18} color="#E63946" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.iconButton}
-                      onPress={() => handleDeleteWorkout(workout)}
-                    >
-                      <Trash2 size={18} color="#FF6B6B" />
-                    </TouchableOpacity>
-                  </View>
+                  {workout.notes && (
+                    <Text style={[styles.workoutNotes, { color: colors.textSecondary }]} numberOfLines={2}>
+                      {workout.notes}
+                    </Text>
+                  )}
                 </View>
-                <View style={styles.workoutDetails}>
-                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
-                    {workout.duration_minutes} min
-                  </Text>
-                  <Text style={[styles.workoutDivider, { color: colors.textTertiary }]}>•</Text>
-                  <Text style={[styles.workoutDetail, { color: colors.textSecondary }]}>
-                    Intensity: {workout.intensity}/10
-                  </Text>
-                </View>
-                {workout.notes && (
-                  <Text style={[styles.workoutNotes, { color: colors.textSecondary }]} numberOfLines={2}>
-                    {workout.notes}
-                  </Text>
-                )}
-              </View>
-            ))
+              ))}
+              
+              {/* Load More Button */}
+              {hasNextPage && (
+                <TouchableOpacity
+                  style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={fetchNextPage}
+                  disabled={workoutsFetching}
+                >
+                  {workoutsFetching ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <>
+                      <Text style={[styles.loadMoreText, { color: colors.primary }]}>Load More Workouts</Text>
+                      <Text style={[styles.loadMoreSubtext, { color: colors.textSecondary }]}>
+                        Tap to load 20 more
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
       </ScrollView>
@@ -1087,6 +1125,42 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFF',
     marginBottom: 12,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  workoutCount: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+  },
+  loadMoreButton: {
+    borderRadius: 12,
+    padding: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderStyle: 'dashed',
+  },
+  loadMoreText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  loadMoreSubtext: {
+    fontSize: 12,
   },
   cycleCard: {
     backgroundColor: '#2A2A2A',

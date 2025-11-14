@@ -8,6 +8,8 @@ import {
   TextInput,
   Modal,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -18,6 +20,7 @@ import { AdBanner } from '@/components/AdBanner';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Plus, X, Save, Pencil, Trash2, ArrowLeft } from 'lucide-react-native';
 import { formatWeight, convertToLbs, convertFromLbs } from '@/lib/weightUtils';
+import { handleError } from '@/lib/errorHandling';
 
 type Exercise = {
   exercise_name: string;
@@ -275,8 +278,8 @@ export default function CycleDetails() {
       resetForm();
       await fetchCycleData(); // Refresh the data
     } catch (error) {
-      console.error('Error saving workout:', error);
-      Alert.alert('Error', 'Failed to save workout');
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
       setSaving(false);
     }
   };
@@ -412,17 +415,26 @@ export default function CycleDetails() {
         animationType="slide"
         onRequestClose={() => setShowWorkoutModal(false)}
       >
-        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>
-              {editingWorkout ? 'Edit Training' : 'Log Training'}
-            </Text>
-            <TouchableOpacity onPress={() => setShowWorkoutModal(false)}>
-              <X size={24} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[{ flex: 1 }, { backgroundColor: colors.background }]}
+        >
+          <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                {editingWorkout ? 'Edit Training' : 'Log Training'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowWorkoutModal(false)}>
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
-          <ScrollView style={styles.modalContent}>
+            <ScrollView
+              style={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              contentContainerStyle={{ paddingBottom: 400 }}
+            >
             <Text style={[styles.label, { color: colors.text }]}>Workout Type</Text>
             <View style={styles.typeContainer}>
               {workoutTypes.map((type) => (
@@ -566,7 +578,8 @@ export default function CycleDetails() {
 
             <View style={styles.modalBottomSpacing} />
           </ScrollView>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <PaywallModal
