@@ -3,8 +3,8 @@ require('dotenv').config();
 
 module.exports = {
   expo: {
-    name: "Arm Wrestling Pro",
-    slug: "arm-wrestling-pro",
+    name: "ArmProgress",
+    slug: "armprogress",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
