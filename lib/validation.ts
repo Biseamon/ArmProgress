@@ -35,6 +35,7 @@ export function validateWorkout(data: WorkoutInput): ValidationResult {
     'strength',
     'technique',
     'conditioning',
+    'endurance',
     'sparring',
     'recovery',
     'mixed'
@@ -154,6 +155,9 @@ export function validateCycle(data: CycleInput): ValidationResult {
     'strength',
     'technique',
     'competition_prep',
+    'rehab',
+    'strength_building',
+    'technique_focus',
     'recovery',
     'off_season',
     'mixed'

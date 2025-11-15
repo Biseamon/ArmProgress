@@ -47,7 +47,6 @@ export const supabase = createClient(
       detectSessionInUrl: false,
       storage: AsyncStorage,
       storageKey: 'armwrestling-auth',
-      debug: __DEV__, // Only enable debug logs in development
     },
   }
 );

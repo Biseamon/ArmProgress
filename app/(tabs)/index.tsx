@@ -1,6 +1,6 @@
 // This is the home screen for Arm Wrestling Pro.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -26,9 +26,15 @@ export default function Home() {
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
 
   // Use custom hook with caching - replaces all manual fetching!
   const { data: homeData, isLoading: loading, refetch } = useHomeData(profile?.id);
+
+  // Reset avatar error when profile avatar URL changes
+  useEffect(() => {
+    setAvatarError(false);
+  }, [profile?.avatar_url]);
 
   // Extract data from hook result (with fallbacks)
   const workouts = homeData?.recentWorkouts || [];
@@ -107,13 +113,14 @@ export default function Home() {
           </View>
           <View style={styles.profileSection}>
             <View style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}>
-              {profile?.avatar_url ? (
+              {profile?.avatar_url && !avatarError ? (
                 <Image
-                  source={{ uri: `${profile.avatar_url}?t=${Date.now()}` }}
+                  source={{ uri: profile.avatar_url }}
                   style={styles.avatarImage}
                   key={`home-avatar-${profile.avatar_url}`}
                   onError={(e) => {
                     console.log('Home avatar load error:', e.nativeEvent.error);
+                    setAvatarError(true);
                   }}
                 />
               ) : (

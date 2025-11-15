@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Called after successful authentication to load user data
    */
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -75,43 +75,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    */
   useEffect(() => {
     // Get existing session from local storage on app start
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        console.error('Session error:', error);
-        // Clear invalid session
-        supabase.auth.signOut().catch(() => {});
-        setSession(null);
-        setProfile(null);
-        setLoading(false);
-        return;
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
         fetchProfile(session.user.id);
       }
-      setLoading(false);
-    }).catch((error) => {
-      console.error('Failed to get session:', error);
-      supabase.auth.signOut().catch(() => {});
-      setSession(null);
-      setProfile(null);
       setLoading(false);
     });
 
     // Listen for authentication state changes
     // This fires when user logs in, logs out, or token is refreshed
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        setSession(session);
-        if (session?.user) {
-          // User logged in - fetch their profile
-          await fetchProfile(session.user.id);
-        } else {
-          // User logged out - clear profile
-          setProfile(null);
-        }
-        setLoading(false);
-      })();
+      setSession(session);
+      if (session?.user) {
+        // User logged in - fetch their profile
+        fetchProfile(session.user.id);
+      } else {
+        // User logged out - clear profile
+        setProfile(null);
+      }
+      setLoading(false);
     });
 
     // Cleanup: Unsubscribe from auth listener when component unmounts
@@ -146,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string, fullName: string) => {
     // Create authentication user in Supabase Auth
     // The database trigger will automatically create the profile
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -167,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'armwrestlingpro:///(tabs)',
+        redirectTo: 'armprogress:///(tabs)',
       },
     });
     return { error };
@@ -181,7 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'apple',
       options: {
-        redirectTo: 'armwrestlingpro:///(tabs)',
+        redirectTo: 'armprogress:///(tabs)',
       },
     });
     return { error };
@@ -195,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'facebook',
       options: {
-        redirectTo: 'armwrestlingpro:///(tabs)',
+        redirectTo: 'armprogress:///(tabs)',
       },
     });
     return { error };
@@ -232,7 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('Using Expo redirect URL for password reset:', redirectTo);
     } else {
       // Production mode - use custom scheme
-      redirectTo = 'armwrestlingpro://(auth)/reset-password';
+      redirectTo = 'armprogress://(auth)/reset-password';
       console.log('Using production redirect URL for password reset:', redirectTo);
     }
 
