@@ -17,6 +17,12 @@ module.exports = {
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: false,
       },
+      // AdMob App ID for iOS - Add your AdMob App ID here for production
+      // Get it from: https://apps.admob.com/
+      // Format: ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY
+      // config: {
+      //   googleMobileAdsAppId: "ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY"
+      // }
     },
     android: {
       adaptiveIcon: {
@@ -29,6 +35,12 @@ module.exports = {
         backgroundColor: "#00000000",
         translucent: true,
       },
+      // AdMob App ID for Android - Add your AdMob App ID here for production
+      // Get it from: https://apps.admob.com/
+      // Format: ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY
+      // config: {
+      //   googleMobileAdsAppId: "ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY"
+      // }
     },
     web: {
       bundler: "metro",
@@ -38,7 +50,6 @@ module.exports = {
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-ads-admob",
     ],
     experiments: {
       typedRoutes: true,

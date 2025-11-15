@@ -32,7 +32,18 @@
       "bundler": "metro",
       "output": "single"
     },
-    "plugins": ["expo-router", "expo-font", "expo-web-browser", "expo-ads-admob", "expo-apple-authentication"],
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "react-native-purchases",
+        {
+          "enableAmazon": false
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     }
