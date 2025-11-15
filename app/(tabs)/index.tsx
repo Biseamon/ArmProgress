@@ -109,7 +109,11 @@ export default function Home() {
       <View style={[styles.header, { paddingTop: insets.top + 20, paddingHorizontal: isTablet ? 40 : 20 }]}>
         <View style={styles.headerLeft}>
           <View style={[styles.appLogoContainer, isTablet && styles.appLogoContainerTablet]}>
-            <Text style={[styles.appLogoText, isTablet && styles.appLogoTextTablet]}>💪</Text>
+            <Image
+              source={require('@/assets/images/app-logo.png')}
+              style={styles.appLogoImage}
+              resizeMode="contain"
+            />
           </View>
           <View style={styles.profileSection}>
             <View style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}>
@@ -445,9 +449,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#E63946',
+    overflow: 'hidden',
   },
-  appLogoText: {
-    fontSize: 28,
+  appLogoImage: {
+    width: '100%',
+    height: '100%',
   },
   profileSection: {
     flexDirection: 'row',

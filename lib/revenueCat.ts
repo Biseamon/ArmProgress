@@ -14,7 +14,8 @@ const REVENUECAT_API_KEY = {
 
 // Check if API keys are valid (not placeholder values)
 const isValidApiKey = (key: string): boolean => {
-  return !!(key && key.length > 0 && !key.includes('xxxxx'));
+  // Valid formats: appl_xxx, goog_xxx, test_xxx, or any other RevenueCat key format
+  return !!(key && key.length > 10 && !key.includes('xxxxx'));
 };
 
 // Check if RevenueCat is properly configured
@@ -40,6 +41,12 @@ export const OFFERING_ID = {
  */
 export const initializeRevenueCat = async (userId?: string) => {
   try {
+    // RevenueCat doesn't work on web, skip initialization
+    if (Platform.OS === 'web') {
+      console.log('RevenueCat: Skipping initialization on web platform');
+      return;
+    }
+
     if (!isRevenueCatConfigured()) {
       console.warn('RevenueCat API key not configured or invalid. Purchases will not work.');
       return;
@@ -49,22 +56,21 @@ export const initializeRevenueCat = async (userId?: string) => {
       ? REVENUECAT_API_KEY.ios
       : REVENUECAT_API_KEY.android;
 
+    console.log('RevenueCat: Initializing with API key for', Platform.OS);
+
     // Configure SDK
     Purchases.setLogLevel(LOG_LEVEL.DEBUG); // Set to INFO or WARN in production
 
-    // Initialize
+    // Initialize - use single configure call with appUserID if available
     await Purchases.configure({
       apiKey,
+      appUserID: userId, // Pass user ID directly in configure instead of separate logIn call
     });
 
-    // Set user ID if available (for identifying users across devices)
-    if (userId) {
-      await Purchases.logIn(userId);
-    }
-
-    console.log('RevenueCat initialized successfully');
+    console.log('RevenueCat initialized successfully', userId ? `with user ID: ${userId}` : 'anonymously');
   } catch (error) {
     console.error('Failed to initialize RevenueCat:', error);
+    // Don't throw - allow app to continue without RevenueCat
   }
 };
 
@@ -76,7 +82,7 @@ export const getCustomerInfo = async (): Promise<{
   isPremium: boolean;
 }> => {
   try {
-    if (!isRevenueCatConfigured()) {
+    if (Platform.OS === 'web' || !isRevenueCatConfigured()) {
       return { customerInfo: null, isPremium: false };
     }
 
@@ -95,7 +101,7 @@ export const getCustomerInfo = async (): Promise<{
  */
 export const getOfferings = async (): Promise<PurchasesOffering | null> => {
   try {
-    if (!isRevenueCatConfigured()) {
+    if (Platform.OS === 'web' || !isRevenueCatConfigured()) {
       return null;
     }
 
@@ -118,6 +124,13 @@ export const purchasePackage = async (
   error?: string;
 }> => {
   try {
+    if (Platform.OS === 'web') {
+      return {
+        success: false,
+        error: 'Purchases are not supported on web. Please use iOS or Android.',
+      };
+    }
+
     if (!isRevenueCatConfigured()) {
       return {
         success: false,
@@ -160,6 +173,14 @@ export const restorePurchases = async (): Promise<{
   error?: string;
 }> => {
   try {
+    if (Platform.OS === 'web') {
+      return {
+        success: false,
+        isPremium: false,
+        error: 'Purchases are not supported on web. Please use iOS or Android.',
+      };
+    }
+
     if (!isRevenueCatConfigured()) {
       return {
         success: false,
@@ -190,7 +211,7 @@ export const restorePurchases = async (): Promise<{
  */
 export const loginRevenueCat = async (userId: string) => {
   try {
-    if (!isRevenueCatConfigured()) {
+    if (Platform.OS === 'web' || !isRevenueCatConfigured()) {
       return;
     }
 
@@ -205,7 +226,7 @@ export const loginRevenueCat = async (userId: string) => {
  */
 export const logoutRevenueCat = async () => {
   try {
-    if (!isRevenueCatConfigured()) {
+    if (Platform.OS === 'web' || !isRevenueCatConfigured()) {
       return;
     }
 

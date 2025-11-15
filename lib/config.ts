@@ -58,6 +58,39 @@ export const APP_CONFIG = {
 } as const;
 
 /**
+ * AdMob Configuration
+ * Automatically switches between test and production ad unit IDs
+ */
+export const ADMOB_CONFIG = {
+  // Use test ad unit IDs in development, real ones in production
+  banner: {
+    ios: __DEV__ 
+      ? 'ca-app-pub-3940256099942544/2934735716' // Test banner
+      : getOptionalEnvVar('EXPO_PUBLIC_ADMOB_IOS_BANNER', 'ca-app-pub-3940256099942544/2934735716'),
+    android: __DEV__ 
+      ? 'ca-app-pub-3940256099942544/6300978111' // Test banner
+      : getOptionalEnvVar('EXPO_PUBLIC_ADMOB_ANDROID_BANNER', 'ca-app-pub-3940256099942544/6300978111'),
+  },
+  interstitial: {
+    ios: __DEV__ 
+      ? 'ca-app-pub-3940256099942544/4411468910' // Test interstitial
+      : getOptionalEnvVar('EXPO_PUBLIC_ADMOB_IOS_INTERSTITIAL', 'ca-app-pub-3940256099942544/4411468910'),
+    android: __DEV__ 
+      ? 'ca-app-pub-3940256099942544/1033173712' // Test interstitial
+      : getOptionalEnvVar('EXPO_PUBLIC_ADMOB_ANDROID_INTERSTITIAL', 'ca-app-pub-3940256099942544/1033173712'),
+  },
+  rewarded: {
+    ios: __DEV__ 
+      ? 'ca-app-pub-3940256099942544/1712485313' // Test rewarded
+      : getOptionalEnvVar('EXPO_PUBLIC_ADMOB_IOS_REWARDED', 'ca-app-pub-3940256099942544/1712485313'),
+    android: __DEV__ 
+      ? 'ca-app-pub-3940256099942544/5224354917' // Test rewarded
+      : getOptionalEnvVar('EXPO_PUBLIC_ADMOB_ANDROID_REWARDED', 'ca-app-pub-3940256099942544/5224354917'),
+  },
+  isTestMode: __DEV__,
+} as const;
+
+/**
  * Feature Flags
  * Control feature availability based on environment
  */
@@ -65,6 +98,7 @@ export const FEATURES = {
   enableRevenueCat: !!REVENUECAT_CONFIG.iosKey || !!REVENUECAT_CONFIG.androidKey,
   enableAnalytics: APP_CONFIG.environment === 'production',
   enableDebugLogs: __DEV__ || APP_CONFIG.environment === 'development',
+  enableAds: true, // Can be controlled via environment variable if needed
 } as const;
 
 /**

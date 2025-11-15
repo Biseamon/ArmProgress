@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -15,14 +16,16 @@ import { useRevenueCat } from '@/contexts/RevenueCatContext';
 import { PurchasesPackage } from 'react-native-purchases';
 import { Crown, Check, X, RefreshCw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import RevenueCatUI from 'react-native-purchases-ui';
 
 export default function PaywallScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { offerings, purchase, restore, isPremium } = useRevenueCat();
+  const { offerings, purchase, restore, isPremium, refreshCustomerInfo } = useRevenueCat();
   const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [useRevenueCatPaywall, setUseRevenueCatPaywall] = useState(false);
 
   // Premium features list
   const premiumFeatures = [
@@ -35,6 +38,49 @@ export default function PaywallScreen() {
     'Exclusive workout templates',
     'Progress sharing features',
   ];
+
+  // Check if RevenueCat paywall is configured
+  useEffect(() => {
+    const checkPaywallAvailability = async () => {
+      try {
+        // Check if a paywall is configured in RevenueCat dashboard
+        // If offerings have a paywall template, use RevenueCat UI
+        if (offerings?.paywall) {
+          setUseRevenueCatPaywall(true);
+        }
+      } catch (error) {
+        console.log('No RevenueCat paywall configured, using custom paywall');
+      }
+    };
+
+    checkPaywallAvailability();
+  }, [offerings]);
+
+  // Present RevenueCat paywall from dashboard
+  const presentRevenueCatPaywall = async () => {
+    try {
+      const result = await RevenueCatUI.presentPaywall({
+        requiredEntitlementIdentifier: 'premium',
+      });
+
+      // Result types: PURCHASED, RESTORED, CANCELLED, ERROR
+      if (result === RevenueCatUI.PAYWALL_RESULT.PURCHASED || 
+          result === RevenueCatUI.PAYWALL_RESULT.RESTORED) {
+        await refreshCustomerInfo();
+        router.back();
+      }
+    } catch (error: any) {
+      console.error('Error presenting paywall:', error);
+      Alert.alert('Error', 'Failed to load paywall. Please try again.');
+    }
+  };
+
+  // Use RevenueCat paywall if available and configured
+  useEffect(() => {
+    if (useRevenueCatPaywall && !isPremium && Platform.OS !== 'web') {
+      presentRevenueCatPaywall();
+    }
+  }, [useRevenueCatPaywall, isPremium]);
 
   const handlePurchase = async () => {
     if (!selectedPackage) {
@@ -242,6 +288,19 @@ export default function PaywallScreen() {
           </>
         )}
       </TouchableOpacity>
+
+      {/* Button to manually trigger RevenueCat paywall (for testing) */}
+      {Platform.OS !== 'web' && offerings?.paywall && (
+        <TouchableOpacity
+          style={[styles.restoreButton, { marginTop: 8 }]}
+          onPress={presentRevenueCatPaywall}
+        >
+          <Crown size={16} color={colors.secondary} />
+          <Text style={[styles.restoreButtonText, { color: colors.secondary }]}>
+            View Dashboard Paywall
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <View style={styles.legalSection}>
         <Text style={[styles.legalText, { color: colors.textTertiary }]}>
