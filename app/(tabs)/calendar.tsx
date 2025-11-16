@@ -21,6 +21,7 @@ import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2, Save, Plus } 
 import { convertWeight, formatWeight, convertFromLbs, convertToLbs } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleError } from '@/lib/errorHandling';
+import { AdBanner } from '@/components/AdBanner';
 
 interface Cycle {
   id: string;
@@ -724,19 +725,8 @@ export default function CalendarScreen() {
         </View>
       </ScrollView>
 
-      {/* AdMob Banner Placeholder - Standard Banner */}
-      {!isPremium && (
-        <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-          <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
-              📱 Ad Space
-            </Text>
-            <Text style={[styles.adBannerSubtext, { color: colors.textTertiary }]}>
-              320x50
-            </Text>
-          </View>
-        </View>
-      )}
+      {/* AdMob Banner - Automatic test/production ads */}
+      <AdBanner />
 
       <View style={styles.content}>
         {renderCalendar()}
@@ -1478,33 +1468,6 @@ const styles = StyleSheet.create({
   cycleDates: {
     fontSize: 11,
     marginTop: 2,
-  },
-  adBannerContainer: {
-    marginHorizontal: 20,
-    marginVertical: 12,
-    borderRadius: 8,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adBannerPlaceholder: {
-    width: 320,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2A2A2A',
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#333',
-    borderStyle: 'dashed',
-  },
-  adBannerText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  adBannerSubtext: {
-    fontSize: 10,
   },
   label: {
     fontSize: 14,

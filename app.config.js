@@ -17,12 +17,13 @@ module.exports = {
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: false,
       },
-      // AdMob App ID for iOS - Add your AdMob App ID here for production
-      // Get it from: https://apps.admob.com/
-      // Format: ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY
-      // config: {
-      //   googleMobileAdsAppId: "ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY"
-      // }
+      usesAppleSignIn: true,
+      config: {
+        // AdMob App ID for iOS
+        // Using test App ID for development: ca-app-pub-3940256099942544~1458002511
+        // Replace with your real App ID from https://apps.admob.com/ for production
+        googleMobileAdsAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "ca-app-pub-3940256099942544~1458002511"
+      }
     },
     android: {
       adaptiveIcon: {
@@ -35,12 +36,12 @@ module.exports = {
         backgroundColor: "#00000000",
         translucent: true,
       },
-      // AdMob App ID for Android - Add your AdMob App ID here for production
-      // Get it from: https://apps.admob.com/
-      // Format: ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY
-      // config: {
-      //   googleMobileAdsAppId: "ca-app-pub-XXXXXXXXXXXXX~YYYYYYYYYY"
-      // }
+      config: {
+        // AdMob App ID for Android
+        // Using test App ID for development: ca-app-pub-3940256099942544~3347511713
+        // Replace with your real App ID from https://apps.admob.com/ for production
+        googleMobileAdsAppId: process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "ca-app-pub-3940256099942544~3347511713"
+      }
     },
     web: {
       bundler: "metro",
@@ -50,6 +51,7 @@ module.exports = {
       "expo-router",
       "expo-font",
       "expo-web-browser",
+      "expo-apple-authentication"
     ],
     experiments: {
       typedRoutes: true,
