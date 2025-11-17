@@ -6,6 +6,7 @@
  */
 
 export { AdBanner } from '../AdBanner';
+export { AdMediumRectangle } from '../AdMediumRectangle';
 export { useAdInterstitial } from '../AdInterstitial';
 export { useAdRewarded } from '../AdRewarded';
 

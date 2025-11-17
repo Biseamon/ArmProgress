@@ -17,6 +17,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { supabase, Goal, StrengthTest, Workout, Cycle } from '@/lib/supabase';
 import { invalidateHomeData } from '@/hooks/useHomeData';
 import { AdBanner } from '@/components/AdBanner';
+import { AdMediumRectangle } from '@/components/AdMediumRectangle';
 import { PaywallModal } from '@/components/PaywallModal';
 import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
 import { ProgressReport } from '@/components/ProgressReport';
@@ -1203,19 +1204,8 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
           />
         </View>
 
-        {/* AdMob Banner Placeholder - Medium Rectangle */}
-        {!isPremium && (
-          <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-            <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
-                📱 Ad Space
-              </Text>
-              <Text style={[styles.adBannerSubtext, { color: colors.textTertiary }]}>
-                300x250
-              </Text>
-            </View>
-          </View>
-        )}
+        {/* AdMob Medium Rectangle - Automatic test/production ads */}
+        <AdMediumRectangle />
 
         <View style={styles.section}>
           <TouchableOpacity
@@ -2527,29 +2517,5 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  adBannerContainer: {
-    marginVertical: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adBannerPlaceholder: {
-    width: 300,
-    height: 250,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-  },
-  adBannerText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  adBannerSubtext: {
-    fontSize: 12,
   },
 });

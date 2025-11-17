@@ -19,6 +19,7 @@ import { supabase, Workout, Cycle } from '@/lib/supabase';
 import { queryKeys, invalidateQueries } from '@/lib/react-query';
 import { useWorkoutsInfinite } from '@/hooks/useWorkouts';
 import { AdBanner } from '@/components/AdBanner';
+import { AdMediumRectangle } from '@/components/AdMediumRectangle';
 import { PaywallModal } from '@/components/PaywallModal';
 import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -561,19 +562,8 @@ export default function Training() {
           </View>
         )}
 
-        {/* AdMob Banner Placeholder - Medium Rectangle */}
-        {!isPremium && (
-          <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-            <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
-                📱 Ad Space
-              </Text>
-              <Text style={[styles.adBannerSubtext, { color: colors.textTertiary }]}>
-                300x250
-              </Text>
-            </View>
-          </View>
-        )}
+        {/* AdMob Medium Rectangle - Automatic test/production ads */}
+        <AdMediumRectangle />
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -1473,30 +1463,5 @@ const styles = StyleSheet.create({
   },
   dateButtonText: {
     fontSize: 16,
-  },
-  adBannerContainer: {
-    marginHorizontal: 20,
-    marginVertical: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adBannerPlaceholder: {
-    width: 300,
-    height: 250,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-  },
-  adBannerText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  adBannerSubtext: {
-    fontSize: 12,
   },
 });
