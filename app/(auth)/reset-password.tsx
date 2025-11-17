@@ -10,11 +10,12 @@ import {
   ScrollView,
   ActivityIndicator,
   Linking,
+  Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Dumbbell, Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 
 export default function ResetPassword() {
@@ -260,7 +261,11 @@ export default function ResetPassword() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <Dumbbell size={60} color={colors.primary} strokeWidth={2} />
+            <Image
+              source={require('../../assets/images/app-logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
             <Text style={[styles.title, { color: colors.text }]}>Password Reset Successful!</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               Your password has been updated successfully
@@ -293,7 +298,11 @@ export default function ResetPassword() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Dumbbell size={60} color={colors.primary} strokeWidth={2} />
+          <Image
+            source={require('../../assets/images/app-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={[styles.title, { color: colors.text }]}>Set New Password</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Choose a strong password for your account
@@ -404,6 +413,10 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 40,
+  },
+  logo: {
+    width: 80,
+    height: 80,
   },
   title: {
     fontSize: 32,

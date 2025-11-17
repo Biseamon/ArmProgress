@@ -8,11 +8,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Dumbbell, ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -57,7 +58,11 @@ export default function ForgotPassword() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <Dumbbell size={60} color={colors.primary} strokeWidth={2} />
+            <Image
+              source={require('../../assets/images/app-logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
             <Text style={[styles.title, { color: colors.text }]}>Check Your Email</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               We've sent a password reset link to
@@ -116,7 +121,11 @@ export default function ForgotPassword() {
         </TouchableOpacity>
 
         <View style={styles.header}>
-          <Dumbbell size={60} color={colors.primary} strokeWidth={2} />
+          <Image
+            source={require('../../assets/images/app-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={[styles.title, { color: colors.text }]}>Reset Password</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Enter your email and we'll send you a link to reset your password
@@ -188,6 +197,10 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 40,
+  },
+  logo: {
+    width: 80,
+    height: 80,
   },
   title: {
     fontSize: 32,
