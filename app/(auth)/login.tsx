@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Dumbbell } from 'lucide-react-native';
+import { Dumbbell, Eye, EyeOff } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { supabase } from '@/lib/supabase';
@@ -22,14 +22,15 @@ import { FontAwesome } from '@expo/vector-icons'; // For Facebook/Apple icons
 WebBrowser.maybeCompleteAuthSession();
 
 const OAUTH_PROVIDERS = [
-  { name: 'Google', key: 'google', color: '#4285F4', icon: <FontAwesome name="google" size={20} color="#FFF" /> },
-  { name: 'Facebook', key: 'facebook', color: '#1877F3', icon: <FontAwesome name="facebook" size={20} color="#FFF" /> },
-  { name: 'Apple', key: 'apple', color: '#000', icon: <FontAwesome name="apple" size={20} color="#FFF" /> },
+  { name: 'Google', key: 'google', color: '#4285F4', icon: <FontAwesome name="google" size={20} color="#FFF" />, platforms: ['ios', 'android'] },
+  { name: 'Facebook', key: 'facebook', color: '#1877F3', icon: <FontAwesome name="facebook" size={20} color="#FFF" />, platforms: ['ios', 'android'] },
+  { name: 'Apple', key: 'apple', color: '#000', icon: <FontAwesome name="apple" size={20} color="#FFF" />, platforms: ['ios'] },
 ];
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
@@ -158,15 +159,27 @@ export default function Login() {
 
           <View style={styles.inputContainer}>
             <Text style={[styles.label, { color: colors.text }]}>Password</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-              placeholder="Enter your password"
-              placeholderTextColor={colors.textTertiary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              editable={!loading}
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={[styles.passwordInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+                placeholder="Enter your password"
+                placeholderTextColor={colors.textTertiary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                editable={!loading}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? (
+                  <EyeOff size={20} color={colors.textSecondary} />
+                ) : (
+                  <Eye size={20} color={colors.textSecondary} />
+                )}
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               onPress={() => router.push('/(auth)/forgot-password')}
               disabled={loading}
@@ -196,7 +209,7 @@ export default function Login() {
 
           {/* Social login buttons */}
           <View style={styles.socialLoginContainer}>
-            {OAUTH_PROVIDERS.map((provider) => (
+            {OAUTH_PROVIDERS.filter(provider => provider.platforms.includes(Platform.OS)).map((provider) => (
               <TouchableOpacity
                 key={provider.key}
                 style={[styles.socialButton, { backgroundColor: provider.color }, loading && styles.buttonDisabled]}
@@ -263,6 +276,22 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     borderWidth: 1,
+  },
+  passwordContainer: {
+    position: 'relative',
+  },
+  passwordInput: {
+    borderRadius: 12,
+    padding: 16,
+    paddingRight: 50,
+    fontSize: 16,
+    borderWidth: 1,
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    padding: 4,
   },
   button: {
     borderRadius: 12,

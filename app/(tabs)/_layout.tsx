@@ -2,12 +2,16 @@ import { Tabs, Redirect } from 'expo-router';
 import { Home, Dumbbell, TrendingUp, User, Calendar } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useResponsive } from '@/lib/useResponsive';
 import { View, ActivityIndicator, StyleSheet, StatusBar, useColorScheme } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const { session, loading } = useAuth();
   const { colors } = useTheme();
   const colorScheme = useColorScheme();
+  const { isTablet } = useResponsive();
+  const insets = useSafeAreaInsets();
 
   if (loading) {
     return (
@@ -26,6 +30,14 @@ export default function TabLayout() {
     return null;
   }
 
+  // Calculate responsive tab bar dimensions
+  const tabBarHeight = isTablet ? 80 : 60;
+  const iconSize = isTablet ? 28 : 24;
+  const labelFontSize = isTablet ? 14 : 12;
+  
+  // Account for device navigation bar (safe area)
+  const tabBarPaddingBottom = Math.max(insets.bottom, 8);
+
   return (
     <>
       <StatusBar
@@ -41,12 +53,18 @@ export default function TabLayout() {
           tabBarStyle: {
             backgroundColor: colors.surface,
             borderTopColor: colors.border,
-            height: 60,
-            paddingBottom: 8,
+            borderTopWidth: 1,
+            height: tabBarHeight + tabBarPaddingBottom,
+            paddingBottom: tabBarPaddingBottom,
+            paddingTop: isTablet ? 12 : 8,
           },
           tabBarLabelStyle: {
-            fontSize: 12,
+            fontSize: labelFontSize,
             fontWeight: '600',
+            marginBottom: 4,
+          },
+          tabBarIconStyle: {
+            marginTop: 4,
           },
         }}
       >
@@ -54,35 +72,35 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'Home',
-            tabBarIcon: ({ size, color }) => <Home size={size} color={color} />,
+            tabBarIcon: ({ color }) => <Home size={iconSize} color={color} />,
           }}
         />
         <Tabs.Screen
           name="training"
           options={{
             title: 'Training',
-            tabBarIcon: ({ size, color }) => <Dumbbell size={size} color={color} />,
+            tabBarIcon: ({ color }) => <Dumbbell size={iconSize} color={color} />,
           }}
         />
         <Tabs.Screen
           name="calendar"
           options={{
             title: 'Calendar',
-            tabBarIcon: ({ size, color }) => <Calendar size={size} color={color} />,
+            tabBarIcon: ({ color }) => <Calendar size={iconSize} color={color} />,
           }}
         />
         <Tabs.Screen
           name="progress"
           options={{
             title: 'Progress',
-            tabBarIcon: ({ size, color }) => <TrendingUp size={size} color={color} />,
+            tabBarIcon: ({ color }) => <TrendingUp size={iconSize} color={color} />,
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
             title: 'Profile',
-            tabBarIcon: ({ size, color }) => <User size={size} color={color} />,
+            tabBarIcon: ({ color }) => <User size={iconSize} color={color} />,
           }}
         />
       </Tabs>

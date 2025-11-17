@@ -3,13 +3,13 @@
  *
  * Fetches all required data for the home screen in a single, optimized query
  * with automatic caching and loading states.
+ * 
+ * Now powered by React Query for improved caching and synchronization.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase, Workout, Cycle } from '@/lib/supabase';
-import { requestCache, CacheKeys } from '@/lib/cache';
-import { AppState } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { queryKeys, invalidateQueries } from '@/lib/react-query';
 
 interface HomeDataStats {
   totalWorkouts: number;
@@ -39,8 +39,7 @@ interface UseHomeDataResult {
   refetch: () => Promise<void>;
 }
 
-const CACHE_KEY_PREFIX = 'home-data';
-const CACHE_TTL = 60000; // 60 seconds
+// Legacy cache constants removed - React Query handles caching now
 
 /**
  * Calculate workout statistics
@@ -77,19 +76,12 @@ function calculateStats(workoutData: Workout[]): HomeDataStats {
 }
 
 /**
- * Fetch all home screen data with caching
+ * Fetch all home screen data
+ * 
+ * React Query handles caching automatically
  */
 async function fetchHomeData(userId: string): Promise<HomeData> {
-  // Check cache first
-  const cacheKey = `${CACHE_KEY_PREFIX}:${userId}`;
-  const cached = requestCache.get<HomeData>(cacheKey);
-
-  if (cached) {
-    console.log('[Home Data] Cache HIT');
-    return cached;
-  }
-
-  console.log('[Home Data] Cache MISS - Fetching from API');
+  console.log('[Home Data] Fetching from API');
 
   // Fetch all data in parallel (6 queries)
   const [
@@ -162,14 +154,13 @@ async function fetchHomeData(userId: string): Promise<HomeData> {
     stats,
   };
 
-  // Cache the result
-  requestCache.set(cacheKey, homeData, CACHE_TTL);
-
   return homeData;
 }
 
 /**
  * React hook for home screen data with caching
+ *
+ * Now powered by React Query for automatic caching, refetching, and synchronization
  *
  * @example
  * const { data, isLoading, error, refetch } = useHomeData(profile?.id);
@@ -180,83 +171,30 @@ async function fetchHomeData(userId: string): Promise<HomeData> {
  * <Text>Total Workouts: {data.stats.totalWorkouts}</Text>
  */
 export function useHomeData(userId: string | undefined): UseHomeDataResult {
-  const [data, setData] = useState<HomeData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const appState = useRef(AppState.currentState);
-
-  const fetchData = useCallback(async () => {
-    if (!userId) {
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const homeData = await fetchHomeData(userId);
-      setData(homeData);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      setError(error);
-      console.error('[Home Data] Error:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [userId]);
-
-  // Fetch on mount and when userId changes
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Refetch when screen is focused (cache will be checked first, so this is efficient)
-  useFocusEffect(
-    useCallback(() => {
-      if (userId) {
-        fetchData();
-      }
-    }, [userId, fetchData])
-  );
-
-  // Also refetch when app comes to foreground
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        // App has come to the foreground
-        fetchData();
-      }
-      appState.current = nextAppState;
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [fetchData]);
-
-  const refetch = useCallback(async () => {
-    if (userId) {
-      // Invalidate cache before refetch
-      const cacheKey = `${CACHE_KEY_PREFIX}:${userId}`;
-      requestCache.invalidate(cacheKey);
-      await fetchData();
-    }
-  }, [userId, fetchData]);
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: queryKeys.home(userId || ''),
+    queryFn: () => fetchHomeData(userId!),
+    enabled: !!userId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
 
   return {
-    data,
+    data: data ?? null, // Use nullish coalescing for better null/undefined handling
     isLoading,
-    error,
-    refetch,
+    error: error as Error | null,
+    refetch: async () => {
+      await refetch();
+    },
   };
 }
 
 /**
  * Invalidate home data cache
  * Call this after creating/updating/deleting workouts, goals, cycles, etc.
+ * 
+ * Now uses React Query's invalidation system
  */
 export function invalidateHomeData(userId: string): void {
-  const cacheKey = `${CACHE_KEY_PREFIX}:${userId}`;
-  requestCache.invalidate(cacheKey);
+  invalidateQueries.home(userId);
 }

@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
+import { AdMediumRectangle } from '@/components/AdMediumRectangle';
 import { Calendar, TrendingUp, Target, Clock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/lib/useResponsive';
@@ -109,10 +110,18 @@ export default function Home() {
       <View style={[styles.header, { paddingTop: insets.top + 20, paddingHorizontal: isTablet ? 40 : 20 }]}>
         <View style={styles.headerLeft}>
           <View style={[styles.appLogoContainer, isTablet && styles.appLogoContainerTablet]}>
-            <Text style={[styles.appLogoText, isTablet && styles.appLogoTextTablet]}>💪</Text>
+            <Image
+              source={require('@/assets/images/app-logo.png')}
+              style={styles.appLogoImage}
+              resizeMode="contain"
+            />
           </View>
           <View style={styles.profileSection}>
-            <View style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}>
+            <TouchableOpacity 
+              style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}
+              onPress={() => router.push('/(tabs)/profile')}
+              activeOpacity={0.7}
+            >
               {profile?.avatar_url && !avatarError ? (
                 <Image
                   source={{ uri: profile.avatar_url }}
@@ -130,7 +139,7 @@ export default function Home() {
                   </Text>
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
             <View style={styles.userInfo}>
               <Text style={[styles.greeting, { color: colors.textTertiary }, isTablet && styles.greetingTablet]}>Welcome back,</Text>
               <View style={styles.nameRow}>
@@ -176,19 +185,8 @@ export default function Home() {
         </View>
       </View>
 
-      {/* AdMob Banner Placeholder - Medium Rectangle */}
-      {!isPremium && (
-        <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-          <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
-              📱 Ad Space
-            </Text>
-            <Text style={[styles.adBannerSubtext, { color: colors.textTertiary }]}>
-              300x250
-            </Text>
-          </View>
-        </View>
-      )}
+      {/* AdMob Medium Rectangle - Automatic test/production ads */}
+      <AdMediumRectangle />
 
       {/* Active Goals Section */}
       {activeGoals.length > 0 && (
@@ -445,9 +443,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#E63946',
+    overflow: 'hidden',
   },
-  appLogoText: {
-    fontSize: 28,
+  appLogoImage: {
+    width: '100%',
+    height: '100%',
   },
   profileSection: {
     flexDirection: 'row',
@@ -755,32 +755,6 @@ const styles = StyleSheet.create({
   },
   trainingDescription: {
     fontSize: 14,
-  },
-  adBannerContainer: {
-    marginHorizontal: 12,
-    marginVertical: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adBannerPlaceholder: {
-    width: 300,
-    height: 250,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#333',
-    borderStyle: 'dashed',
-  },
-  adBannerText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  adBannerSubtext: {
-    fontSize: 12,
   },
   avatarImage: {
     width: '100%',

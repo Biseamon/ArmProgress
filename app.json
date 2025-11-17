@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Arm Wrestling Pro",
-    "slug": "arm-wrestling-pro",
+    "name": "ArmProgress",
+    "slug": "armprogress",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -32,9 +32,28 @@
       "bundler": "metro",
       "output": "single"
     },
-    "plugins": ["expo-router", "expo-font", "expo-web-browser", "expo-ads-admob", "expo-apple-authentication"],
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "react-native-purchases",
+        {
+          "enableAmazon": false
+        }
+      ]
+    ],
+    "react-native-google-mobile-ads": {
+      "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+      "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
+    },
     "experiments": {
       "typedRoutes": true
     }
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+    "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
   }
 }

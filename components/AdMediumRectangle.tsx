@@ -21,7 +21,7 @@ try {
   }
 }
 
-export function AdBanner() {
+export function AdMediumRectangle() {
   const { isPremium } = useAuth();
   const { colors } = useTheme();
   const [adError, setAdError] = useState(false);
@@ -37,11 +37,11 @@ export function AdBanner() {
       <View style={[styles.container, { backgroundColor: colors.surface }]}>
         <Text style={[styles.adLabel, { color: colors.textTertiary }]}>Advertisement</Text>
         <View style={[styles.adContent, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          <Text style={[styles.adText, { color: colors.textSecondary }]}>AdMob Banner</Text>
+          <Text style={[styles.adText, { color: colors.textSecondary }]}>AdMob Medium Rectangle</Text>
           <Text style={[styles.adSubtext, { color: colors.textTertiary }]}>
             {Platform.OS === 'web'
-              ? '320x50 - Ads display on mobile devices'
-              : '320x50 - Build with native code to show real ads'}
+              ? '300x250 - Ads display on mobile devices'
+              : '300x250 - Build with native code to show real ads'}
           </Text>
         </View>
       </View>
@@ -68,17 +68,17 @@ export function AdBanner() {
       )}
       <BannerAd
         unitId={adUnitID}
-        size={BannerAdSize.BANNER}
+        size={BannerAdSize.MEDIUM_RECTANGLE}
         requestOptions={{
           requestNonPersonalizedAdsOnly: true,
         }}
         onAdFailedToLoad={(error: any) => {
-          console.warn('AdMob Banner failed to load:', error);
+          console.warn('AdMob Medium Rectangle failed to load:', error);
           setAdError(true);
         }}
         onAdLoaded={() => {
           if (FEATURES.enableDebugLogs) {
-            console.log('AdMob Banner loaded successfully');
+            console.log('AdMob Medium Rectangle loaded successfully');
           }
         }}
       />
@@ -89,7 +89,7 @@ export function AdBanner() {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    marginVertical: 8,
+    marginVertical: 16,
   },
   testLabel: {
     fontSize: 10,
@@ -101,8 +101,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   adContent: {
-    width: '100%',
-    height: 50,
+    width: 300,
+    height: 250,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 4,
@@ -110,11 +110,14 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   adText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   adSubtext: {
     fontSize: 10,
     marginTop: 2,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
 });
+

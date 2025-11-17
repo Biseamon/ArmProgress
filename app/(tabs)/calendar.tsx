@@ -9,16 +9,19 @@ import {
   Dimensions,
   Platform,
   Alert,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, Workout, StrengthTest } from '@/lib/supabase';
-import { performOptimisticUpdate, optimisticDelete } from '@/lib/optimisticUpdates';
-import { invalidateCache } from '@/lib/cache';
-import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2 } from 'lucide-react-native';
-import { convertWeight, formatWeight } from '@/lib/weightUtils';
+import { invalidateQueries } from '@/lib/react-query';
+import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2, Save, Plus } from 'lucide-react-native';
+import { convertWeight, formatWeight, convertFromLbs, convertToLbs } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { handleError } from '@/lib/errorHandling';
+import { AdBanner } from '@/components/AdBanner';
 
 interface Cycle {
   id: string;
@@ -44,6 +47,15 @@ interface DayData {
   strengthTestCount: number;
 }
 
+type Exercise = {
+  id?: string;
+  exercise_name: string;
+  sets: number;
+  reps: number;
+  weight_lbs: number;
+  notes: string;
+}
+
 export default function CalendarScreen() {
   const { colors } = useTheme();
   const { profile, isPremium } = useAuth(); // Add isPremium here
@@ -62,6 +74,16 @@ export default function CalendarScreen() {
   const [showCycles, setShowCycles] = useState(true);
   const [showGoals, setShowGoals] = useState(true);
   const [showStrengthTests, setShowStrengthTests] = useState(true);
+  
+  // Edit workout modal state
+  const [showEditWorkoutModal, setShowEditWorkoutModal] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
+  const [workoutType, setWorkoutType] = useState('table_practice');
+  const [duration, setDuration] = useState('30');
+  const [intensity, setIntensity] = useState('5');
+  const [workoutNotes, setWorkoutNotes] = useState('');
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -414,18 +436,135 @@ export default function CalendarScreen() {
     return workouts.filter((w) => w.created_at.split('T')[0] === dateStr);
   };
 
-  const handleEditWorkout = (workout: Workout) => {
+  const handleEditWorkout = async (workout: Workout) => {
+    // Close day modal first
     setShowDayModal(false);
-    // Navigate to training screen and trigger edit
-    router.push('/(tabs)/training');
-    // The edit will be handled by the training screen
-    // We'll pass the workout ID as a query parameter
+    
+    // Fetch exercises for this workout BEFORE setting state
+    const { data: exercisesData } = await supabase
+      .from('exercises')
+      .select('*')
+      .eq('workout_id', workout.id);
+
+    // Prepare exercises array
+    let exercisesToSet: Exercise[] = [];
+    if (exercisesData && exercisesData.length > 0) {
+      exercisesToSet = exercisesData.map(ex => ({
+        id: ex.id,
+        exercise_name: ex.exercise_name,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight_lbs: ex.weight_lbs,
+        notes: ex.notes || '',
+      }));
+    }
+
+    // Set all state together
+    setEditingWorkout(workout);
+    setWorkoutType(workout.workout_type);
+    setDuration(String(workout.duration_minutes));
+    setIntensity(String(workout.intensity));
+    setWorkoutNotes(workout.notes);
+    setExercises(exercisesToSet);
+    
+    // Small delay to ensure state updates are applied
     setTimeout(() => {
-      router.push({
-        pathname: '/(tabs)/training',
-        params: { editWorkoutId: workout.id }
-      });
-    }, 100);
+      setShowEditWorkoutModal(true);
+    }, 50);
+  };
+
+  const handleAddExercise = () => {
+    setExercises([
+      ...exercises,
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+    ]);
+  };
+
+  const handleRemoveExercise = (index: number) => {
+    setExercises(exercises.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateExercise = (
+    index: number,
+    field: keyof Exercise,
+    value: any
+  ) => {
+    const updated = [...exercises];
+    updated[index] = { ...updated[index], [field]: value };
+    setExercises(updated);
+  };
+
+  const handleSaveWorkout = async () => {
+    if (!profile || !editingWorkout) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      // Update workout
+      const { error: updateError } = await supabase
+        .from('workouts')
+        .update({
+          workout_type: workoutType,
+          duration_minutes: parseInt(duration) || 0,
+          intensity: parseInt(intensity) || 5,
+          notes: workoutNotes,
+        })
+        .eq('id', editingWorkout.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Delete old exercises
+      await supabase.from('exercises').delete().eq('workout_id', editingWorkout.id);
+
+      // Insert new exercises if any
+      if (exercises.length > 0) {
+        const exercisesData = exercises.map((ex) => ({
+          workout_id: editingWorkout.id,
+          exercise_name: ex.exercise_name,
+          sets: ex.sets,
+          reps: ex.reps,
+          weight_lbs: ex.weight_lbs,
+          notes: ex.notes || '',
+        }));
+        
+        const { error: exercisesError } = await supabase
+          .from('exercises')
+          .insert(exercisesData);
+          
+        if (exercisesError) {
+          console.error('Error inserting exercises:', exercisesError);
+        }
+      }
+
+      // Invalidate cache and refresh
+      if (profile?.id) {
+        invalidateQueries.workouts(profile.id);
+        invalidateQueries.home(profile.id);
+        invalidateQueries.calendar(profile.id);
+      }
+
+      setSaving(false);
+      setShowEditWorkoutModal(false);
+      resetForm();
+      await fetchData();
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
+      setSaving(false);
+    }
+  };
+
+  const resetForm = () => {
+    setWorkoutType('table_practice');
+    setDuration('30');
+    setIntensity('5');
+    setWorkoutNotes('');
+    setExercises([]);
+    setEditingWorkout(null);
   };
 
   const handleDeleteWorkout = (workout: Workout) => {
@@ -438,32 +577,27 @@ export default function CalendarScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            // Perform optimistic update
-            await performOptimisticUpdate(
-              `delete-workout-${workout.id}`,
-              // Optimistic update: immediately remove from UI
-              () => {
-                const updated = optimisticDelete(workouts, workout.id);
-                setWorkouts(updated);
-              },
-              // Rollback: restore workout if API fails
-              () => {
-                setWorkouts([...workouts]);
-              },
-              // API call
-              async () => {
-                const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
-                if (error) throw error;
-                return true;
-              },
-              // On success: invalidate cache and refetch
-              () => {
-                if (profile?.id) {
-                  invalidateCache.workouts(profile.id);
-                }
-                fetchData();
+            try {
+              // Delete from database
+              const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
+              
+              if (error) {
+                console.error('Error deleting workout:', error);
+                Alert.alert('Error', 'Failed to delete workout');
+                return;
               }
-            );
+              
+              // Invalidate cache to trigger refetch
+              if (profile?.id) {
+                invalidateQueries.workouts(profile.id);
+              }
+              
+              // Refresh calendar data
+              fetchData();
+            } catch (error) {
+              const errorMessage = handleError(error);
+              Alert.alert('Error', errorMessage);
+            }
           },
         },
       ]
@@ -591,19 +725,8 @@ export default function CalendarScreen() {
         </View>
       </ScrollView>
 
-      {/* AdMob Banner Placeholder - Standard Banner */}
-      {!isPremium && (
-        <View style={[styles.adBannerContainer, { backgroundColor: colors.surface }]}>
-          <View style={[styles.adBannerPlaceholder, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <Text style={[styles.adBannerText, { color: colors.textSecondary }]}>
-              📱 Ad Space
-            </Text>
-            <Text style={[styles.adBannerSubtext, { color: colors.textTertiary }]}>
-              320x50
-            </Text>
-          </View>
-        </View>
-      )}
+      {/* AdMob Banner - Automatic test/production ads */}
+      <AdBanner />
 
       <View style={styles.content}>
         {renderCalendar()}
@@ -798,6 +921,179 @@ export default function CalendarScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Workout Modal */}
+      <Modal
+        visible={showEditWorkoutModal}
+        animationType="slide"
+        onRequestClose={() => setShowEditWorkoutModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[{ flex: 1 }, { backgroundColor: colors.background }]}
+        >
+          <View style={[styles.editModalContainer, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { paddingTop: insets.top + 20, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Edit Training
+              </Text>
+              <TouchableOpacity onPress={() => setShowEditWorkoutModal(false)}>
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              contentContainerStyle={{ paddingBottom: 400 }}
+            >
+            <Text style={[styles.label, { color: colors.text }]}>Workout Type</Text>
+            <View style={styles.typeContainer}>
+              {['table_practice', 'strength', 'technique', 'endurance', 'sparring'].map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.typeButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    workoutType === type && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                  ]}
+                  onPress={() => setWorkoutType(type)}
+                >
+                  <Text
+                    style={[
+                      styles.typeButtonText,
+                      { color: colors.textSecondary },
+                      workoutType === type && [styles.typeButtonTextActive, { color: '#FFF' }],
+                    ]}
+                  >
+                    {type.replace(/_/g, ' ').charAt(0).toUpperCase() + type.replace(/_/g, ' ').slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.label, { color: colors.text }]}>Duration (minutes)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={duration}
+              onChangeText={setDuration}
+              keyboardType="number-pad"
+              placeholder="30"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Intensity (1-10)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={intensity}
+              onChangeText={setIntensity}
+              keyboardType="number-pad"
+              placeholder="5"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Notes</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={workoutNotes}
+              onChangeText={setWorkoutNotes}
+              multiline
+              numberOfLines={3}
+              placeholder="How did it go?"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <View style={styles.exercisesSection}>
+              <View style={styles.exercisesHeader}>
+                <Text style={[styles.label, { color: colors.text }]}>Exercises</Text>
+                <TouchableOpacity
+                  style={styles.addExerciseButton}
+                  onPress={handleAddExercise}
+                >
+                  <Plus size={20} color={colors.primary} />
+                  <Text style={[styles.addExerciseText, { color: colors.primary }]}>Add Exercise</Text>
+                </TouchableOpacity>
+              </View>
+
+              {exercises.map((exercise, index) => (
+                <View key={index} style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
+                  <View style={styles.exerciseCardHeader}>
+                    <Text style={[styles.exerciseCardTitle, { color: colors.text }]}>Exercise {index + 1}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveExercise(index)}>
+                      <X size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+                      value={exercise.exercise_name}
+                      onChangeText={(val) =>
+                        handleUpdateExercise(index, 'exercise_name', val)
+                      }
+                      placeholder="Exercise name"
+                      placeholderTextColor={colors.textTertiary}
+                    />
+
+                  <View style={styles.exerciseRow}>
+                    <View style={styles.exerciseInputGroup}>
+                      <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Sets</Text>
+                      <TextInput
+                        style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        value={String(exercise.sets)}
+                        onChangeText={(val) =>
+                          handleUpdateExercise(index, 'sets', parseInt(val) || 0)
+                        }
+                        keyboardType="number-pad"
+                      />
+                    </View>
+
+                    <View style={styles.exerciseInputGroup}>
+                      <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Reps</Text>
+                      <TextInput
+                        style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        value={String(exercise.reps)}
+                        onChangeText={(val) =>
+                          handleUpdateExercise(index, 'reps', parseInt(val) || 0)
+                        }
+                        keyboardType="number-pad"
+                      />
+                    </View>
+
+                    <View style={styles.exerciseInputGroup}>
+                      <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
+                      <TextInput
+                        style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        onChangeText={(val) => {
+                          const inputValue = parseInt(val) || 0;
+                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
+                          handleUpdateExercise(index, 'weight_lbs', lbsValue);
+                        }}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={handleSaveWorkout}
+              disabled={saving}
+            >
+              <Save size={20} color="#FFF" />
+              <Text style={styles.saveButtonText}>
+                {saving ? 'Saving...' : 'Update Training'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.modalBottomSpacing} />
+          </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -936,6 +1232,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '70%',
+  },
+  editModalContainer: {
+    flex: 1,
+    backgroundColor: '#1A1A1A',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1169,31 +1469,129 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  adBannerContainer: {
-    marginHorizontal: 20,
-    marginVertical: 12,
-    borderRadius: 8,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  adBannerPlaceholder: {
-    width: 320,
-    height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2A2A2A',
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#333',
-    borderStyle: 'dashed',
-  },
-  adBannerText: {
+  label: {
     fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 2,
+    fontWeight: '600',
+    color: '#FFF',
+    marginBottom: 8,
+    marginTop: 16,
   },
-  adBannerSubtext: {
-    fontSize: 10,
+  input: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#FFF',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  typeContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  typeButton: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  typeButtonActive: {
+    backgroundColor: '#E63946',
+    borderColor: '#E63946',
+  },
+  typeButtonText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  typeButtonTextActive: {
+    color: '#FFF',
+    fontWeight: 'bold',
+  },
+  exercisesSection: {
+    marginTop: 24,
+  },
+  exercisesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addExerciseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  addExerciseText: {
+    fontSize: 14,
+    color: '#E63946',
+    fontWeight: '600',
+  },
+  exerciseCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  exerciseCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  exerciseCardTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  exerciseRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  exerciseInputGroup: {
+    flex: 1,
+  },
+  smallLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 4,
+  },
+  smallInput: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#FFF',
+    borderWidth: 1,
+    borderColor: '#333',
+    textAlign: 'center',
+  },
+  saveButton: {
+    backgroundColor: '#E63946',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 24,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalBottomSpacing: {
+    height: 40,
   },
 });

@@ -3,8 +3,8 @@ require('dotenv').config();
 
 module.exports = {
   expo: {
-    name: "Arm Wrestling Pro",
-    slug: "arm-wrestling-pro",
+    name: "ArmProgress",
+    slug: "armprogress",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
@@ -17,6 +17,13 @@ module.exports = {
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: false,
       },
+      usesAppleSignIn: true,
+      config: {
+        // AdMob App ID for iOS
+        // Using test App ID for development: ca-app-pub-3940256099942544~1458002511
+        // Replace with your real App ID from https://apps.admob.com/ for production
+        googleMobileAdsAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "ca-app-pub-3940256099942544~1458002511"
+      }
     },
     android: {
       adaptiveIcon: {
@@ -29,6 +36,12 @@ module.exports = {
         backgroundColor: "#00000000",
         translucent: true,
       },
+      config: {
+        // AdMob App ID for Android
+        // Using test App ID for development: ca-app-pub-3940256099942544~3347511713
+        // Replace with your real App ID from https://apps.admob.com/ for production
+        googleMobileAdsAppId: process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "ca-app-pub-3940256099942544~3347511713"
+      }
     },
     web: {
       bundler: "metro",
@@ -38,7 +51,7 @@ module.exports = {
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-ads-admob",
+      "expo-apple-authentication"
     ],
     experiments: {
       typedRoutes: true,
