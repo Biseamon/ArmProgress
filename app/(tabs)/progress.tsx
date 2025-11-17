@@ -1673,8 +1673,11 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
-            <View 
+          <ScrollView
+            style={styles.modalContent}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+          >
+            <View
               ref={reportRef}
               collapsable={false}
               style={[styles.reportContainer, { backgroundColor: colors.surface }]}
