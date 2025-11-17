@@ -8,13 +8,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Dumbbell, Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '@/lib/supabase';
 import { FontAwesome } from '@expo/vector-icons';
 
@@ -76,7 +78,62 @@ export default function Register() {
     }
   };
 
+  const handleAppleSignIn = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      // Sign in to Supabase with the Apple ID token
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken!,
+      });
+
+      if (error) {
+        setError(error.message || 'Failed to sign up with Apple');
+        setLoading(false);
+        return;
+      }
+
+      // If this is the first sign-in and we have user info, update the profile
+      if (credential.fullName && data.user) {
+        const fullName = [credential.fullName.givenName, credential.fullName.familyName]
+          .filter(Boolean)
+          .join(' ');
+
+        if (fullName) {
+          await supabase
+            .from('profiles')
+            .update({ full_name: fullName })
+            .eq('id', data.user.id);
+        }
+      }
+
+      // Successfully authenticated, navigate to home
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      if (err.code === 'ERR_REQUEST_CANCELED') {
+        // User canceled the sign-in
+        setLoading(false);
+      } else {
+        setError(err.message || 'Failed to sign up with Apple');
+        setLoading(false);
+      }
+    }
+  };
+
   const handleOAuthLogin = async (provider: string) => {
+    // Use native Apple Sign In for iOS
+    if (provider === 'apple' && Platform.OS === 'ios') {
+      return handleAppleSignIn();
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -149,7 +206,11 @@ export default function Register() {
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Dumbbell size={60} color={colors.primary} strokeWidth={2} />
+          <Image
+            source={require('../../assets/images/app-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={[styles.title, { color: colors.text }]}>Create Account</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Start your strength journey today</Text>
         </View>
@@ -267,6 +328,10 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: 40,
+  },
+  logo: {
+    width: 80,
+    height: 80,
   },
   title: {
     fontSize: 32,

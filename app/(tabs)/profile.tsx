@@ -526,7 +526,7 @@ export default function Profile() {
 
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <Text style={[styles.aboutText, { color: colors.textSecondary }]}>
-              Arm Wrestling Pro helps you track your training, set goals, and
+              ArmProgress helps you track your training, set goals, and
               monitor your progress. Built for serious arm wrestlers who want to
               take their performance to the next level.
             </Text>

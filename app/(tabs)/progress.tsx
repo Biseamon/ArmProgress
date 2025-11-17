@@ -780,7 +780,7 @@ export default function Progress() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Arm Wrestling Progress - ${reportData.generatedAt}</title>
+    <title>My Progress Report - ${reportData.generatedAt}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -906,7 +906,7 @@ export default function Progress() {
 <body>
     <div class="container">
         <div class="header">
-            <h1>💪 My Arm Wrestling Progress</h1>
+            <h1>💪 My Progress Report</h1>
             <p class="subtitle">Report generated on ${reportData.generatedAt}</p>
             <p class="period">📅 Last 3 Months (${reportData.periodStart} - ${reportData.generatedAt})</p>
         </div>
@@ -1673,8 +1673,11 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalContent}>
-            <View 
+          <ScrollView
+            style={styles.modalContent}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+          >
+            <View
               ref={reportRef}
               collapsable={false}
               style={[styles.reportContainer, { backgroundColor: colors.surface }]}

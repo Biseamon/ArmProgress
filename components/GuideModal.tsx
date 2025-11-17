@@ -32,7 +32,7 @@ type GuideStep = {
 
 const guideSteps: GuideStep[] = [
   {
-    title: 'Welcome to Arm Wrestling Pro! 💪',
+    title: 'Welcome to ArmProgress! 💪',
     description: 'Your complete training companion for arm wrestling. Track workouts, monitor progress, set goals, and become the champion you\'re meant to be.',
     icon: Trophy,
     iconColor: '#E63946',

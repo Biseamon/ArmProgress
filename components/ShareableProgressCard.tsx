@@ -27,7 +27,7 @@ export function ShareableProgressCard({
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.emoji}>💪</Text>
-          <Text style={styles.title}>My Arm Wrestling Progress</Text>
+          <Text style={styles.title}>My Progress Report</Text>
           {userName && <Text style={styles.userName}>{userName}</Text>}
         </View>
 

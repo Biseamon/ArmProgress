@@ -1,4 +1,4 @@
-// This is the home screen for Arm Wrestling Pro.
+// This is the home screen for ArmProgress.
 
 import { useState, useEffect } from 'react';
 import {
