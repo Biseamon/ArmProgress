@@ -117,7 +117,11 @@ export default function Home() {
             />
           </View>
           <View style={styles.profileSection}>
-            <View style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}>
+            <TouchableOpacity 
+              style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}
+              onPress={() => router.push('/(tabs)/profile')}
+              activeOpacity={0.7}
+            >
               {profile?.avatar_url && !avatarError ? (
                 <Image
                   source={{ uri: profile.avatar_url }}
@@ -135,7 +139,7 @@ export default function Home() {
                   </Text>
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
             <View style={styles.userInfo}>
               <Text style={[styles.greeting, { color: colors.textTertiary }, isTablet && styles.greetingTablet]}>Welcome back,</Text>
               <View style={styles.nameRow}>
