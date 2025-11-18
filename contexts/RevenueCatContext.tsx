@@ -104,7 +104,7 @@ export const RevenueCatProvider: React.FC<RevenueCatProviderProps> = ({ children
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        console.error('No authenticated user found');
+        // User not authenticated - skip silently (happens during logout)
         return;
       }
 
