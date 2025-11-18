@@ -21,7 +21,7 @@ import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
-import { BookOpen, Camera, Crown, Heart, Info, LogOut, Mail, Moon, Shield, Sun, User, Weight } from 'lucide-react-native';
+import { BookOpen, Camera, ChevronRight, Crown, FileText, Heart, Info, LogOut, Mail, Moon, Shield, Sun, User, Weight } from 'lucide-react-native';
 import { GuideModal } from '@/components/GuideModal';
 import { STRIPE_CONFIG, APP_CONFIG } from '@/lib/config';
 
@@ -533,6 +533,21 @@ export default function Profile() {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Legal</Text>
+
+          <TouchableOpacity
+            style={[styles.card, styles.legalCard, { backgroundColor: colors.surface }]}
+            onPress={() => router.push('/legal')}
+          >
+            <View style={styles.settingLeft}>
+              <FileText size={20} color={colors.primary} />
+              <Text style={[styles.settingText, { color: colors.text }]}>Privacy & Terms</Text>
+            </View>
+            <ChevronRight size={20} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
           style={[styles.guideButton, { backgroundColor: colors.primary }]}
           onPress={() => setShowGuide(true)}
@@ -738,6 +753,11 @@ const styles = StyleSheet.create({
   aboutText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  legalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   guideButton: {
     flexDirection: 'row',
