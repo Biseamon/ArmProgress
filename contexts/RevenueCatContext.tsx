@@ -8,6 +8,7 @@ import {
   restorePurchases,
   PREMIUM_ENTITLEMENT_ID,
 } from '@/lib/revenueCat';
+import { supabase } from '@/lib/supabase';
 
 interface RevenueCatContextType {
   isPremium: boolean;
@@ -72,11 +73,55 @@ export const RevenueCatProvider: React.FC<RevenueCatProviderProps> = ({ children
     try {
       const { customerInfo: info, isPremium: premium } = await getCustomerInfo();
       setCustomerInfo(info);
-      setIsPremium(premium);
+
+      // Additional check: if there are active purchases, grant premium even without entitlement
+      // This ensures test purchases work before entitlements are configured
+      if (info) {
+        const hasActivePurchases = Object.keys(info.activeSubscriptions).length > 0;
+        const shouldBePremium = premium || hasActivePurchases;
+        setIsPremium(shouldBePremium);
+
+        // Sync with Supabase
+        await updateSupabasePremiumStatus(shouldBePremium);
+
+        console.log('Customer info refreshed. Premium status:', shouldBePremium, {
+          hasEntitlement: premium,
+          hasActivePurchases,
+        });
+      } else {
+        setIsPremium(premium);
+
+        // Sync with Supabase
+        await updateSupabasePremiumStatus(premium);
+      }
     } catch (error) {
       console.error('Error refreshing customer info:', error);
     }
   }, []);
+
+  // Update Supabase premium status
+  const updateSupabasePremiumStatus = async (isPremium: boolean) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error('No authenticated user found');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_premium: isPremium })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Error updating Supabase premium status:', error);
+      } else {
+        console.log('Supabase premium status updated successfully:', isPremium);
+      }
+    } catch (error) {
+      console.error('Error updating Supabase premium status:', error);
+    }
+  };
 
   // Purchase a package
   const purchase = useCallback(async (pkg: PurchasesPackage) => {
@@ -85,7 +130,21 @@ export const RevenueCatProvider: React.FC<RevenueCatProviderProps> = ({ children
 
       if (result.success && result.customerInfo) {
         setCustomerInfo(result.customerInfo);
-        setIsPremium(result.customerInfo.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined);
+
+        // Check if entitlement is active
+        const hasEntitlement = result.customerInfo.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined;
+
+        // If purchase succeeded, set premium to true even if entitlement isn't configured
+        // This is common in test environments before entitlement is set up
+        if (result.success) {
+          setIsPremium(true);
+          console.log('Premium status set to true after successful purchase');
+
+          // Update Supabase database to persist premium status
+          await updateSupabasePremiumStatus(true);
+        } else {
+          setIsPremium(hasEntitlement);
+        }
       }
 
       return {
@@ -108,6 +167,10 @@ export const RevenueCatProvider: React.FC<RevenueCatProviderProps> = ({ children
 
       if (result.success) {
         setIsPremium(result.isPremium);
+
+        // Update Supabase database
+        await updateSupabasePremiumStatus(result.isPremium);
+
         await refreshCustomerInfo();
       }
 
@@ -130,10 +193,29 @@ export const RevenueCatProvider: React.FC<RevenueCatProviderProps> = ({ children
   useEffect(() => {
     const setupListener = () => {
       try {
-        Purchases.addCustomerInfoUpdateListener((info) => {
+        Purchases.addCustomerInfoUpdateListener(async (info) => {
           console.log('Customer info updated:', info);
           setCustomerInfo(info);
-          setIsPremium(info.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined);
+
+          // Check if entitlement is active
+          const hasEntitlement = info.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined;
+
+          // In test environments, if there are any active purchases, grant premium
+          // This ensures test purchases work before entitlements are configured
+          const hasActivePurchases = Object.keys(info.activeSubscriptions).length > 0;
+
+          const shouldBePremium = hasEntitlement || hasActivePurchases;
+
+          setIsPremium(shouldBePremium);
+
+          // Sync with Supabase
+          await updateSupabasePremiumStatus(shouldBePremium);
+
+          console.log('Premium status updated:', shouldBePremium, {
+            hasEntitlement,
+            hasActivePurchases,
+            activeSubscriptions: Object.keys(info.activeSubscriptions),
+          });
         });
       } catch (error) {
         console.error('Error setting up customer info listener:', error);

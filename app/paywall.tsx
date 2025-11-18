@@ -13,6 +13,7 @@ import {
 import { router } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useRevenueCat } from '@/contexts/RevenueCatContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { PurchasesPackage } from 'react-native-purchases';
 import { Crown, Check, X, RefreshCw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,6 +23,7 @@ export default function PaywallScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { offerings, purchase, restore, isPremium, refreshCustomerInfo } = useRevenueCat();
+  const { refreshProfile } = useAuth();
   const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -45,7 +47,7 @@ export default function PaywallScreen() {
       try {
         // Check if a paywall is configured in RevenueCat dashboard
         // If offerings have a paywall template, use RevenueCat UI
-        if (offerings?.paywall) {
+        if (offerings && (offerings as any).paywall) {
           setUseRevenueCatPaywall(true);
         }
       } catch (error) {
@@ -59,13 +61,11 @@ export default function PaywallScreen() {
   // Present RevenueCat paywall from dashboard
   const presentRevenueCatPaywall = async () => {
     try {
-      const result = await RevenueCatUI.presentPaywall({
-        requiredEntitlementIdentifier: 'premium',
-      });
+      const result = await RevenueCatUI.presentPaywall({} as any);
 
       // Result types: PURCHASED, RESTORED, CANCELLED, ERROR
-      if (result === RevenueCatUI.PAYWALL_RESULT.PURCHASED || 
-          result === RevenueCatUI.PAYWALL_RESULT.RESTORED) {
+      if (result === (RevenueCatUI as any).PAYWALL_RESULT?.PURCHASED ||
+          result === (RevenueCatUI as any).PAYWALL_RESULT?.RESTORED) {
         await refreshCustomerInfo();
         router.back();
       }
@@ -91,26 +91,80 @@ export default function PaywallScreen() {
     try {
       setPurchasing(true);
       const result = await purchase(selectedPackage);
+      console.log('Purchase result:', result);
 
       if (result.success) {
+        console.log('Purchase successful! Showing success alert...');
+        // Refresh customer info to update UI
+        await refreshCustomerInfo();
+
+        // Also refresh AuthContext profile to sync premium status
+        await refreshProfile();
+
         Alert.alert(
           'Success!',
           'Welcome to Premium! 🎉\nYou now have access to all premium features.',
           [
             {
               text: 'Get Started',
-              onPress: () => router.back(),
+              onPress: () => {
+                console.log('User tapped Get Started, navigating back');
+                router.back();
+              },
             },
           ]
         );
+        console.log('Success alert shown');
       } else if (result.error && result.error !== 'Purchase cancelled') {
-        Alert.alert('Purchase Failed', result.error);
+        // Filter out test environment messages and show user-friendly errors
+        const userFriendlyError = getUserFriendlyError(result.error);
+        if (userFriendlyError) {
+          Alert.alert('Purchase Failed', userFriendlyError);
+        }
+        // If error is 'Purchase cancelled', do nothing (user intentionally cancelled)
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to complete purchase');
+      const userFriendlyError = getUserFriendlyError(error.message);
+      Alert.alert('Error', userFriendlyError || 'Failed to complete purchase. Please try again.');
     } finally {
       setPurchasing(false);
     }
+  };
+
+  // Helper function to convert technical errors to user-friendly messages
+  const getUserFriendlyError = (errorMessage: string): string | null => {
+    if (!errorMessage) return null;
+
+    const lowerError = errorMessage.toLowerCase();
+
+    // Filter out test environment messages
+    if (lowerError.includes('simulated') || lowerError.includes('test store')) {
+      return 'Purchase could not be completed. Please try again.';
+    }
+
+    // Handle common error cases
+    if (lowerError.includes('cancelled') || lowerError.includes('canceled')) {
+      return null; // Don't show error for cancellations
+    }
+
+    if (lowerError.includes('network') || lowerError.includes('connection')) {
+      return 'Network error. Please check your connection and try again.';
+    }
+
+    if (lowerError.includes('not authorized') || lowerError.includes('authentication')) {
+      return 'You are not authorized to make purchases. Please check your device settings.';
+    }
+
+    if (lowerError.includes('payment') || lowerError.includes('billing')) {
+      return 'There was a problem with your payment method. Please check your payment settings.';
+    }
+
+    if (lowerError.includes('item') && lowerError.includes('not available')) {
+      return 'This subscription is currently unavailable. Please try again later.';
+    }
+
+    // If no specific match, return a generic message
+    return 'Purchase could not be completed. Please try again or contact support if the issue persists.';
   };
 
   const handleRestore = async () => {
@@ -119,6 +173,9 @@ export default function PaywallScreen() {
       const result = await restore();
 
       if (result.success) {
+        // Refresh AuthContext profile to sync premium status
+        await refreshProfile();
+
         Alert.alert(
           'Success',
           result.isPremium
@@ -290,7 +347,7 @@ export default function PaywallScreen() {
       </TouchableOpacity>
 
       {/* Button to manually trigger RevenueCat paywall (for testing) */}
-      {Platform.OS !== 'web' && offerings?.paywall && (
+      {Platform.OS !== 'web' && offerings && (offerings as any).paywall && (
         <TouchableOpacity
           style={[styles.restoreButton, { marginTop: 8 }]}
           onPress={presentRevenueCatPaywall}
