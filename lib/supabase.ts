@@ -46,7 +46,7 @@ export const supabase = createClient(
       persistSession: true,
       detectSessionInUrl: false,
       storage: AsyncStorage,
-      storageKey: 'armwrestling-auth',
+      storageKey: 'armprogress-auth',
     },
   }
 );

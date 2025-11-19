@@ -97,7 +97,7 @@ type ThemeContextType = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 // Storage key for persisting theme preference
-const THEME_STORAGE_KEY = '@armwrestling_theme';
+const THEME_STORAGE_KEY = '@armprogress_theme';
 
 /**
  * Cross-platform storage utility

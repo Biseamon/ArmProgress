@@ -28,6 +28,7 @@ import { AddMeasurementModal } from '@/components/AddMeasurementModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatWeight, convertWeight } from '@/lib/weightUtils';
 import { getCircumferenceUnit, convertCircumference } from '@/lib/weightUtils';
+import { APP_CONFIG } from '@/lib/config';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { writeAsStringAsync, documentDirectory, cacheDirectory } from 'expo-file-system/legacy';
@@ -1054,11 +1055,11 @@ export default function Progress() {
 
         <div class="footer">
             <p style="color: #999; margin-bottom: 10px;">Track your arm wrestling journey</p>
-            <a href="https://armwrestling.app" class="app-link">
+            <a href="${APP_CONFIG.url}" class="app-link">
                 💪 Get the App
             </a>
             <p style="color: #666; font-size: 12px; margin-top: 15px;">
-                Made with ArmWrestling Pro
+                Made with ArmProgress
             </p>
         </div>
     </div>
@@ -1075,7 +1076,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
   try {
     if (type === 'social') {
       // First, copy URL to clipboard
-      await Clipboard.setStringAsync('https://armwrestling.app');
+      await Clipboard.setStringAsync(APP_CONFIG.url || 'https://armprogress.com');
       
       // Show alert that URL is copied
       Alert.alert(
