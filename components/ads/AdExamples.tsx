@@ -171,8 +171,8 @@ function RewardedAdExample() {
       
       <TouchableOpacity
         style={[
-          styles.button, 
-          { backgroundColor: isReady ? colors.primary : colors.surfaceVariant }
+          styles.button,
+          { backgroundColor: isReady ? colors.primary : colors.surfaceSecondary }
         ]}
         onPress={handleWatchAd}
         disabled={!isReady}

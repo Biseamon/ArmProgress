@@ -3,8 +3,8 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, FileText, Shield } from 'lucide-react-native';
 
-const PRIVACY_POLICY_URL = 'https://yourdomain.com/privacy-policy.html';
-const TERMS_CONDITIONS_URL = 'https://yourdomain.com/terms-and-conditions.html';
+const PRIVACY_POLICY_URL = 'https://armprogress.com/privacy-policy.html';
+const TERMS_CONDITIONS_URL = 'https://armprogress.com/terms-and-conditions.html';
 
 export default function LegalScreen() {
   const { colors } = useTheme();

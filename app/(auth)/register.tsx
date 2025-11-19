@@ -9,7 +9,6 @@ import {
   Platform,
   ScrollView,
   Image,
-  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +19,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '@/lib/supabase';
 import { FontAwesome } from '@expo/vector-icons';
+import { LegalDocumentModal } from '@/components/LegalDocumentModal';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -29,8 +29,8 @@ const OAUTH_PROVIDERS = [
   { name: 'Apple', key: 'apple', color: '#000', icon: <FontAwesome name="apple" size={20} color="#FFF" />, platforms: ['ios'] },
 ];
 
-const PRIVACY_POLICY_URL = 'https://yourdomain.com/privacy-policy.html';
-const TERMS_CONDITIONS_URL = 'https://yourdomain.com/terms-and-conditions.html';
+const PRIVACY_POLICY_URL = 'https://armprogress.com/privacy-policy.html';
+const TERMS_CONDITIONS_URL = 'https://armprogress.com/terms-and-conditions.html';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -40,6 +40,8 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalUrl, setLegalUrl] = useState('');
   const router = useRouter();
   const { signUp } = useAuth();
   const { colors } = useTheme();
@@ -297,7 +299,8 @@ export default function Register() {
                 style={[styles.termsLink, { color: colors.primary }]}
                 onPress={(e) => {
                   e.stopPropagation();
-                  Linking.openURL(TERMS_CONDITIONS_URL);
+                  setLegalUrl(TERMS_CONDITIONS_URL);
+                  setShowLegalModal(true);
                 }}
               >
                 Terms and Conditions
@@ -307,7 +310,8 @@ export default function Register() {
                 style={[styles.termsLink, { color: colors.primary }]}
                 onPress={(e) => {
                   e.stopPropagation();
-                  Linking.openURL(PRIVACY_POLICY_URL);
+                  setLegalUrl(PRIVACY_POLICY_URL);
+                  setShowLegalModal(true);
                 }}
               >
                 Privacy Policy
@@ -358,6 +362,12 @@ export default function Register() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <LegalDocumentModal
+        visible={showLegalModal}
+        url={legalUrl}
+        onClose={() => setShowLegalModal(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

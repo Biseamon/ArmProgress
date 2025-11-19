@@ -75,7 +75,7 @@ export function useAdRewarded(options: RewardedAdOptions = {}) {
       }
     });
 
-    const errorListener = ad.addAdEventListener(RewardedAdEventType.ERROR, (error) => {
+    const errorListener = ad.addAdEventListener(RewardedAdEventType.ERROR, (error: any) => {
       console.warn('Failed to load rewarded ad:', error);
       setIsReady(false);
       setIsLoading(false);
@@ -84,7 +84,7 @@ export function useAdRewarded(options: RewardedAdOptions = {}) {
 
     const earnedRewardListener = ad.addAdEventListener(
       RewardedAdEventType.EARNED_REWARD,
-      (reward) => {
+      (reward: any) => {
         setUserDidEarnReward(true);
         if (FEATURES.enableDebugLogs) {
           console.log('User earned reward:', reward);
