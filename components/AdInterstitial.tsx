@@ -63,7 +63,7 @@ export function useAdInterstitial() {
       }
     });
 
-    const errorListener = ad.addAdEventListener(AdEventType.ERROR, (error) => {
+    const errorListener = ad.addAdEventListener(AdEventType.ERROR, (error: any) => {
       console.warn('Failed to load interstitial ad:', error);
       setIsReady(false);
       setIsLoading(false);

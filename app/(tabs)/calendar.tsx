@@ -12,7 +12,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
 } from 'react-native';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, Workout, StrengthTest } from '@/lib/supabase';
@@ -84,6 +84,20 @@ export default function CalendarScreen() {
   const [workoutNotes, setWorkoutNotes] = useState('');
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Add workout modal state (for past/today dates)
+  const [showAddWorkoutModal, setShowAddWorkoutModal] = useState(false);
+  const [addWorkoutType, setAddWorkoutType] = useState('table_practice');
+  const [addDuration, setAddDuration] = useState('30');
+  const [addIntensity, setAddIntensity] = useState('5');
+  const [addWorkoutNotes, setAddWorkoutNotes] = useState('');
+  const [addExercises, setAddExercises] = useState<Exercise[]>([]);
+
+  // Schedule training modal state (for future dates)
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleTitle, setScheduleTitle] = useState('');
+  const [scheduleDescription, setScheduleDescription] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('09:00');
 
   useFocusEffect(
     useCallback(() => {
@@ -252,16 +266,8 @@ export default function CalendarScreen() {
   };
 
   const handleDayPress = (date: Date) => {
-    const workoutCount = getWorkoutCountForDate(date);
-    const scheduledCount = getScheduledTrainingsForDate(date).length;
-    const strengthTestCount = getStrengthTestCountForDate(date);
-    const cycleInfo = isDateInCycle(date);
-    const goalCount = getGoalCountForDate(date);
-
-    if (workoutCount > 0 || cycleInfo.isInCycle || goalCount > 0 || scheduledCount > 0 || strengthTestCount > 0) {
-      setSelectedDate(date);
-      setShowDayModal(true);
-    }
+    setSelectedDate(date);
+    setShowDayModal(true);
   };
 
   const handlePreviousMonth = () => {
@@ -567,6 +573,158 @@ export default function CalendarScreen() {
     setEditingWorkout(null);
   };
 
+  // Helper functions for add workout modal
+  const handleAddExerciseToNew = () => {
+    setAddExercises([
+      ...addExercises,
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+    ]);
+  };
+
+  const handleRemoveExerciseFromNew = (index: number) => {
+    setAddExercises(addExercises.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateExerciseInNew = (
+    index: number,
+    field: keyof Exercise,
+    value: any
+  ) => {
+    const updated = [...addExercises];
+    updated[index] = { ...updated[index], [field]: value };
+    setAddExercises(updated);
+  };
+
+  const resetAddWorkoutForm = () => {
+    setAddWorkoutType('table_practice');
+    setAddDuration('30');
+    setAddIntensity('5');
+    setAddWorkoutNotes('');
+    setAddExercises([]);
+  };
+
+  const handleAddWorkout = async () => {
+    if (!profile || !selectedDate) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      // Insert workout
+      const { data: workoutData, error: workoutError } = await supabase
+        .from('workouts')
+        .insert({
+          user_id: profile.id,
+          workout_type: addWorkoutType,
+          duration_minutes: parseInt(addDuration) || 0,
+          intensity: parseInt(addIntensity) || 5,
+          notes: addWorkoutNotes,
+          created_at: dateStr,
+        })
+        .select()
+        .single();
+
+      if (workoutError) {
+        throw workoutError;
+      }
+
+      // Insert exercises if any
+      if (addExercises.length > 0 && workoutData) {
+        const exercisesData = addExercises.map((ex) => ({
+          workout_id: workoutData.id,
+          exercise_name: ex.exercise_name,
+          sets: ex.sets,
+          reps: ex.reps,
+          weight_lbs: ex.weight_lbs,
+          notes: ex.notes || '',
+        }));
+
+        const { error: exercisesError } = await supabase
+          .from('exercises')
+          .insert(exercisesData);
+
+        if (exercisesError) {
+          console.error('Error inserting exercises:', exercisesError);
+        }
+      }
+
+      // Invalidate cache and refresh
+      if (profile?.id) {
+        invalidateQueries.workouts(profile.id);
+        invalidateQueries.home(profile.id);
+        invalidateQueries.calendar(profile.id);
+      }
+
+      setSaving(false);
+      setShowAddWorkoutModal(false);
+      resetAddWorkoutForm();
+      await fetchData();
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
+      setSaving(false);
+    }
+  };
+
+  const handleAddSchedule = async () => {
+    if (!profile || !selectedDate) {
+      return;
+    }
+
+    if (!scheduleTitle.trim()) {
+      Alert.alert('Error', 'Please enter a title for the scheduled training');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      // Insert scheduled training
+      const { error: scheduleError } = await supabase
+        .from('scheduled_trainings')
+        .insert({
+          user_id: profile.id,
+          title: scheduleTitle,
+          description: scheduleDescription,
+          scheduled_date: dateStr,
+          scheduled_time: scheduleTime,
+        });
+
+      if (scheduleError) {
+        throw scheduleError;
+      }
+
+      // Invalidate cache and refresh
+      if (profile?.id) {
+        invalidateQueries.workouts(profile.id);
+        invalidateQueries.home(profile.id);
+        invalidateQueries.calendar(profile.id);
+      }
+
+      setSaving(false);
+      setShowScheduleModal(false);
+      setScheduleTitle('');
+      setScheduleDescription('');
+      setScheduleTime('09:00');
+      await fetchData();
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
+      setSaving(false);
+    }
+  };
+
   const handleDeleteWorkout = (workout: Workout) => {
     Alert.alert(
       'Delete Workout',
@@ -757,6 +915,32 @@ export default function CalendarScreen() {
             <ScrollView style={styles.modalContent}>
               {selectedDate && (
                 <>
+                  {/* Add Workout / Schedule Training Button */}
+                  {(() => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const isFuture = selectedDate > today;
+
+                    return (
+                      <TouchableOpacity
+                        style={[styles.addWorkoutButton, { backgroundColor: colors.primary }]}
+                        onPress={() => {
+                          setShowDayModal(false);
+                          if (isFuture) {
+                            setShowScheduleModal(true);
+                          } else {
+                            setShowAddWorkoutModal(true);
+                          }
+                        }}
+                      >
+                        <Plus size={20} color="#FFF" />
+                        <Text style={styles.addWorkoutButtonText}>
+                          {isFuture ? 'Schedule Training' : 'Log Workout'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })()}
+
                   {getScheduledTrainingsForDate(selectedDate).length > 0 && (
                     <>
                       <Text style={[styles.modalSectionTitle, { color: colors.text }]}>
@@ -1086,6 +1270,259 @@ export default function CalendarScreen() {
               <Save size={20} color="#FFF" />
               <Text style={styles.saveButtonText}>
                 {saving ? 'Saving...' : 'Update Training'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.modalBottomSpacing} />
+          </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Add Workout Modal */}
+      <Modal
+        visible={showAddWorkoutModal}
+        animationType="slide"
+        onRequestClose={() => setShowAddWorkoutModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[{ flex: 1 }, { backgroundColor: colors.background }]}
+        >
+          <View style={[styles.editModalContainer, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { paddingTop: insets.top + 20, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Log Workout for {selectedDate?.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </Text>
+              <TouchableOpacity onPress={() => setShowAddWorkoutModal(false)}>
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              contentContainerStyle={{ paddingBottom: 400 }}
+            >
+            <Text style={[styles.label, { color: colors.text }]}>Workout Type</Text>
+            <View style={styles.typeContainer}>
+              {['table_practice', 'strength', 'technique', 'endurance', 'sparring'].map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.typeButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    addWorkoutType === type && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                  ]}
+                  onPress={() => setAddWorkoutType(type)}
+                >
+                  <Text
+                    style={[
+                      styles.typeButtonText,
+                      { color: colors.textSecondary },
+                      addWorkoutType === type && [styles.typeButtonTextActive, { color: '#FFF' }],
+                    ]}
+                  >
+                    {type.replace(/_/g, ' ').charAt(0).toUpperCase() + type.replace(/_/g, ' ').slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.label, { color: colors.text }]}>Duration (minutes)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={addDuration}
+              onChangeText={setAddDuration}
+              keyboardType="number-pad"
+              placeholder="30"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Intensity (1-10)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={addIntensity}
+              onChangeText={setAddIntensity}
+              keyboardType="number-pad"
+              placeholder="5"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Notes</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={addWorkoutNotes}
+              onChangeText={setAddWorkoutNotes}
+              multiline
+              numberOfLines={3}
+              placeholder="How did it go?"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <View style={styles.exercisesSection}>
+              <View style={styles.exercisesHeader}>
+                <Text style={[styles.label, { color: colors.text }]}>Exercises</Text>
+                <TouchableOpacity
+                  style={styles.addExerciseButton}
+                  onPress={handleAddExerciseToNew}
+                >
+                  <Plus size={20} color={colors.primary} />
+                  <Text style={[styles.addExerciseText, { color: colors.primary }]}>Add Exercise</Text>
+                </TouchableOpacity>
+              </View>
+
+              {addExercises.map((exercise, index) => (
+                <View key={index} style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
+                  <View style={styles.exerciseCardHeader}>
+                    <Text style={[styles.exerciseCardTitle, { color: colors.text }]}>Exercise {index + 1}</Text>
+                    <TouchableOpacity onPress={() => handleRemoveExerciseFromNew(index)}>
+                      <X size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+                      value={exercise.exercise_name}
+                      onChangeText={(val) =>
+                        handleUpdateExerciseInNew(index, 'exercise_name', val)
+                      }
+                      placeholder="Exercise name"
+                      placeholderTextColor={colors.textTertiary}
+                    />
+
+                  <View style={styles.exerciseRow}>
+                    <View style={styles.exerciseInputGroup}>
+                      <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Sets</Text>
+                      <TextInput
+                        style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        value={String(exercise.sets)}
+                        onChangeText={(val) =>
+                          handleUpdateExerciseInNew(index, 'sets', parseInt(val) || 0)
+                        }
+                        keyboardType="number-pad"
+                      />
+                    </View>
+
+                    <View style={styles.exerciseInputGroup}>
+                      <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Reps</Text>
+                      <TextInput
+                        style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        value={String(exercise.reps)}
+                        onChangeText={(val) =>
+                          handleUpdateExerciseInNew(index, 'reps', parseInt(val) || 0)
+                        }
+                        keyboardType="number-pad"
+                      />
+                    </View>
+
+                    <View style={styles.exerciseInputGroup}>
+                      <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
+                      <TextInput
+                        style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        onChangeText={(val) => {
+                          const inputValue = parseInt(val) || 0;
+                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
+                          handleUpdateExerciseInNew(index, 'weight_lbs', lbsValue);
+                        }}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={handleAddWorkout}
+              disabled={saving}
+            >
+              <Save size={20} color="#FFF" />
+              <Text style={styles.saveButtonText}>
+                {saving ? 'Saving...' : 'Log Workout'}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.modalBottomSpacing} />
+          </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Schedule Training Modal */}
+      <Modal
+        visible={showScheduleModal}
+        animationType="slide"
+        onRequestClose={() => setShowScheduleModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[{ flex: 1 }, { backgroundColor: colors.background }]}
+        >
+          <View style={[styles.editModalContainer, { backgroundColor: colors.background }]}>
+            <View style={[styles.modalHeader, { paddingTop: insets.top + 20, borderBottomWidth: 1, borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Schedule Training for {selectedDate?.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </Text>
+              <TouchableOpacity onPress={() => setShowScheduleModal(false)}>
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              contentContainerStyle={{ paddingBottom: 400 }}
+            >
+            <Text style={[styles.label, { color: colors.text }]}>Title</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={scheduleTitle}
+              onChangeText={setScheduleTitle}
+              placeholder="e.g., Morning Training Session"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Description</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={scheduleDescription}
+              onChangeText={setScheduleDescription}
+              multiline
+              numberOfLines={3}
+              placeholder="What are you planning to train?"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Time (HH:MM)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={scheduleTime}
+              onChangeText={setScheduleTime}
+              placeholder="09:00"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={handleAddSchedule}
+              disabled={saving}
+            >
+              <Save size={20} color="#FFF" />
+              <Text style={styles.saveButtonText}>
+                {saving ? 'Saving...' : 'Schedule Training'}
               </Text>
             </TouchableOpacity>
 
@@ -1593,5 +2030,20 @@ const styles = StyleSheet.create({
   },
   modalBottomSpacing: {
     height: 40,
+  },
+  addWorkoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E63946',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 8,
+  },
+  addWorkoutButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

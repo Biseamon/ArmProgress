@@ -13,12 +13,13 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff, Square, CheckSquare } from 'lucide-react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '@/lib/supabase';
 import { FontAwesome } from '@expo/vector-icons';
+import { LegalDocumentModal } from '@/components/LegalDocumentModal';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -28,6 +29,9 @@ const OAUTH_PROVIDERS = [
   { name: 'Apple', key: 'apple', color: '#000', icon: <FontAwesome name="apple" size={20} color="#FFF" />, platforms: ['ios'] },
 ];
 
+const PRIVACY_POLICY_URL = 'https://armprogress.com/privacy-policy.html';
+const TERMS_CONDITIONS_URL = 'https://armprogress.com/terms-and-conditions.html';
+
 export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,13 +39,21 @@ export default function Register() {
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalUrl, setLegalUrl] = useState('');
   const router = useRouter();
-  const { signUp, signInWithGoogle, signInWithApple, signInWithFacebook } = useAuth();
+  const { signUp } = useAuth();
   const { colors } = useTheme();
 
   const handleRegister = async () => {
     if (!email || !password || !fullName) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    if (!agreedToTerms) {
+      setError('Please agree to the Terms and Conditions and Privacy Policy');
       return;
     }
 
@@ -270,6 +282,44 @@ export default function Register() {
           </View>
 
           <TouchableOpacity
+            style={styles.termsContainer}
+            onPress={() => setAgreedToTerms(!agreedToTerms)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.checkboxContainer}>
+              {agreedToTerms ? (
+                <CheckSquare size={20} color={colors.primary} />
+              ) : (
+                <Square size={20} color={colors.textTertiary} />
+              )}
+            </View>
+            <Text style={[styles.termsText, { color: colors.textSecondary }]}>
+              I agree to the{' '}
+              <Text
+                style={[styles.termsLink, { color: colors.primary }]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setLegalUrl(TERMS_CONDITIONS_URL);
+                  setShowLegalModal(true);
+                }}
+              >
+                Terms and Conditions
+              </Text>
+              {' '}and{' '}
+              <Text
+                style={[styles.termsLink, { color: colors.primary }]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setLegalUrl(PRIVACY_POLICY_URL);
+                  setShowLegalModal(true);
+                }}
+              >
+                Privacy Policy
+              </Text>
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.button, { backgroundColor: colors.primary }, loading && styles.buttonDisabled]}
             onPress={handleRegister}
             disabled={loading}
@@ -312,6 +362,12 @@ export default function Register() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <LegalDocumentModal
+        visible={showLegalModal}
+        url={legalUrl}
+        onClose={() => setShowLegalModal(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -437,5 +493,25 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  checkboxContainer: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  termsLink: {
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

@@ -70,7 +70,7 @@ export function ShareableProgressCard({
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Track your journey</Text>
-          <Text style={styles.appName}>ArmWrestling Pro</Text>
+          <Text style={styles.appName}>ArmProgress</Text>
         </View>
       </LinearGradient>
     </View>
