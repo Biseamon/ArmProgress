@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "armprogress",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.armprogress.app",
@@ -44,10 +44,6 @@
         }
       ]
     ],
-    "react-native-google-mobile-ads": {
-      "android_app_id": "ca-app-pub-3940256099942544~3347511713",
-      "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
-    },
     "experiments": {
       "typedRoutes": true
     }

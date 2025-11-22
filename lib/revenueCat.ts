@@ -5,11 +5,12 @@ import Purchases, {
   LOG_LEVEL
 } from 'react-native-purchases';
 import { Platform } from 'react-native';
+import { REVENUECAT_CONFIG } from './config';
 
-// RevenueCat API Keys - Add these to your .env file
+// RevenueCat API Keys - loaded from config (auto-switches between dev/prod)
 const REVENUECAT_API_KEY = {
-  ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || '',
-  android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || '',
+  ios: REVENUECAT_CONFIG.iosKey || '',
+  android: REVENUECAT_CONFIG.androidKey || '',
 };
 
 // Check if API keys are valid (not placeholder values)
@@ -27,8 +28,8 @@ const isRevenueCatConfigured = (): boolean => {
   return isValidApiKey(apiKey);
 };
 
-// Premium entitlement identifier (set this in RevenueCat dashboard)
-export const PREMIUM_ENTITLEMENT_ID = 'premium';
+// Premium entitlement identifier (must match RevenueCat dashboard)
+export const PREMIUM_ENTITLEMENT_ID = 'ArmProgress Pro';
 
 // Offering identifiers
 export const OFFERING_ID = {
@@ -56,10 +57,10 @@ export const initializeRevenueCat = async (userId?: string) => {
       ? REVENUECAT_API_KEY.ios
       : REVENUECAT_API_KEY.android;
 
-    console.log('RevenueCat: Initializing with API key for', Platform.OS);
+    console.log('RevenueCat: Initializing with API key for', Platform.OS, REVENUECAT_CONFIG.isTestMode ? '(TEST MODE)' : '(PRODUCTION)');
 
-    // Configure SDK
-    Purchases.setLogLevel(LOG_LEVEL.DEBUG); // Set to INFO or WARN in production
+    // Configure SDK - use DEBUG in dev, WARN in production
+    Purchases.setLogLevel(REVENUECAT_CONFIG.isTestMode ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN);
 
     // Initialize - use single configure call with appUserID if available
     await Purchases.configure({
