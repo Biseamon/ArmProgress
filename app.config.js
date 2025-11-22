@@ -18,12 +18,6 @@ module.exports = {
         UIViewControllerBasedStatusBarAppearance: false,
       },
       usesAppleSignIn: true,
-      config: {
-        // AdMob App ID for iOS
-        // Using test App ID for development: ca-app-pub-3940256099942544~1458002511
-        // Replace with your real App ID from https://apps.admob.com/ for production
-        googleMobileAdsAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "ca-app-pub-3940256099942544~1458002511"
-      }
     },
     android: {
       adaptiveIcon: {
@@ -36,12 +30,6 @@ module.exports = {
         backgroundColor: "#00000000",
         translucent: true,
       },
-      config: {
-        // AdMob App ID for Android
-        // Using test App ID for development: ca-app-pub-3940256099942544~3347511713
-        // Replace with your real App ID from https://apps.admob.com/ for production
-        googleMobileAdsAppId: process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "ca-app-pub-3940256099942544~3347511713"
-      }
     },
     web: {
       bundler: "metro",
@@ -51,7 +39,14 @@ module.exports = {
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "react-native-google-mobile-ads",
+        {
+          androidAppId: process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "ca-app-pub-3940256099942544~3347511713",
+          iosAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "ca-app-pub-3940256099942544~1458002511",
+        }
+      ]
     ],
     experiments: {
       typedRoutes: true,
@@ -60,8 +55,18 @@ module.exports = {
       // Environment variables - automatically loaded from .env
       EXPO_PUBLIC_SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL,
       EXPO_PUBLIC_SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-      EXPO_PUBLIC_REVENUECAT_IOS_KEY: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
-      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
+      // RevenueCat keys (both dev and prod for automatic switching)
+      EXPO_PUBLIC_REVENUECAT_IOS_KEY_DEV: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY_DEV,
+      EXPO_PUBLIC_REVENUECAT_IOS_KEY_PROD: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY_PROD,
+      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY_DEV: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY_DEV,
+      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY_PROD: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY_PROD,
+      // AdMob Ad Unit IDs (for production ads)
+      EXPO_PUBLIC_ADMOB_IOS_BANNER: process.env.EXPO_PUBLIC_ADMOB_IOS_BANNER,
+      EXPO_PUBLIC_ADMOB_IOS_INTERSTITIAL: process.env.EXPO_PUBLIC_ADMOB_IOS_INTERSTITIAL,
+      EXPO_PUBLIC_ADMOB_IOS_REWARDED: process.env.EXPO_PUBLIC_ADMOB_IOS_REWARDED,
+      EXPO_PUBLIC_ADMOB_ANDROID_BANNER: process.env.EXPO_PUBLIC_ADMOB_ANDROID_BANNER,
+      EXPO_PUBLIC_ADMOB_ANDROID_INTERSTITIAL: process.env.EXPO_PUBLIC_ADMOB_ANDROID_INTERSTITIAL,
+      EXPO_PUBLIC_ADMOB_ANDROID_REWARDED: process.env.EXPO_PUBLIC_ADMOB_ANDROID_REWARDED,
       EXPO_PUBLIC_STRIPE_DONATION_URL: process.env.EXPO_PUBLIC_STRIPE_DONATION_URL,
       EXPO_PUBLIC_ENV: process.env.EXPO_PUBLIC_ENV,
       EXPO_PUBLIC_APP_SCHEME: process.env.EXPO_PUBLIC_APP_SCHEME,

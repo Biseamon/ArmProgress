@@ -31,11 +31,18 @@ export const SUPABASE_CONFIG = {
 
 /**
  * RevenueCat Configuration
+ * Automatically switches between test and production API keys
  */
 export const REVENUECAT_CONFIG = {
-  iosKey: getOptionalEnvVar('EXPO_PUBLIC_REVENUECAT_IOS_KEY'),
-  androidKey: getOptionalEnvVar('EXPO_PUBLIC_REVENUECAT_ANDROID_KEY'),
-  entitlementId: 'premium', // Your entitlement identifier in RevenueCat
+  // Use test keys in development, production keys in release builds
+  iosKey: __DEV__
+    ? getOptionalEnvVar('EXPO_PUBLIC_REVENUECAT_IOS_KEY_DEV', '')
+    : getOptionalEnvVar('EXPO_PUBLIC_REVENUECAT_IOS_KEY_PROD', ''),
+  androidKey: __DEV__
+    ? getOptionalEnvVar('EXPO_PUBLIC_REVENUECAT_ANDROID_KEY_DEV', '')
+    : getOptionalEnvVar('EXPO_PUBLIC_REVENUECAT_ANDROID_KEY_PROD', ''),
+  entitlementId: 'ArmProgress Pro', // Your entitlement identifier in RevenueCat
+  isTestMode: __DEV__,
 } as const;
 
 /**
