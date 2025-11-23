@@ -536,7 +536,7 @@ export default function Training() {
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Workouts</Text>
             <Text style={[styles.workoutCount, { color: colors.textSecondary }]}>
-              {displayedWorkoutsCount} of {allWorkouts?.length || 0}
+              {Math.min(displayedWorkoutsCount, allWorkouts?.length || 0)} of {allWorkouts?.length || 0}
             </Text>
           </View>
           

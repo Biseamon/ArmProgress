@@ -64,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (data) {
       console.log('[AuthContext] Profile fetched, weight_unit:', data.weight_unit);
+      console.log('[AuthContext] Avatar URL:', data.avatar_url);
       setProfile(data);
     } else {
       console.log('[AuthContext] No profile data returned');
@@ -250,10 +251,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Useful after updating profile settings
    */
   const refreshProfile = async () => {
+    console.log('[AuthContext] refreshProfile called');
     if (session?.user) {
       await fetchProfile(session.user.id);
     }
   };
+
+  // Log when avatar URL changes in profile state
+  useEffect(() => {
+    if (profile?.avatar_url) {
+      console.log('[AuthContext] Profile avatar_url updated in state:', profile.avatar_url);
+    }
+  }, [profile?.avatar_url]);
 
   // Determine if user has premium access (either paid premium or test user)
   const isPremium = profile?.is_premium || profile?.is_test_user || false;

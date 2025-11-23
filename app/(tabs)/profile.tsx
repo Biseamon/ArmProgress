@@ -325,15 +325,36 @@ export default function Profile() {
         console.log('Updating profile with URL:', publicUrlWithTimestamp);
       }
 
-      // Update profile in SQLite + Supabase
+      // Update profile in SQLite first
       await updateProfileMutation.mutateAsync({ avatar_url: publicUrlWithTimestamp });
 
-      // Force immediate reload with cache busting
+      // CRITICAL: Update Supabase directly so refreshProfile gets the new value
+      if (__DEV__) {
+        console.log('[Profile] Updating Supabase directly with avatar URL...');
+      }
+      const { error: supabaseError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrlWithTimestamp, updated_at: new Date().toISOString() })
+        .eq('id', profile.id);
+      
+      if (supabaseError) {
+        console.error('[Profile] Supabase update error:', supabaseError);
+        throw supabaseError;
+      }
+      if (__DEV__) {
+        console.log('[Profile] Supabase updated successfully with avatar URL');
+      }
+
+      // Force immediate reload with cache busting (for local state in this screen)
       setAvatarUrl(publicUrlWithTimestamp);
       setImageKey(timestamp);
       setImageError(false); // Ensure error state is cleared
 
+      // Now refresh profile from Supabase to update AuthContext
       await refreshProfile();
+      if (__DEV__) {
+        console.log('[Profile] Profile refreshed in AuthContext');
+      }
 
       // Small delay to ensure profile state propagates to all components
       await new Promise(resolve => setTimeout(resolve, 300));
