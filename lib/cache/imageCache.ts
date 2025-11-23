@@ -65,18 +65,31 @@ export const getCachedProfilePicture = async (userId: string, avatarUrl: string 
  */
 const downloadProfilePicture = async (userId: string, avatarUrl: string): Promise<string | null> => {
   try {
+    // Validate URL
+    if (!avatarUrl || !avatarUrl.startsWith('http')) {
+      console.error('[ImageCache] Invalid avatar URL:', avatarUrl);
+      return null;
+    }
+    
     await ensureCacheDir();
     
-    const fileExtension = avatarUrl.split('.').pop() || 'jpg';
+    // Strip query parameters and get clean URL for file extension
+    const cleanUrl = avatarUrl.split('?')[0];
+    const fileExtension = cleanUrl.split('.').pop() || 'jpg';
     const localPath = `${CACHE_DIR}${userId}.${fileExtension}`;
     
-    console.log('[ImageCache] Downloading profile picture...');
+    console.log('[ImageCache] Downloading profile picture from:', cleanUrl);
     
-    // Download file
+    // Download file (use original URL with query params for cache busting)
     const downloadResult = await FileSystem.downloadAsync(avatarUrl, localPath);
     
     if (downloadResult.status !== 200) {
-      console.error('[ImageCache] Download failed:', downloadResult.status);
+      if (__DEV__) {
+        console.warn('[ImageCache] Download failed with status:', downloadResult.status);
+        console.warn('[ImageCache] URL:', avatarUrl.substring(0, 100) + '...');
+      }
+      
+      // Don't cache failed downloads - image will load directly from network
       return null;
     }
     
@@ -89,7 +102,7 @@ const downloadProfilePicture = async (userId: string, avatarUrl: string): Promis
       [localPath, new Date().toISOString(), new Date().toISOString(), userId]
     );
     
-    console.log('[ImageCache] Profile picture downloaded and cached');
+    console.log('[ImageCache] Profile picture downloaded and cached successfully');
     return localPath;
   } catch (error) {
     console.error('[ImageCache] Error downloading picture:', error);
@@ -241,9 +254,19 @@ const decode = (base64: string): ArrayBuffer => {
 export const preloadProfilePicture = async (userId: string, avatarUrl: string | null): Promise<void> => {
   if (!avatarUrl) return;
   
+  // Validate URL before attempting to cache
+  if (!avatarUrl.startsWith('http')) {
+    console.warn('[ImageCache] Skipping invalid avatar URL during preload');
+    return;
+  }
+  
   // Fire and forget - don't block UI
   getCachedProfilePicture(userId, avatarUrl).catch(error => {
-    console.error('[ImageCache] Preload failed:', error);
+    // Silently fail during preload - don't spam console
+    // Avatar will load directly from network instead
+    if (__DEV__) {
+      console.warn('[ImageCache] Preload skipped:', error.message || 'Failed to cache');
+    }
   });
 };
 

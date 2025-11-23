@@ -24,6 +24,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/lib/useResponsive';
 import { useHomeData } from '@/hooks/useHomeData';
 
+// Helper function to validate URL
+const isValidHttpUrl = (str: string) => {
+  let url;
+  try {
+    url = new URL(str);
+  } catch (_) {
+    return false;
+  }
+  return url.protocol === "http:" || url.protocol === "https:";
+};
+
 export default function Home() {
   const { profile, isPremium } = useAuth();
   const { colors } = useTheme();
@@ -37,9 +48,35 @@ export default function Home() {
   // Use custom hook with caching - replaces all manual fetching!
   const { data: homeData, isLoading: loading, refetch } = useHomeData(profile?.id);
 
-  // Reset avatar error when profile avatar URL changes
+  // Reset avatar error when profile avatar URL changes and auto-fix .jpg to .png if needed
   useEffect(() => {
-    setAvatarError(false);
+    const checkAvatar = async () => {
+      setAvatarError(false);
+      
+      if (profile?.avatar_url) {
+        if (__DEV__) {
+          console.log('[Home] Profile avatar URL changed to:', profile.avatar_url);
+        }
+        
+        const baseUrl = profile.avatar_url.split('?')[0];
+        
+        // If URL ends with .jpg but .png exists, the profile will auto-update via profile.tsx
+        // Just clear the error here so the new image can load
+        if (baseUrl.endsWith('.jpg')) {
+          const pngUrl = baseUrl.replace(/\.jpg$/, '.png');
+          try {
+            const response = await fetch(pngUrl, { method: 'HEAD' });
+            if (response.ok && __DEV__) {
+              console.log('[Home] PNG version exists, waiting for profile update');
+            }
+          } catch (error) {
+            // Ignore errors
+          }
+        }
+      }
+    };
+    
+    checkAvatar();
   }, [profile?.avatar_url]);
 
   // Hide initial loading screen after first data load or sync completes
@@ -227,14 +264,32 @@ export default function Home() {
               onPress={() => router.push('/(tabs)/profile')}
               activeOpacity={0.7}
             >
-              {profile?.avatar_url && !avatarError ? (
+              {profile?.avatar_url && !avatarError && isValidHttpUrl(profile.avatar_url) ? (
                 <Image
-                  source={{ uri: profile.avatar_url }}
+                  source={{ 
+                    uri: profile.avatar_url,
+                    cache: 'reload' // Force reload to get latest image
+                  }}
                   style={styles.avatarImage}
-                  key={`home-avatar-${profile.avatar_url}`}
+                  key={`home-avatar-${profile.avatar_url}-${profile.id}`}
                   onError={(e) => {
-                    console.log('Home avatar load error:', e.nativeEvent.error);
-                    setAvatarError(true);
+                    if (__DEV__) {
+                      console.warn('[Home] Avatar load error:', e.nativeEvent.error);
+                      console.warn('[Home] Failed avatar URL:', profile.avatar_url);
+                    }
+                    // Delay setting error to avoid race conditions during upload
+                    setTimeout(() => setAvatarError(true), 500);
+                  }}
+                  onLoad={() => {
+                    if (__DEV__) {
+                      console.log('[Home] Avatar loaded successfully');
+                    }
+                    setAvatarError(false); // Clear any previous errors
+                  }}
+                  onLoadStart={() => {
+                    if (__DEV__) {
+                      console.log('[Home] Avatar loading started');
+                    }
                   }}
                 />
               ) : (

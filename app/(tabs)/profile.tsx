@@ -30,6 +30,17 @@ import { triggerSync } from '@/lib/sync/syncEngine';
 import { handleError } from '@/lib/errorHandling';
 import { useQueryClient } from '@tanstack/react-query';
 
+// Helper function to validate URL
+const isValidHttpUrl = (str: string) => {
+  let url;
+  try {
+    url = new URL(str);
+  } catch (_) {
+    return false;
+  }
+  return url.protocol === "http:" || url.protocol === "https:";
+};
+
 export default function Profile() {
   const { profile, signOut, isPremium, refreshProfile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
@@ -44,13 +55,57 @@ export default function Profile() {
   const [uploading, setUploading] = useState(false);
   const [imageKey, setImageKey] = useState(Date.now());
   const [showDonationModal, setShowDonationModal] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
-    if (profile?.avatar_url) {
-      console.log('Profile avatar URL changed:', profile.avatar_url);
-      setAvatarUrl(profile.avatar_url);
-      setImageKey(Date.now());
-    }
+    const checkAndFixAvatar = async () => {
+      if (profile?.avatar_url) {
+        console.log('Profile avatar URL changed:', profile.avatar_url);
+        
+        // Extract the base URL without query params
+        const baseUrl = profile.avatar_url.split('?')[0];
+        
+        // If URL ends with .jpg, check if .png version exists (common issue)
+        if (baseUrl.endsWith('.jpg')) {
+          const pngUrl = baseUrl.replace(/\.jpg$/, '.png');
+          
+          try {
+            // Try to fetch the PNG version
+            const response = await fetch(pngUrl, { method: 'HEAD' });
+            if (response.ok) {
+              // PNG exists! Update the profile with correct URL
+              if (__DEV__) {
+                console.log('Found PNG version, updating profile URL from .jpg to .png');
+              }
+              const timestamp = Date.now();
+              const correctUrl = `${pngUrl}?t=${timestamp}`;
+              
+              // Update in background without blocking UI
+              updateProfileMutation.mutateAsync({ avatar_url: correctUrl }).catch(err => {
+                console.warn('Failed to update avatar URL:', err);
+              });
+              
+              setAvatarUrl(correctUrl);
+              setImageKey(timestamp);
+              setImageError(false);
+              return;
+            }
+          } catch (error) {
+            // PNG doesn't exist, continue with original URL
+            if (__DEV__) {
+              console.log('PNG version not found, using original URL');
+            }
+          }
+        }
+        
+        // Use the existing URL
+        setAvatarUrl(profile.avatar_url);
+        setImageKey(Date.now());
+        setImageError(false);
+      }
+    };
+
+    checkAndFixAvatar();
   }, [profile?.avatar_url]);
 
   // Sync weight unit with profile
@@ -88,6 +143,7 @@ export default function Profile() {
   const uploadAvatar = async (asset: ImagePicker.ImagePickerAsset) => {
     try {
       setUploading(true);
+      setImageError(false); // Reset error state when uploading
 
       if (!profile) {
         Alert.alert('Error', 'No profile found');
@@ -104,15 +160,35 @@ export default function Profile() {
         return;
       }
 
-      // Validate file type
-      const fileExt = asset.uri.split('.').pop()?.toLowerCase() || '';
-      const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-      if (!validExtensions.includes(fileExt)) {
-        Alert.alert(
-          'Invalid File Type',
-          'Please select a valid image file (JPG, PNG, WebP, or GIF)'
-        );
-        return;
+      // Get file extension from MIME type (more reliable than URI)
+      let fileExt = 'jpg'; // default fallback
+      
+      if (asset.mimeType) {
+        // Extract extension from MIME type (e.g., 'image/png' -> 'png')
+        // Handle both standard (image/jpeg) and non-standard (image/jpg) MIME types
+        const mimeExt = asset.mimeType.split('/')[1]?.toLowerCase();
+        const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        
+        if (mimeExt && validExtensions.includes(mimeExt)) {
+          // Normalize: both 'jpeg' and 'jpg' MIME types -> 'jpg' extension
+          fileExt = (mimeExt === 'jpeg' || mimeExt === 'jpg') ? 'jpg' : mimeExt;
+        }
+      } else {
+        // Fallback to extracting from URI
+        const uriExt = asset.uri.split('.').pop()?.toLowerCase() || '';
+        const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        
+        if (validExtensions.includes(uriExt)) {
+          fileExt = (uriExt === 'jpeg' || uriExt === 'jpg') ? 'jpg' : uriExt;
+        }
+      }
+
+      if (__DEV__) {
+        console.log('Image info:', {
+          mimeType: asset.mimeType,
+          uri: asset.uri,
+          detectedExtension: fileExt,
+        });
       }
 
       if (__DEV__) {
@@ -176,12 +252,33 @@ export default function Profile() {
         throw new Error('Failed to read image file');
       }
 
+      // Check authentication before upload
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated. Please sign in again.');
+      }
+
+      if (__DEV__) {
+        console.log('Uploading to Supabase Storage:', { filePath, fileExt, size: base64.length });
+      }
+
       // Upload to Supabase Storage using base64-arraybuffer
       // This uses the authenticated session automatically
+      const contentType = asset.mimeType || `image/${fileExt}`;
+      
+      if (__DEV__) {
+        console.log('Upload details:', {
+          fileName,
+          fileExt,
+          contentType,
+          assetMimeType: asset.mimeType,
+        });
+      }
+      
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, decode(base64), {
-          contentType: `image/${fileExt}`,
+          contentType,
           upsert: true, // This will replace existing file with same name
           cacheControl: '0', // Disable caching so new images appear immediately
         });
@@ -191,7 +288,15 @@ export default function Profile() {
           console.error('Upload error:', uploadError);
           console.error('Upload error details:', JSON.stringify(uploadError, null, 2));
         }
-        throw uploadError;
+        
+        // Provide user-friendly error messages
+        if (uploadError.message?.includes('Network request failed')) {
+          throw new Error('Network error. Please check your internet connection and try again.');
+        } else if (uploadError.message?.includes('not found')) {
+          throw new Error('Storage bucket not configured. Please contact support.');
+        } else {
+          throw new Error(uploadError.message || 'Failed to upload image. Please try again.');
+        }
       }
 
       if (__DEV__) {
@@ -203,9 +308,22 @@ export default function Profile() {
         .from('avatars')
         .getPublicUrl(filePath);
 
+      if (__DEV__) {
+        console.log('Generated public URL:', publicUrl);
+      }
+
+      // Validate the URL
+      if (!publicUrl || !publicUrl.startsWith('http')) {
+        throw new Error('Invalid storage URL generated. Please check Supabase configuration.');
+      }
+
       // Add cache-busting timestamp to the URL stored in database
       const timestamp = Date.now();
       const publicUrlWithTimestamp = `${publicUrl}?t=${timestamp}`;
+
+      if (__DEV__) {
+        console.log('Updating profile with URL:', publicUrlWithTimestamp);
+      }
 
       // Update profile in SQLite + Supabase
       await updateProfileMutation.mutateAsync({ avatar_url: publicUrlWithTimestamp });
@@ -213,8 +331,12 @@ export default function Profile() {
       // Force immediate reload with cache busting
       setAvatarUrl(publicUrlWithTimestamp);
       setImageKey(timestamp);
+      setImageError(false); // Ensure error state is cleared
 
       await refreshProfile();
+
+      // Small delay to ensure profile state propagates to all components
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       Alert.alert('Success', 'Profile picture updated!');
 
@@ -374,7 +496,7 @@ export default function Profile() {
             onPress={pickImage}
             disabled={uploading}
           >
-            {avatarUrl ? (
+            {avatarUrl && !imageError && isValidHttpUrl(avatarUrl) ? (
               <Image
                 source={{
                   uri: avatarUrl.includes('?t=') ? avatarUrl : `${avatarUrl}?t=${imageKey}`,
@@ -383,15 +505,24 @@ export default function Profile() {
                 style={styles.avatar}
                 key={`avatar-${imageKey}`}
                 onError={(e) => {
-                  console.log('Image load error:', e.nativeEvent.error);
-                  console.log('Failed URL:', avatarUrl);
-                  // Don't clear the URL, just log the error
+                  if (__DEV__) {
+                    console.warn('[Profile] Image load error:', e.nativeEvent.error);
+                    console.warn('[Profile] Failed URL:', avatarUrl);
+                    console.warn('[Profile] Image key:', imageKey);
+                  }
+                  // Only set error if it's a real error, not just initial load
+                  setTimeout(() => setImageError(true), 500);
                 }}
                 onLoad={() => {
-                  console.log('Image loaded successfully:', avatarUrl);
+                  if (__DEV__) {
+                    console.log('[Profile] Image loaded successfully');
+                  }
+                  setImageError(false);
                 }}
                 onLoadStart={() => {
-                  console.log('Image loading started');
+                  if (__DEV__) {
+                    console.log('[Profile] Image loading started');
+                  }
                 }}
               />
             ) : (

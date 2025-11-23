@@ -147,7 +147,7 @@ export function MeasurementsModal({
                   </View>
                 </View>
 
-                <Text style={styles.measurementGrid}>
+                <View style={styles.measurementGrid}>
                   {measurement.weight && (
                     <View style={styles.measurementItem}>
                       <Text style={[styles.measurementLabel, { color: colors.textTertiary }]}>Weight</Text>
@@ -252,7 +252,7 @@ export function MeasurementsModal({
                       </View>
                     </View>
                   )}
-                </Text>
+                </View>
 
                 {measurement.notes && (
                   <Text style={[styles.measurementNotes, { color: colors.textSecondary }]}>{measurement.notes}</Text>
@@ -361,11 +361,12 @@ const styles = StyleSheet.create({
   measurementGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    marginHorizontal: -6,
   },
   measurementItem: {
-    flex: 1,
-    minWidth: '45%',
+    width: '50%',
+    paddingHorizontal: 6,
+    marginBottom: 12,
   },
   measurementLabel: {
     fontSize: 12,

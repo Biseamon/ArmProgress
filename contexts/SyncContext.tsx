@@ -98,9 +98,13 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           });
       })
       .then(async () => {
-        // Preload profile picture
+        // Preload profile picture (non-blocking, runs in background)
         if (profile.avatar_url) {
-          preloadProfilePicture(profile.id, profile.avatar_url);
+          preloadProfilePicture(profile.id, profile.avatar_url)
+            .catch(err => {
+              console.warn('[SyncContext] Failed to preload profile picture:', err);
+              // Don't block app startup if profile picture fails to load
+            });
         }
         
         // Trigger initial sync to pull all data from Supabase

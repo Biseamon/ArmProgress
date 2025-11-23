@@ -201,6 +201,7 @@ export const useCreateWorkout = () => {
       queryClient.invalidateQueries({ queryKey: ['workouts'] });
       queryClient.invalidateQueries({ queryKey: ['scheduledTrainings'] });
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -217,6 +218,7 @@ export const useUpdateWorkout = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.workout(variables.id) });
       queryClient.invalidateQueries({ queryKey: ['workouts'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -232,6 +234,7 @@ export const useDeleteWorkout = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workouts'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -312,6 +315,7 @@ export const useCreateCycle = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -328,6 +332,7 @@ export const useUpdateCycle = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.cycle(variables.id) });
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -343,6 +348,7 @@ export const useDeleteCycle = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -358,6 +364,7 @@ export const useSetActiveCycle = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -408,6 +415,8 @@ export const useCreateGoal = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ['progress', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -423,6 +432,8 @@ export const useUpdateGoal = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ['progress', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -438,6 +449,8 @@ export const useIncrementGoal = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ['progress', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -453,6 +466,8 @@ export const useDecrementGoal = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ['progress', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -468,6 +483,8 @@ export const useDeleteGoal = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['goals'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
+      queryClient.invalidateQueries({ queryKey: ['progress', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -678,6 +695,7 @@ export const useCreateScheduledTraining = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduledTrainings'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -693,6 +711,7 @@ export const useUpdateScheduledTraining = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduledTrainings'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -708,6 +727,7 @@ export const useMarkTrainingCompleted = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduledTrainings'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -723,6 +743,7 @@ export const useDeleteScheduledTraining = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduledTrainings'] });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
       if (profile?.id) triggerSync(profile.id);
     },
   });
@@ -752,6 +773,7 @@ export const useUpdateProfile = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.profile(profile!.id) });
+      queryClient.invalidateQueries({ queryKey: ['home', profile?.id] }); // Update home screen when profile changes
       if (profile?.id) triggerSync(profile.id);
     },
   });

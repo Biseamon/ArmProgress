@@ -54,8 +54,15 @@ export default function Training() {
   const insets = useSafeAreaInsets();
   
   // Use SQLite hooks for offline-first data
-  const { data: workouts = [], isLoading: workoutsLoading } = useWorkouts();
+  const { data: allWorkouts = [], isLoading: workoutsLoading } = useWorkouts();
   const { data: cycles = [], isLoading: cyclesLoading } = useCycles();
+  
+  // Pagination state
+  const [displayedWorkoutsCount, setDisplayedWorkoutsCount] = useState(10);
+  
+  // Get paginated workouts
+  const workouts = allWorkouts.slice(0, displayedWorkoutsCount);
+  const hasMoreWorkouts = displayedWorkoutsCount < allWorkouts.length;
   
   // Mutations
   const createWorkoutMutation = useCreateWorkout();
@@ -403,6 +410,10 @@ export default function Training() {
     }
   };
 
+  const handleLoadMore = () => {
+    setDisplayedWorkoutsCount(prev => prev + 10);
+  };
+
   const resetForm = () => {
     setWorkoutType('table_practice');
     setDuration('30');
@@ -525,7 +536,7 @@ export default function Training() {
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Workouts</Text>
             <Text style={[styles.workoutCount, { color: colors.textSecondary }]}>
-              {workouts?.length || 0} loaded
+              {displayedWorkoutsCount} of {allWorkouts?.length || 0}
             </Text>
           </View>
           
@@ -534,7 +545,7 @@ export default function Training() {
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading workouts...</Text>
             </View>
-          ) : workouts.length === 0 ? (
+          ) : allWorkouts.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workouts yet</Text>
               <Text style={[styles.emptySubtext, { color: colors.textTertiary }]}>Start tracking your training!</Text>
@@ -583,6 +594,21 @@ export default function Training() {
                   )}
                 </View>
               ))}
+              
+              {hasMoreWorkouts && (
+                <TouchableOpacity
+                  style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                  onPress={handleLoadMore}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.loadMoreText, { color: colors.primary }]}>
+                    Load More Workouts
+                  </Text>
+                  <Text style={[styles.loadMoreSubtext, { color: colors.textSecondary }]}>
+                    {allWorkouts.length - displayedWorkoutsCount} remaining
+                  </Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
         </View>

@@ -256,7 +256,10 @@ export default function Progress() {
             'Free users can create up to 3 active goals. Please complete or delete an existing goal, or upgrade to Premium for unlimited goals.',
             [
               { text: 'OK', style: 'cancel' },
-              { text: 'Upgrade to Premium', onPress: () => router.push('/paywall') }
+              { text: 'Upgrade to Premium', onPress: () => {
+                setShowGoalModal(false);
+                setShowPaywall(true);
+              }}
             ]
           );
           return;
@@ -1234,10 +1237,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             {measurements.length > 0 && measurements[0] && (
               <View style={styles.latestMeasurement}>
                 <Text style={styles.latestLabel}>Latest:</Text>
-                <Text style={styles.latestStats}>
+                <View style={styles.latestStats}>
                   {measurements[0].weight && (
                     <Text style={[styles.latestStat, { color: colors.text }]}>
-                      {Math.round(convertWeight(
+                      Weight: {Math.round(convertWeight(
                         measurements[0].weight,
                         measurements[0].weight_unit || 'lbs',
                         displayWeightUnit
@@ -1252,7 +1255,23 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       }{getCircumferenceUnit(displayWeightUnit)}
                     </Text>
                   )}
-                </Text>
+                  {measurements[0].forearm_circumference && (
+                    <Text style={[styles.latestStat, { color: colors.text }]}>
+                      Forearm: {displayWeightUnit === 'lbs' 
+                        ? Math.round(convertCircumference(measurements[0].forearm_circumference, displayWeightUnit))
+                        : convertCircumference(measurements[0].forearm_circumference, displayWeightUnit).toFixed(1)
+                      }{getCircumferenceUnit(displayWeightUnit)}
+                    </Text>
+                  )}
+                  {measurements[0].wrist_circumference && (
+                    <Text style={[styles.latestStat, { color: colors.text }]}>
+                      Wrist: {displayWeightUnit === 'lbs' 
+                        ? Math.round(convertCircumference(measurements[0].wrist_circumference, displayWeightUnit))
+                        : convertCircumference(measurements[0].wrist_circumference, displayWeightUnit).toFixed(1)
+                      }{getCircumferenceUnit(displayWeightUnit)}
+                    </Text>
+                  )}
+                </View>
               </View>
             )}
           </TouchableOpacity>
@@ -1275,7 +1294,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
           </View>
 
           {!isPremium && (
-            <Text style={styles.limitText}>Free: {goals.length}/3 goals</Text>
+            <Text style={styles.limitText}>Free: {goals.filter(g => !g.is_completed).length}/3 active goals</Text>
           )}
 
           {goals.length === 0 ? (
@@ -1296,7 +1315,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               >
                 <View style={{ flex: 1 }}>
                   <View style={styles.goalHeader}>
-                    <Text style={styles.goalInfo}>
+                    <View style={styles.goalInfo}>
                       {goal.is_completed && (
                         <Trophy size={20} color="#FFD700" style={styles.goalIcon} />
                       )}
@@ -1309,10 +1328,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       >
                         {goal.goal_type?.trim() || 'Goal'}
                       </Text>
-                    </Text>
+                    </View>
                     <View style={styles.actionButtons}>
                       <TouchableOpacity
-                        style={styles.editButton}
+                        style={[styles.editButton, { marginRight: 8 }]}
                         onPress={() => handleEditGoal(goal)}
                       >
                         <Pencil size={16} color="#2A7DE1" />
@@ -1339,11 +1358,11 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <Text style={[styles.goalProgress, { color: colors.text }]}>
                       {goal.current_value} / {goal.target_value}
                     </Text>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flexDirection: 'row' }}>
                       {/* Show minus button if current_value > 0 */}
                       {!goal.is_completed && goal.current_value > 0 && (
                         <TouchableOpacity
-                          style={styles.decrementButton}
+                          style={[styles.decrementButton, { marginRight: 8 }]}
                           onPress={(e) => {
                             e.stopPropagation();
                             handleDecrementGoal(goal);
@@ -1549,7 +1568,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
 
             <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSaveGoal}>
               <Save size={20} color="#FFF" />
-              <Text style={styles.saveButtonText}>Save Goal</Text>
+              <Text style={[styles.saveButtonText, { marginLeft: 8 }]}>Save Goal</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -1666,7 +1685,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
 
             <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSaveTest}>
               <Save size={20} color="#FFF" />
-              <Text style={styles.saveButtonText}>{editingTest ? 'Update PR' : 'Save PR'}</Text>
+              <Text style={[styles.saveButtonText, { marginLeft: 8 }]}>{editingTest ? 'Update PR' : 'Save PR'}</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -2006,7 +2025,6 @@ const styles = StyleSheet.create({
   },
   testActions: {
     flexDirection: 'row',
-    gap: 8,
   },
   reportButton: {
     backgroundColor: '#2A2A2A',
@@ -2036,7 +2054,6 @@ const styles = StyleSheet.create({
   measurementsTitle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
   },
   measurementsTitleText: {
     fontSize: 18,
@@ -2060,12 +2077,14 @@ const styles = StyleSheet.create({
   },
   latestStats: {
     flexDirection: 'row',
-    gap: 16,
+    flexWrap: 'wrap',
   },
   latestStat: {
     fontSize: 14,
     color: '#FFF',
     fontWeight: '600',
+    marginRight: 12,
+    marginBottom: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -2081,10 +2100,10 @@ const styles = StyleSheet.create({
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   infoButton: {
     padding: 4,
+    marginLeft: 8,
   },
   addButton: {
     backgroundColor: '#E63946',
@@ -2234,7 +2253,6 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 8,
   },
   editButton: {
     backgroundColor: '#2A7DE144',
@@ -2293,13 +2311,14 @@ const styles = StyleSheet.create({
   typeContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
   },
   typeButton: {
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderWidth: 1,
+    marginRight: 8,
+    marginBottom: 8,
   },
   typeButtonActive: {
     // Dynamic styles applied inline
@@ -2316,7 +2335,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
     marginTop: 24,
   },
   dateButton: {
@@ -2441,12 +2459,10 @@ const styles = StyleSheet.create({
   reportStatsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginBottom: 20,
   },
   reportStatsRow: {
     flexDirection: 'row',
-    gap: 10,
   },
   reportStatCard: {
     flex: 1,
@@ -2454,6 +2470,7 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
+    margin: 5,
   },
   reportStatValue: {
     fontSize: 24,
@@ -2506,7 +2523,6 @@ const styles = StyleSheet.create({
   },
   shareOptions: {
     padding: 20,
-    gap: 12,
   },
   shareTitle: {
     fontSize: 18,
