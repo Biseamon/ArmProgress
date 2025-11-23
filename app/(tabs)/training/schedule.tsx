@@ -273,10 +273,10 @@ export default function ScheduleScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-              {training.description && (
+              {!!training.description && (
                 <Text style={[styles.trainingDescription, { color: colors.textSecondary }]}>{training.description}</Text>
               )}
-              {training.notification_enabled && (
+              {!!training.notification_enabled && (
                 <View style={[styles.notificationBadge, { backgroundColor: '#2A7DE144' }]}>
                   <Bell size={14} color="#2A7DE1" />
                   <Text style={styles.notificationText}>
