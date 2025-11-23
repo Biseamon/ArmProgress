@@ -9,10 +9,13 @@ import {
   RefreshControl,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useSync } from '@/contexts/SyncContext';
 import { Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { AdMediumRectangle } from '@/components/AdMediumRectangle';
@@ -24,10 +27,12 @@ import { useHomeData } from '@/hooks/useHomeData';
 export default function Home() {
   const { profile, isPremium } = useAuth();
   const { colors } = useTheme();
+  const { isSyncing } = useSync();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [showInitialLoading, setShowInitialLoading] = useState(true);
 
   // Use custom hook with caching - replaces all manual fetching!
   const { data: homeData, isLoading: loading, refetch } = useHomeData(profile?.id);
@@ -36,6 +41,15 @@ export default function Home() {
   useEffect(() => {
     setAvatarError(false);
   }, [profile?.avatar_url]);
+
+  // Hide initial loading screen after first data load or sync completes
+  useEffect(() => {
+    if (!loading && !isSyncing) {
+      // Add a small delay so users can see the transition
+      const timer = setTimeout(() => setShowInitialLoading(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, isSyncing]);
 
   // Extract data from hook result (with fallbacks)
   const workouts = homeData?.recentWorkouts || [];
@@ -54,6 +68,10 @@ export default function Home() {
       textDecorationLine: 'underline',
     },
   };
+
+  // Check if this is a brand new user (no data at all)
+  const isNewUser = !loading && workouts.length === 0 && cycles.length === 0 && 
+                     activeGoals.length === 0 && completedGoals.length === 0;
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -92,11 +110,98 @@ export default function Home() {
     return Math.min((goal.current_value / goal.target_value) * 100, 100);
   };
 
-  if (loading) {
+  // Skeleton Card Component
+  const SkeletonCard = ({ width = '100%', height = 80 }: { width?: any; height?: number }) => {
+    const shimmerAnim = new Animated.Value(0);
+    
+    useEffect(() => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(shimmerAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(shimmerAnim, {
+            toValue: 0,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }, []);
+
+    const opacity = shimmerAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.3, 0.7],
+    });
+
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Text style={[styles.loadingText, { color: colors.text }]}>Loading...</Text>
-      </View>
+      <Animated.View
+        style={[
+          styles.skeletonCard,
+          { backgroundColor: colors.surface, width, height, opacity },
+        ]}
+      />
+    );
+  };
+
+  // Show skeleton loading on initial load
+  if (showInitialLoading && loading) {
+    return (
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 20, paddingHorizontal: isTablet ? 40 : 20 }]}>
+          <View style={styles.headerLeft}>
+            <View style={[styles.appLogoContainer, isTablet && styles.appLogoContainerTablet]}>
+              <Image
+                source={require('@/assets/images/app-logo.png')}
+                style={styles.appLogoImage}
+                resizeMode="contain"
+              />
+            </View>
+            <View style={styles.profileSection}>
+              <View style={[styles.avatarContainer, isTablet && styles.avatarContainerTablet]}>
+                <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={[styles.greeting, { color: colors.textTertiary }, isTablet && styles.greetingTablet]}>
+                  Welcome back,
+                </Text>
+                <Text style={[styles.name, { color: colors.text }, isTablet && styles.nameTablet]}>
+                  {profile?.full_name || 'Athlete'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {isSyncing && (
+          <View style={[styles.syncBanner, { backgroundColor: colors.surface }]}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.syncText, { color: colors.text }]}>
+              Setting up your dashboard...
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.statsGrid}>
+          <SkeletonCard width={isTablet ? '30%' : '45%'} height={120} />
+          <SkeletonCard width={isTablet ? '30%' : '45%'} height={120} />
+          <SkeletonCard width={isTablet ? '30%' : '45%'} height={120} />
+          <SkeletonCard width={isTablet ? '30%' : '45%'} height={120} />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Workouts</Text>
+          <SkeletonCard height={100} />
+          <View style={{ height: 12 }} />
+          <SkeletonCard height={100} />
+          <View style={{ height: 12 }} />
+          <SkeletonCard height={100} />
+        </View>
+      </ScrollView>
     );
   }
 
@@ -158,6 +263,40 @@ export default function Home() {
       </View>
 
       <AdBanner />
+
+      {/* Show sync indicator if syncing after initial load */}
+      {!showInitialLoading && isSyncing && (
+        <View style={[styles.syncBanner, { backgroundColor: colors.surface }]}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.syncText, { color: colors.text }]}>Syncing your data...</Text>
+        </View>
+      )}
+
+      {/* Welcome message for brand new users */}
+      {isNewUser && (
+        <View style={[styles.welcomeCard, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.welcomeTitle, { color: colors.text }]}>
+            Welcome to ArmProgress! 💪
+          </Text>
+          <Text style={[styles.welcomeText, { color: colors.textSecondary }]}>
+            Start your arm wrestling journey by logging your first workout, setting goals, and tracking your progress.
+          </Text>
+          <View style={styles.welcomeActions}>
+            <TouchableOpacity
+              style={[styles.welcomeButton, { backgroundColor: colors.primary }]}
+              onPress={() => router.push('/(tabs)/training')}
+            >
+              <Text style={styles.welcomeButtonText}>Log Workout</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.welcomeButton, { backgroundColor: colors.secondary }]}
+              onPress={() => router.push('/(tabs)/progress')}
+            >
+              <Text style={styles.welcomeButtonText}>Set Goals</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={styles.statsGrid}>
         <View style={[styles.statCard, { backgroundColor: colors.surface, minWidth: isTablet ? '30%' : '45%' }]}>
@@ -790,5 +929,57 @@ const styles = StyleSheet.create({
   },
   premiumTextTablet: {
     fontSize: 11,
+  },
+  skeletonCard: {
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  syncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 8,
+    gap: 8,
+  },
+  syncText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  welcomeCard: {
+    margin: 20,
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  welcomeTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  welcomeText: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  welcomeActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  welcomeButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  welcomeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

@@ -8,6 +8,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './AuthContext';
 import { startAutoSync, triggerSync, forceFullSync } from '@/lib/sync/syncEngine';
 import { getDatabase } from '@/lib/db/database';
@@ -25,6 +26,7 @@ const SyncContext = createContext<SyncContextType | undefined>(undefined);
 
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const { profile, session } = useAuth();
+  const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -40,13 +42,17 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       setSyncError(null);
       await triggerSync(profile.id);
       setLastSyncAt(new Date());
+      
+      // Invalidate all queries to refresh UI with new data
+      queryClient.invalidateQueries();
+      console.log('[SyncContext] Invalidated all queries after sync');
     } catch (error: any) {
       setSyncError(error.message);
       console.error('[SyncContext] Sync failed:', error);
     } finally {
       setIsSyncing(false);
     }
-  }, [profile?.id]);
+  }, [profile?.id, queryClient]);
 
   /**
    * Force full sync (download everything)
@@ -59,13 +65,17 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       setSyncError(null);
       await forceFullSync(profile.id);
       setLastSyncAt(new Date());
+      
+      // Invalidate all queries to refresh UI with new data
+      queryClient.invalidateQueries();
+      console.log('[SyncContext] Invalidated all queries after force sync');
     } catch (error: any) {
       setSyncError(error.message);
       console.error('[SyncContext] Force sync failed:', error);
     } finally {
       setIsSyncing(false);
     }
-  }, [profile?.id]);
+  }, [profile?.id, queryClient]);
 
   /**
    * Initialize database and sync on user login
@@ -95,11 +105,19 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         
         // Trigger initial sync to pull all data from Supabase
         console.log('[SyncContext] Triggering initial full sync...');
+        setIsSyncing(true);
         try {
           await forceFullSync(profile.id);
           console.log('[SyncContext] Initial sync completed');
+          
+          // Invalidate all queries to refresh UI with new data
+          queryClient.invalidateQueries();
+          console.log('[SyncContext] Invalidated all queries after initial sync');
         } catch (error) {
           console.error('[SyncContext] Initial sync failed:', error);
+          setSyncError('Initial sync failed. Please try refreshing.');
+        } finally {
+          setIsSyncing(false);
         }
         
         // Start auto-sync

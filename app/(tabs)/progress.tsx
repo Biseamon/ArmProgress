@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -65,6 +65,28 @@ export default function Progress() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
+  
+  // Track weight unit changes to force re-render
+  const [displayWeightUnit, setDisplayWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
+  
+  // Debug: Log whenever profile changes
+  useEffect(() => {
+    console.log('[Progress] Profile updated:', { weight_unit: profile?.weight_unit, displayWeightUnit });
+  }, [profile]);
+  
+  // Update display weight unit when profile changes
+  useEffect(() => {
+    console.log('[Progress] Weight unit effect triggered:', { 
+      profileUnit: profile?.weight_unit, 
+      currentDisplay: displayWeightUnit,
+      willUpdate: profile?.weight_unit && profile.weight_unit !== displayWeightUnit
+    });
+    
+    if (profile?.weight_unit && profile.weight_unit !== displayWeightUnit) {
+      console.log('[Progress] ✅ Updating display weight unit:', profile.weight_unit);
+      setDisplayWeightUnit(profile.weight_unit);
+    }
+  }, [profile?.weight_unit, displayWeightUnit]);
   
   // Use SQLite hooks for offline-first data
   const { data: goals = [], isLoading: goalsLoading } = useGoals();
@@ -415,7 +437,7 @@ export default function Progress() {
       setCustomTestName(test.test_type.replace(/_/g, ' '));
     }
     
-    const userUnit = profile?.weight_unit || 'lbs';
+    const userUnit = displayWeightUnit;
     const storedUnit = test.result_unit || 'lbs';
     const displayValue = convertWeight(test.result_value, storedUnit, userUnit);
     
@@ -453,7 +475,7 @@ export default function Progress() {
 
   const handleEditMeasurement = (measurement: any) => {
     setEditingMeasurement(measurement);
-    const userUnit = profile?.weight_unit || 'lbs';
+    const userUnit = displayWeightUnit;
     const storedUnit = measurement.weight_unit || 'lbs';
     
     if (measurement.weight) {
@@ -752,7 +774,7 @@ export default function Progress() {
       completedGoals,
       activeCycles,
       generatedAt: new Date().toLocaleDateString(),
-      userUnit: profile?.weight_unit || 'lbs',
+      userUnit: displayWeightUnit,
       periodStart: threeMonthsAgo.toLocaleDateString(),
     };
   };
@@ -1187,17 +1209,17 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             strengthTests={strengthTests}
             measurements={measurements}
             cycles={cycles}
-            weightUnit={profile?.weight_unit || 'lbs'}
+            weightUnit={displayWeightUnit}
             isPremium={isPremium}
             onUpgrade={() => setShowPaywall(true)}
-            key={`graphs-${isPremium ? 'premium' : 'free'}-${strengthTests.length}-${profile?.weight_unit}`}
+            key={`graphs-${isPremium ? 'premium' : 'free'}-${strengthTests.length}-${displayWeightUnit}`}
           />
         </View>
 
         {/* AdMob Medium Rectangle - Automatic test/production ads */}
         <AdMediumRectangle />
 
-        <View style={styles.section}>
+        <View style={styles.section} key={`measurements-${displayWeightUnit}`}>
           <TouchableOpacity
             style={[styles.measurementsCard, { backgroundColor: colors.surface }]}
             onPress={() => setShowMeasurements(true)}
@@ -1218,16 +1240,16 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       {Math.round(convertWeight(
                         measurements[0].weight,
                         measurements[0].weight_unit || 'lbs',
-                        profile?.weight_unit || 'lbs'
-                      ))} {profile?.weight_unit || 'lbs'}
+                        displayWeightUnit
+                      ))} {displayWeightUnit}
                     </Text>
                   )}
                   {measurements[0].arm_circumference && (
                     <Text style={[styles.latestStat, { color: colors.text }]}>
-                      Arm: {profile?.weight_unit === 'lbs' 
-                        ? Math.round(convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs'))
-                        : convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                      }{getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                      Arm: {displayWeightUnit === 'lbs' 
+                        ? Math.round(convertCircumference(measurements[0].arm_circumference, displayWeightUnit))
+                        : convertCircumference(measurements[0].arm_circumference, displayWeightUnit).toFixed(1)
+                      }{getCircumferenceUnit(displayWeightUnit)}
                     </Text>
                   )}
                 </Text>
@@ -1362,7 +1384,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
           )}
         </View>
 
-        <View style={styles.section}>
+        <View style={styles.section} key={`prs-${displayWeightUnit}`}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Personal Records</Text>
@@ -1397,7 +1419,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </View>
           ) : (
             getLatestPRsByType().map((test) => {
-              const userUnit = profile?.weight_unit || 'lbs';
+              const userUnit = displayWeightUnit;
               const storedUnit = test.result_unit || 'lbs';
               const displayValue = convertWeight(test.result_value, storedUnit, userUnit);
               
@@ -1621,7 +1643,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               </>
             )}
 
-            <Text style={[styles.label, { color: colors.text }]}>Result ({profile?.weight_unit || 'lbs'})</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Result ({displayWeightUnit})</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={testResult}
@@ -1745,7 +1767,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     🏆 Personal Records
                   </Text>
                   {getLatestPRsByType().slice(0, 4).map((test) => {
-                    const userUnit = profile?.weight_unit || 'lbs';
+                    const userUnit = displayWeightUnit;
                     const storedUnit = test.result_unit || 'lbs';
                     const displayValue = Math.round(convertWeight(test.result_value, storedUnit, userUnit));
                     
@@ -1803,8 +1825,8 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                         {Math.round(convertWeight(
                           measurements[0].weight,
                           measurements[0].weight_unit || 'lbs',
-                          profile?.weight_unit || 'lbs'
-                        ))} {profile?.weight_unit || 'lbs'}
+                          displayWeightUnit
+                        ))} {displayWeightUnit}
                       </Text>
                     </View>
                   )}
@@ -1812,10 +1834,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
                       <Text style={[styles.reportPRName, { color: colors.text }]}>Arm</Text>
                       <Text style={[styles.reportPRValue, { color: colors.primary }]}>
-                        {profile?.weight_unit === 'lbs'
-                          ? Math.round(convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs'))
-                          : convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                        {displayWeightUnit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].arm_circumference, displayWeightUnit))
+                          : convertCircumference(measurements[0].arm_circumference, displayWeightUnit).toFixed(1)
+                        } {getCircumferenceUnit(displayWeightUnit)}
                       </Text>
                     </View>
                   )}
@@ -1823,10 +1845,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
                       <Text style={[styles.reportPRName, { color: colors.text }]}>Forearm</Text>
                       <Text style={[styles.reportPRValue, { color: colors.primary }]}>
-                        {profile?.weight_unit === 'lbs'
-                          ? Math.round(convertCircumference(measurements[0].forearm_circumference, profile?.weight_unit || 'lbs'))
-                          : convertCircumference(measurements[0].forearm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                        {displayWeightUnit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].forearm_circumference, displayWeightUnit))
+                          : convertCircumference(measurements[0].forearm_circumference, displayWeightUnit).toFixed(1)
+                        } {getCircumferenceUnit(displayWeightUnit)}
                       </Text>
                     </View>
                   )}
@@ -1834,10 +1856,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
                       <Text style={[styles.reportPRName, { color: colors.text }]}>Wrist</Text>
                       <Text style={[styles.reportPRValue, { color: colors.primary }]}>
-                        {profile?.weight_unit === 'lbs'
-                          ? Math.round(convertCircumference(measurements[0].wrist_circumference, profile?.weight_unit || 'lbs'))
-                          : convertCircumference(measurements[0].wrist_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                        {displayWeightUnit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].wrist_circumference, displayWeightUnit))
+                          : convertCircumference(measurements[0].wrist_circumference, displayWeightUnit).toFixed(1)
+                        } {getCircumferenceUnit(displayWeightUnit)}
                       </Text>
                     </View>
                   )}
@@ -1914,7 +1936,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         strengthTests={strengthTests}
         workouts={workouts}
         goals={goals}
-        weightUnit={profile?.weight_unit || 'lbs'}
+        weightUnit={displayWeightUnit}
       />
 
       <PaywallModal
@@ -1940,7 +1962,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         }}
         onEdit={handleEditMeasurement}
         onDelete={handleDeleteMeasurement}
-        weightUnit={profile?.weight_unit || 'lbs'}
+        weightUnit={displayWeightUnit}
       />
 
       <AddMeasurementModal
@@ -1960,7 +1982,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         setWristCircumference={setWristCircumference}
         notes={measurementNotes}
         setNotes={setMeasurementNotes}
-        weightUnit={profile?.weight_unit || 'lbs'}
+        weightUnit={displayWeightUnit}
         isEditing={!!editingMeasurement}
       />
     </View>

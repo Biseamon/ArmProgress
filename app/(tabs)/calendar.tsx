@@ -20,6 +20,7 @@ import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2, Save, Plus } 
 import { convertWeight, formatWeight, convertFromLbs, convertToLbs } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleError } from '@/lib/errorHandling';
+import { validateWorkout, validateExercise, getFirstError } from '@/lib/validation';
 import { AdBanner } from '@/components/AdBanner';
 import {
   useWorkouts,
@@ -225,7 +226,7 @@ export default function CalendarScreen() {
     return { isInCycle: false, cycleCount: 0 };
   };
 
-  const getDayColor = (workoutCount: number, isInCycle: boolean, scheduledCount: number, strengthTestCount: number, isFuture: boolean): string => {
+  const getDayColor = (workoutCount: number, isInCycle: boolean, scheduledCount: number, strengthTestCount: number, isTodayOrFuture: boolean): string => {
     if (!showWorkouts && !showCycles && !showStrengthTests) return colors.surface;
     if (!showWorkouts && isInCycle && showCycles) return '#2A7DE144';
     if (!showCycles && workoutCount > 0 && showWorkouts) {
@@ -234,7 +235,8 @@ export default function CalendarScreen() {
       if (workoutCount >= 3) return '#E63946';
     }
 
-    if (isFuture && scheduledCount > 0) return '#FFA50055';
+    // Show scheduled trainings for today and future (orange background)
+    if (scheduledCount > 0 && isTodayOrFuture) return '#FFA50055';
 
     // Priority for strength tests
     if (strengthTestCount > 0 && showStrengthTests) return '#10B98155';
@@ -326,7 +328,8 @@ export default function CalendarScreen() {
       const strengthTestCount = getStrengthTestCountForDate(date);
       const cycleInfo = isDateInCycle(date);
       const isFuture = date > today;
-      const dayColor = getDayColor(workoutCount, cycleInfo.isInCycle, scheduledCount, strengthTestCount, isFuture);
+      const isTodayOrFuture = date >= today;
+      const dayColor = getDayColor(workoutCount, cycleInfo.isInCycle, scheduledCount, strengthTestCount, isTodayOrFuture);
   
       const isToday = date.getDate() === today.getDate() &&
                       date.getMonth() === today.getMonth() &&
@@ -372,7 +375,7 @@ export default function CalendarScreen() {
               <Text style={styles.strengthTestIndicatorText}>💪</Text>
             </View>
           )}
-          {scheduledCount > 0 && isFuture && (
+          {scheduledCount > 0 && (
             <View style={styles.scheduledIndicator}>
               <Text style={styles.scheduledIndicatorText}>📅</Text>
             </View>
@@ -488,6 +491,38 @@ export default function CalendarScreen() {
       return;
     }
 
+    // Validate workout data
+    const workoutValidation = validateWorkout({
+      workout_type: workoutType,
+      duration_minutes: parseInt(duration) || 0,
+      intensity: parseInt(intensity) || 0,
+      notes: workoutNotes,
+    });
+
+    if (!workoutValidation.isValid) {
+      Alert.alert('Validation Error', getFirstError(workoutValidation) || 'Invalid workout data');
+      return;
+    }
+
+    // Validate exercises
+    for (let i = 0; i < exercises.length; i++) {
+      const exerciseValidation = validateExercise({
+        exercise_name: exercises[i].exercise_name,
+        sets: exercises[i].sets,
+        reps: exercises[i].reps,
+        weight_lbs: exercises[i].weight_lbs,
+        notes: exercises[i].notes,
+      });
+
+      if (!exerciseValidation.isValid) {
+        Alert.alert(
+          'Exercise Validation Error',
+          `Exercise ${i + 1}: ${getFirstError(exerciseValidation)}`
+        );
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
@@ -576,6 +611,38 @@ export default function CalendarScreen() {
   const handleAddWorkout = async () => {
     if (!profile || !selectedDate) {
       return;
+    }
+
+    // Validate workout data
+    const workoutValidation = validateWorkout({
+      workout_type: addWorkoutType,
+      duration_minutes: parseInt(addDuration) || 0,
+      intensity: parseInt(addIntensity) || 0,
+      notes: addWorkoutNotes,
+    });
+
+    if (!workoutValidation.isValid) {
+      Alert.alert('Validation Error', getFirstError(workoutValidation) || 'Invalid workout data');
+      return;
+    }
+
+    // Validate exercises
+    for (let i = 0; i < addExercises.length; i++) {
+      const exerciseValidation = validateExercise({
+        exercise_name: addExercises[i].exercise_name,
+        sets: addExercises[i].sets,
+        reps: addExercises[i].reps,
+        weight_lbs: addExercises[i].weight_lbs,
+        notes: addExercises[i].notes,
+      });
+
+      if (!exerciseValidation.isValid) {
+        Alert.alert(
+          'Exercise Validation Error',
+          `Exercise ${i + 1}: ${getFirstError(exerciseValidation)}`
+        );
+        return;
+      }
     }
 
     setSaving(true);

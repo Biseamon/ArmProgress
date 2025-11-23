@@ -24,11 +24,12 @@ export const getScheduledTrainings = async (userId: string): Promise<ScheduledTr
  */
 export const getUpcomingTrainings = async (userId: string): Promise<ScheduledTraining[]> => {
   const db = await getDatabase();
-  const now = new Date().toISOString();
+  // Extract just the date part (YYYY-MM-DD) to match scheduled_date format
+  const today = new Date().toISOString().split('T')[0];
   
   const trainings = await db.getAllAsync<ScheduledTraining>(
     'SELECT * FROM scheduled_trainings WHERE user_id = ? AND deleted = 0 AND completed = 0 AND scheduled_date >= ? ORDER BY scheduled_date ASC, scheduled_time ASC',
-    [userId, now]
+    [userId, today]
   );
   
   return trainings;

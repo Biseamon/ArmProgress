@@ -241,27 +241,42 @@ export default function Profile() {
       try {
         console.log('[Profile] Updating weight unit preference...');
         
-        // Update the user's preference - NO data conversion, only display conversion
+        // Update SQLite first (for offline support)
         await updateProfileMutation.mutateAsync({ weight_unit: newUnit });
-        console.log('[Profile] Profile updated successfully');
+        console.log('[Profile] SQLite updated successfully');
         
-        // Refresh profile first to ensure AuthContext has the new value
+        // CRITICAL: Update Supabase directly so refreshProfile gets the new value
+        console.log('[Profile] Updating Supabase directly...');
+        const { error: supabaseError } = await supabase
+          .from('profiles')
+          .update({ weight_unit: newUnit, updated_at: new Date().toISOString() })
+          .eq('id', profile.id);
+        
+        if (supabaseError) {
+          console.error('[Profile] Supabase update error:', supabaseError);
+          throw supabaseError;
+        }
+        console.log('[Profile] Supabase updated successfully');
+        
+        // Now refresh profile from Supabase to update AuthContext
         await refreshProfile();
         console.log('[Profile] Profile refreshed in AuthContext');
         
-        // Invalidate ALL queries to force refetch and re-render with new units
-        // Components will use the updated profile.weight_unit for display conversion
-        await queryClient.invalidateQueries();
-        console.log('[Profile] All queries invalidated, components will re-render');
+        // Small delay to ensure profile state has propagated through React tree
+        await new Promise(resolve => setTimeout(resolve, 200));
         
-        // Trigger sync to upload preference change to Supabase
-        await triggerSync(profile.id);
-        console.log('[Profile] Sync triggered for preference update');
+        // Invalidate ALL queries to force refetch and re-render with new units
+        await queryClient.invalidateQueries();
+        console.log('[Profile] All queries invalidated');
+        
+        // Force a hard refresh of all React Query data
+        await queryClient.refetchQueries();
+        console.log('[Profile] All queries refetched');
         
         // Update local state
         setWeightUnit(newUnit);
         
-        Alert.alert('Success', `Unit preference changed to ${newUnit.toUpperCase()}. All values will display in ${newUnit}.`);
+        Alert.alert('Success', `Unit preference changed to ${newUnit.toUpperCase()}. All values will now display in ${newUnit}.`);
       } catch (error) {
         console.error('[Profile] Weight unit change error:', error);
         const errorMessage = handleError(error);
@@ -272,6 +287,7 @@ export default function Profile() {
     } else {
       // Just update local state if no change needed
       setWeightUnit(newUnit);
+      console.log('[Profile] No change needed, same unit');
     }
   };
 

@@ -55,6 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Called after successful authentication to load user data
    */
   const fetchProfile = async (userId: string) => {
+    console.log('[AuthContext] Fetching profile from Supabase...');
     const { data } = await supabase
       .from('profiles')
       .select('*')
@@ -62,7 +63,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .maybeSingle(); // Returns null if no profile found (won't throw error)
 
     if (data) {
+      console.log('[AuthContext] Profile fetched, weight_unit:', data.weight_unit);
       setProfile(data);
+    } else {
+      console.log('[AuthContext] No profile data returned');
     }
   };
 
