@@ -263,7 +263,7 @@ export default function Home() {
                   })}
                 </Text>
               </View>
-              <View style={styles.trainingDetails}>
+              <Text style={styles.trainingDetails}>
                 <Text style={[styles.trainingTime, { color: colors.textSecondary }]}>
                   ⏰ {training.scheduled_time.slice(0, 5)}
                 </Text>
@@ -272,7 +272,7 @@ export default function Home() {
                     🔔 {training.notification_minutes_before}m before
                   </Text>
                 )}
-              </View>
+              </Text>
               {training.description && (
                 <Text style={[styles.trainingDescription, { color: colors.textTertiary }]} numberOfLines={2}>
                   {training.description}

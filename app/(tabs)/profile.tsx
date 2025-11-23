@@ -24,12 +24,19 @@ import { decode } from 'base64-arraybuffer';
 import { BookOpen, Camera, ChevronRight, Crown, FileText, Heart, Info, LogOut, Mail, Moon, Shield, Sun, User, Weight } from 'lucide-react-native';
 import { GuideModal } from '@/components/GuideModal';
 import { STRIPE_CONFIG, APP_CONFIG } from '@/lib/config';
+import { useUpdateProfile } from '@/lib/react-query-sqlite-complete';
+import { convertAllDataToNewUnit } from '@/lib/db/queries/weightConversion';
+import { triggerSync } from '@/lib/sync/syncEngine';
+import { handleError } from '@/lib/errorHandling';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function Profile() {
   const { profile, signOut, isPremium, refreshProfile } = useAuth();
   const { colors, isDark, toggleTheme } = useTheme();
   const { isPremium: isRevenueCatPremium, restore } = useRevenueCat();
   const router = useRouter();
+  const updateProfileMutation = useUpdateProfile();
+  const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -45,6 +52,13 @@ export default function Profile() {
       setImageKey(Date.now());
     }
   }, [profile?.avatar_url]);
+
+  // Sync weight unit with profile
+  useEffect(() => {
+    if (profile?.weight_unit) {
+      setWeightUnit(profile.weight_unit);
+    }
+  }, [profile?.weight_unit]);
 
   const pickImage = async () => {
     try {
@@ -193,18 +207,8 @@ export default function Profile() {
       const timestamp = Date.now();
       const publicUrlWithTimestamp = `${publicUrl}?t=${timestamp}`;
 
-      // Update profile in database with the timestamped URL
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: publicUrlWithTimestamp })
-        .eq('id', profile.id);
-
-      if (updateError) {
-        if (__DEV__) {
-          console.error('Profile update error:', updateError);
-        }
-        throw updateError;
-      }
+      // Update profile in SQLite + Supabase
+      await updateProfileMutation.mutateAsync({ avatar_url: publicUrlWithTimestamp });
 
       // Force immediate reload with cache busting
       setAvatarUrl(publicUrlWithTimestamp);
@@ -229,15 +233,45 @@ export default function Profile() {
 
   const handleWeightUnitToggle = async (value: boolean) => {
     const newUnit = value ? 'kg' : 'lbs';
-    setWeightUnit(newUnit);
+    const oldUnit = profile?.weight_unit || 'lbs';
+    
+    console.log(`[Profile] Weight unit toggle: ${oldUnit} → ${newUnit}`);
 
-    if (profile) {
-      await supabase
-        .from('profiles')
-        .update({ weight_unit: newUnit })
-        .eq('id', profile.id);
-
-      await refreshProfile();
+    if (profile && oldUnit !== newUnit) {
+      try {
+        console.log('[Profile] Updating weight unit preference...');
+        
+        // Update the user's preference - NO data conversion, only display conversion
+        await updateProfileMutation.mutateAsync({ weight_unit: newUnit });
+        console.log('[Profile] Profile updated successfully');
+        
+        // Refresh profile first to ensure AuthContext has the new value
+        await refreshProfile();
+        console.log('[Profile] Profile refreshed in AuthContext');
+        
+        // Invalidate ALL queries to force refetch and re-render with new units
+        // Components will use the updated profile.weight_unit for display conversion
+        await queryClient.invalidateQueries();
+        console.log('[Profile] All queries invalidated, components will re-render');
+        
+        // Trigger sync to upload preference change to Supabase
+        await triggerSync(profile.id);
+        console.log('[Profile] Sync triggered for preference update');
+        
+        // Update local state
+        setWeightUnit(newUnit);
+        
+        Alert.alert('Success', `Unit preference changed to ${newUnit.toUpperCase()}. All values will display in ${newUnit}.`);
+      } catch (error) {
+        console.error('[Profile] Weight unit change error:', error);
+        const errorMessage = handleError(error);
+        Alert.alert('Error', errorMessage);
+        // Revert weight unit on error
+        setWeightUnit(oldUnit);
+      }
+    } else {
+      // Just update local state if no change needed
+      setWeightUnit(newUnit);
     }
   };
 

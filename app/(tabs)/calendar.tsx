@@ -15,13 +15,25 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, Workout, StrengthTest } from '@/lib/supabase';
-import { invalidateQueries } from '@/lib/react-query';
+import { Workout, StrengthTest } from '@/lib/supabase';
 import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2, Save, Plus } from 'lucide-react-native';
 import { convertWeight, formatWeight, convertFromLbs, convertToLbs } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleError } from '@/lib/errorHandling';
 import { AdBanner } from '@/components/AdBanner';
+import {
+  useWorkouts,
+  useCycles,
+  useGoals,
+  useStrengthTests,
+  useScheduledTrainings,
+  useUpdateWorkout,
+  useDeleteWorkout,
+  useCreateWorkout,
+  useCreateExercises,
+  useCreateScheduledTraining,
+} from '@/lib/react-query-sqlite-complete';
+import { getExercises, deleteExercisesByWorkout } from '@/lib/db/queries/exercises';
 
 interface Cycle {
   id: string;
@@ -53,20 +65,49 @@ type Exercise = {
   sets: number;
   reps: number;
   weight_lbs: number;
+  weight_unit?: 'lbs' | 'kg';
   notes: string;
 }
 
 export default function CalendarScreen() {
   const { colors } = useTheme();
-  const { profile, isPremium } = useAuth(); // Add isPremium here
+  const { profile, isPremium } = useAuth();
   const insets = useSafeAreaInsets();
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
-  const [scheduledTrainings, setScheduledTrainings] = useState<any[]>([]);
+  
+  // Use SQLite hooks for offline-first data
+  const { data: allWorkouts = [] } = useWorkouts();
+  const { data: cycles = [] } = useCycles();
+  const { data: allGoals = [] } = useGoals();
+  const { data: strengthTests = [] } = useStrengthTests();
+  const { data: scheduledTrainings = [] } = useScheduledTrainings();
+  
+  // Mutations
+  const updateWorkoutMutation = useUpdateWorkout();
+  const deleteWorkoutMutation = useDeleteWorkout();
+  const createWorkoutMutation = useCreateWorkout();
+  const createExercisesMutation = useCreateExercises();
+  const createScheduledTrainingMutation = useCreateScheduledTraining();
+  
+  // Filter data for current month view
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  
+  // Filter workouts and goals for the current month ± 1 month
+  const prevMonth = new Date(currentYear, currentMonth - 1, 1);
+  const nextMonth = new Date(currentYear, currentMonth + 2, 0);
+  const startDate = prevMonth.toISOString().split('T')[0];
+  const endDate = nextMonth.toISOString().split('T')[0];
+  
+  const workouts = allWorkouts.filter(w => {
+    const wDate = w.created_at.split('T')[0];
+    return wDate >= startDate && wDate <= endDate;
+  });
+  
+  const goals = allGoals.filter(g => {
+    if (!g.deadline) return false;
+    return g.deadline >= startDate && g.deadline <= endDate;
+  });
+  
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
@@ -99,79 +140,20 @@ export default function CalendarScreen() {
   const [scheduleDescription, setScheduleDescription] = useState('');
   const [scheduleTime, setScheduleTime] = useState('09:00');
 
+  // Set available years based on profile
   useFocusEffect(
     useCallback(() => {
-      if (profile?.id) {
-        fetchData();
+      if (profile?.created_at) {
+        const registrationYear = new Date(profile.created_at).getFullYear();
+        const currentYearNow = new Date().getFullYear();
+        const years = [];
+        for (let year = registrationYear; year <= currentYearNow + 2; year++) {
+          years.push(year);
+        }
+        setAvailableYears(years);
       }
-      return () => {};
-    }, [profile?.id, currentYear, currentMonth])
+    }, [profile?.created_at])
   );
-
-  const fetchData = async () => {
-    if (!profile) return;
-
-    // Fetch data for current month ± 1 month (3 months total) for better performance
-    const prevMonth = new Date(currentYear, currentMonth - 1, 1);
-    const nextMonth = new Date(currentYear, currentMonth + 2, 0); // Last day of next month
-
-    const startDate = prevMonth.toISOString().split('T')[0];
-    const endDate = nextMonth.toISOString().split('T')[0];
-
-    const [workoutsRes, cyclesRes, goalsRes, strengthTestsRes, scheduledTrainingsRes, profileRes] = await Promise.all([
-      supabase
-        .from('workouts')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
-        .order('created_at', { ascending: true }),
-      supabase
-        .from('cycles')
-        .select('*')
-        .eq('user_id', profile.id),
-      supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('deadline', startDate)
-        .lte('deadline', endDate),
-      supabase
-        .from('strength_tests')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
-        .order('created_at', { ascending: true }),
-      supabase
-        .from('scheduled_trainings')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('scheduled_date', startDate)
-        .lte('scheduled_date', endDate),
-      supabase
-        .from('profiles')
-        .select('created_at')
-        .eq('id', profile.id)
-        .single(),
-    ]);
-
-    if (workoutsRes.data) setWorkouts(workoutsRes.data);
-    if (cyclesRes.data) setCycles(cyclesRes.data);
-    if (goalsRes.data) setGoals(goalsRes.data);
-    if (strengthTestsRes.data) setStrengthTests(strengthTestsRes.data);
-    if (scheduledTrainingsRes.data) setScheduledTrainings(scheduledTrainingsRes.data);
-
-    if (profileRes.data) {
-      const registrationYear = new Date(profileRes.data.created_at).getFullYear();
-      const currentYear = new Date().getFullYear();
-      const years = [];
-      for (let year = registrationYear; year <= currentYear + 2; year++) {
-        years.push(year);
-      }
-      setAvailableYears(years);
-    }
-  };
 
   const getWorkoutCountForDate = (date: Date): number => {
     const year = date.getFullYear();
@@ -446,13 +428,10 @@ export default function CalendarScreen() {
     // Close day modal first
     setShowDayModal(false);
     
-    // Fetch exercises for this workout BEFORE setting state
-    const { data: exercisesData } = await supabase
-      .from('exercises')
-      .select('*')
-      .eq('workout_id', workout.id);
+    // Fetch exercises from SQLite
+    const exercisesData = await getExercises(workout.id);
 
-    // Prepare exercises array
+    // Prepare exercises array - preserve weight_unit for proper conversion on display
     let exercisesToSet: Exercise[] = [];
     if (exercisesData && exercisesData.length > 0) {
       exercisesToSet = exercisesData.map(ex => ({
@@ -461,6 +440,7 @@ export default function CalendarScreen() {
         sets: ex.sets,
         reps: ex.reps,
         weight_lbs: ex.weight_lbs,
+        weight_unit: (ex.weight_unit as 'lbs' | 'kg') || 'lbs',
         notes: ex.notes || '',
       }));
     }
@@ -482,7 +462,7 @@ export default function CalendarScreen() {
   const handleAddExercise = () => {
     setExercises([
       ...exercises,
-      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, weight_unit: profile?.weight_unit || 'lbs', notes: '' },
     ]);
   };
 
@@ -509,22 +489,18 @@ export default function CalendarScreen() {
 
     try {
       // Update workout
-      const { error: updateError } = await supabase
-        .from('workouts')
-        .update({
+      await updateWorkoutMutation.mutateAsync({
+        id: editingWorkout.id,
+        updates: {
           workout_type: workoutType,
           duration_minutes: parseInt(duration) || 0,
           intensity: parseInt(intensity) || 5,
           notes: workoutNotes,
-        })
-        .eq('id', editingWorkout.id);
-
-      if (updateError) {
-        throw updateError;
-      }
+        },
+      });
 
       // Delete old exercises
-      await supabase.from('exercises').delete().eq('workout_id', editingWorkout.id);
+      await deleteExercisesByWorkout(editingWorkout.id);
 
       // Insert new exercises if any
       if (exercises.length > 0) {
@@ -534,29 +510,17 @@ export default function CalendarScreen() {
           sets: ex.sets,
           reps: ex.reps,
           weight_lbs: ex.weight_lbs,
+          weight_unit: ex.weight_unit || profile.weight_unit || 'lbs',
           notes: ex.notes || '',
         }));
-        
-        const { error: exercisesError } = await supabase
-          .from('exercises')
-          .insert(exercisesData);
-          
-        if (exercisesError) {
-          console.error('Error inserting exercises:', exercisesError);
-        }
-      }
 
-      // Invalidate cache and refresh
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-        invalidateQueries.home(profile.id);
-        invalidateQueries.calendar(profile.id);
+        await createExercisesMutation.mutateAsync(exercisesData);
       }
 
       setSaving(false);
       setShowEditWorkoutModal(false);
       resetForm();
-      await fetchData();
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -577,7 +541,7 @@ export default function CalendarScreen() {
   const handleAddExerciseToNew = () => {
     setAddExercises([
       ...addExercises,
-      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, weight_unit: profile?.weight_unit || 'lbs', notes: '' },
     ]);
   };
 
@@ -614,57 +578,37 @@ export default function CalendarScreen() {
       const year = selectedDate.getFullYear();
       const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const day = String(selectedDate.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
+      const dateStr = `${year}-${month}-${day}T00:00:00Z`;
 
-      // Insert workout
-      const { data: workoutData, error: workoutError } = await supabase
-        .from('workouts')
-        .insert({
-          user_id: profile.id,
-          workout_type: addWorkoutType,
-          duration_minutes: parseInt(addDuration) || 0,
-          intensity: parseInt(addIntensity) || 5,
-          notes: addWorkoutNotes,
-          created_at: dateStr,
-        })
-        .select()
-        .single();
-
-      if (workoutError) {
-        throw workoutError;
-      }
+      // Create workout
+      const workoutId = await createWorkoutMutation.mutateAsync({
+        user_id: profile.id,
+        workout_type: addWorkoutType,
+        duration_minutes: parseInt(addDuration) || 0,
+        intensity: parseInt(addIntensity) || 5,
+        notes: addWorkoutNotes,
+        created_at: dateStr,
+      });
 
       // Insert exercises if any
-      if (addExercises.length > 0 && workoutData) {
+      if (addExercises.length > 0) {
         const exercisesData = addExercises.map((ex) => ({
-          workout_id: workoutData.id,
+          workout_id: workoutId,
           exercise_name: ex.exercise_name,
           sets: ex.sets,
           reps: ex.reps,
           weight_lbs: ex.weight_lbs,
+          weight_unit: ex.weight_unit || profile.weight_unit || 'lbs',
           notes: ex.notes || '',
         }));
 
-        const { error: exercisesError } = await supabase
-          .from('exercises')
-          .insert(exercisesData);
-
-        if (exercisesError) {
-          console.error('Error inserting exercises:', exercisesError);
-        }
-      }
-
-      // Invalidate cache and refresh
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-        invalidateQueries.home(profile.id);
-        invalidateQueries.calendar(profile.id);
+        await createExercisesMutation.mutateAsync(exercisesData);
       }
 
       setSaving(false);
       setShowAddWorkoutModal(false);
       resetAddWorkoutForm();
-      await fetchData();
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -689,35 +633,25 @@ export default function CalendarScreen() {
       const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const day = String(selectedDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
-
-      // Insert scheduled training
-      const { error: scheduleError } = await supabase
-        .from('scheduled_trainings')
-        .insert({
-          user_id: profile.id,
-          title: scheduleTitle,
-          description: scheduleDescription,
-          scheduled_date: dateStr,
-          scheduled_time: scheduleTime,
-        });
-
-      if (scheduleError) {
-        throw scheduleError;
-      }
-
-      // Invalidate cache and refresh
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-        invalidateQueries.home(profile.id);
-        invalidateQueries.calendar(profile.id);
-      }
+      
+      // Create scheduled training
+      await createScheduledTrainingMutation.mutateAsync({
+        user_id: profile.id,
+        title: scheduleTitle,
+        description: scheduleDescription,
+        scheduled_date: dateStr,
+        scheduled_time: scheduleTime,
+        notification_enabled: false,
+        notification_minutes_before: 30,
+        completed: false,
+      });
 
       setSaving(false);
       setShowScheduleModal(false);
       setScheduleTitle('');
       setScheduleDescription('');
       setScheduleTime('09:00');
-      await fetchData();
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -736,22 +670,8 @@ export default function CalendarScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete from database
-              const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
-              
-              if (error) {
-                console.error('Error deleting workout:', error);
-                Alert.alert('Error', 'Failed to delete workout');
-                return;
-              }
-              
-              // Invalidate cache to trigger refetch
-              if (profile?.id) {
-                invalidateQueries.workouts(profile.id);
-              }
-              
-              // Refresh calendar data
-              fetchData();
+              await deleteWorkoutMutation.mutateAsync(workout.id);
+              // Data refreshes automatically via React Query
             } catch (error) {
               const errorMessage = handleError(error);
               Alert.alert('Error', errorMessage);
@@ -1248,11 +1168,24 @@ export default function CalendarScreen() {
                       <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
                       <TextInput
                         style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        value={String(Math.round(convertWeight(
+                          exercise.weight_lbs,
+                          exercise.weight_unit || 'lbs',  // Convert from stored unit
+                          profile?.weight_unit || 'lbs'   // To display unit
+                        )))}
                         onChangeText={(val) => {
-                          const inputValue = parseInt(val) || 0;
-                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
-                          handleUpdateExercise(index, 'weight_lbs', lbsValue);
+                          // Allow empty string for clearing
+                          if (val === '') {
+                            handleUpdateExercise(index, 'weight_lbs', 0);
+                            handleUpdateExercise(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                            return;
+                          }
+                          const inputValue = parseInt(val);
+                          if (!isNaN(inputValue)) {
+                            // Store in user's current preferred unit
+                            handleUpdateExercise(index, 'weight_lbs', inputValue);
+                            handleUpdateExercise(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                          }
                         }}
                         keyboardType="number-pad"
                       />
@@ -1425,11 +1358,24 @@ export default function CalendarScreen() {
                       <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
                       <TextInput
                         style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        value={String(Math.round(convertWeight(
+                          exercise.weight_lbs,
+                          exercise.weight_unit || 'lbs',  // Convert from stored unit
+                          profile?.weight_unit || 'lbs'   // To display unit
+                        )))}
                         onChangeText={(val) => {
-                          const inputValue = parseInt(val) || 0;
-                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
-                          handleUpdateExerciseInNew(index, 'weight_lbs', lbsValue);
+                          // Allow empty string for clearing
+                          if (val === '') {
+                            handleUpdateExerciseInNew(index, 'weight_lbs', 0);
+                            handleUpdateExerciseInNew(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                            return;
+                          }
+                          const inputValue = parseInt(val);
+                          if (!isNaN(inputValue)) {
+                            // Store in user's current preferred unit
+                            handleUpdateExerciseInNew(index, 'weight_lbs', inputValue);
+                            handleUpdateExerciseInNew(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                          }
                         }}
                         keyboardType="number-pad"
                       />

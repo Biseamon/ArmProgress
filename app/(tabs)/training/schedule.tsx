@@ -13,30 +13,32 @@ import {
 import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase } from '@/lib/supabase';
+import { ScheduledTraining } from '@/lib/supabase';
 import { scheduleTrainingNotification, cancelNotification, requestNotificationPermissions } from '@/lib/notifications';
-import { invalidateHomeData } from '@/hooks/useHomeData';
 import { Plus, X, Calendar, Clock, Bell, BellOff, Trash2, CircleCheck as CheckCircle, ArrowLeft, Pencil } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-interface ScheduledTraining {
-  id: string;
-  title: string;
-  description: string;
-  scheduled_date: string;
-  scheduled_time: string;
-  notification_enabled: boolean;
-  notification_minutes_before: number;
-  notification_id: string | null;
-  completed: boolean;
-  created_at: string;
-}
+import {
+  useScheduledTrainings,
+  useCreateScheduledTraining,
+  useUpdateScheduledTraining,
+  useDeleteScheduledTraining,
+  useCreateWorkout,
+} from '@/lib/react-query-sqlite-complete';
+import { handleError } from '@/lib/errorHandling';
 
 export default function ScheduleScreen() {
   const { profile } = useAuth();
-  const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
+  const { colors, theme } = useTheme();
 
-  const [trainings, setTrainings] = useState<ScheduledTraining[]>([]);
+  // Use SQLite hooks for offline-first data
+  const { data: trainings = [] } = useScheduledTrainings();
+  
+  // Mutations
+  const createTrainingMutation = useCreateScheduledTraining();
+  const updateTrainingMutation = useUpdateScheduledTraining();
+  const deleteTrainingMutation = useDeleteScheduledTraining();
+  const createWorkoutMutation = useCreateWorkout();
+  
   const [showModal, setShowModal] = useState(false);
   const [editingTraining, setEditingTraining] = useState<ScheduledTraining | null>(null);
   const [title, setTitle] = useState('');
@@ -47,28 +49,6 @@ export default function ScheduleScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [notificationEnabled, setNotificationEnabled] = useState(true);
   const [minutesBefore, setMinutesBefore] = useState('30');
-
-  // Only refetch when screen is focused and profile.id changes
-  useFocusEffect(
-    useCallback(() => {
-      if (profile?.id) {
-        fetchTrainings();
-      }
-    }, [profile?.id])
-  );
-
-  const fetchTrainings = async () => {
-    if (!profile) return;
-
-    const { data } = await supabase
-      .from('scheduled_trainings')
-      .select('*')
-      .eq('user_id', profile.id)
-      .order('scheduled_date', { ascending: true })
-      .order('scheduled_time', { ascending: true });
-
-    if (data) setTrainings(data);
-  };
 
   const handleSave = async () => {
     if (!profile) return;
@@ -113,30 +93,29 @@ export default function ScheduleScreen() {
       }
     }
 
-    if (editingTraining) {
-      if (editingTraining.notification_id && !notificationEnabled) {
-        await cancelNotification(editingTraining.notification_id);
-      }
+    try {
+      if (editingTraining) {
+        if (editingTraining.notification_id && !notificationEnabled) {
+          await cancelNotification(editingTraining.notification_id);
+        }
 
-      await supabase
-        .from('scheduled_trainings')
-        .update({
-          title,
-          description,
-          scheduled_date: dateString,
-          scheduled_time: timeString,
-          notification_enabled: notificationEnabled,
-          notification_minutes_before: parseInt(minutesBefore),
-          notification_id: notificationId,
-        })
-        .eq('id', editingTraining.id);
-    } else {
-      await supabase
-        .from('scheduled_trainings')
-        .insert({
+        await updateTrainingMutation.mutateAsync({
+          id: editingTraining.id,
+          updates: {
+            title,
+            description: description || undefined,
+            scheduled_date: dateString,
+            scheduled_time: timeString,
+            notification_enabled: notificationEnabled,
+            notification_minutes_before: parseInt(minutesBefore),
+            notification_id: notificationId,
+          },
+        });
+      } else {
+        await createTrainingMutation.mutateAsync({
           user_id: profile.id,
           title,
-          description,
+          description: description || undefined,
           scheduled_date: dateString,
           scheduled_time: timeString,
           notification_enabled: notificationEnabled,
@@ -144,62 +123,59 @@ export default function ScheduleScreen() {
           notification_id: notificationId,
           completed: false,
         });
+      }
+
+      setTitle('');
+      setDescription('');
+      setSelectedDate(new Date());
+      setSelectedTime(new Date());
+      setNotificationEnabled(true);
+      setMinutesBefore('30');
+      setEditingTraining(null);
+      setShowModal(false);
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
-
-    // Invalidate home cache so scheduled trainings appear immediately
-    invalidateHomeData(profile.id);
-
-    setTitle('');
-    setDescription('');
-    setSelectedDate(new Date());
-    setSelectedTime(new Date());
-    setNotificationEnabled(true);
-    setMinutesBefore('30');
-    setEditingTraining(null);
-    setShowModal(false);
-    fetchTrainings();
   };
 
   const handleToggleComplete = async (training: ScheduledTraining) => {
     const newStatus = !training.completed;
 
-    if (newStatus && profile) {
-      const timeWithSeconds = training.scheduled_time.length === 5
-        ? `${training.scheduled_time}:00`
-        : training.scheduled_time;
-      const workoutDatetime = `${training.scheduled_date}T${timeWithSeconds}`;
+    try {
+      if (newStatus && profile) {
+        // Note: created_at is set automatically by the database, we can't override it in the mutation
+        await createWorkoutMutation.mutateAsync({
+          user_id: profile.id,
+          workout_type: 'scheduled_training',
+          duration_minutes: 60,
+          intensity: 7,
+          notes: `Completed scheduled training: ${training.title}${training.description ? `\n${training.description}` : ''}`,
+          cycle_id: null,
+        });
 
-      await supabase.from('workouts').insert({
-        user_id: profile.id,
-        workout_type: 'scheduled_training',
-        duration_minutes: 60,
-        intensity: 7,
-        notes: `Completed scheduled training: ${training.title}${training.description ? `\n${training.description}` : ''}`,
-        created_at: workoutDatetime,
+        if (training.notification_id) {
+          await cancelNotification(training.notification_id);
+        }
+      }
+
+      await updateTrainingMutation.mutateAsync({
+        id: training.id,
+        updates: { completed: newStatus },
       });
 
-      if (training.notification_id) {
-        await cancelNotification(training.notification_id);
-      }
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
-
-    await supabase
-      .from('scheduled_trainings')
-      .update({ completed: newStatus })
-      .eq('id', training.id);
-
-    // Invalidate home cache (updates both scheduled trainings and workouts if completed)
-    if (profile) {
-      invalidateHomeData(profile.id);
-    }
-
-    fetchTrainings();
   };
 
   const handleEdit = (training: ScheduledTraining) => {
     setEditingTraining(training);
     setTitle(training.title);
-    setDescription(training.description);
+    setDescription(training.description || '');
     setSelectedDate(new Date(training.scheduled_date));
     const [hours, minutes] = training.scheduled_time.split(':');
     const time = new Date();
@@ -211,19 +187,22 @@ export default function ScheduleScreen() {
   };
 
   const handleDelete = async (training: ScheduledTraining) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to delete this scheduled training?')) {
+    const performDelete = async () => {
+      try {
         if (training.notification_id) {
           await cancelNotification(training.notification_id);
         }
-        await supabase.from('scheduled_trainings').delete().eq('id', training.id);
+        await deleteTrainingMutation.mutateAsync(training.id);
+        // Data refreshes automatically via React Query
+      } catch (error) {
+        const errorMessage = handleError(error);
+        Alert.alert('Error', errorMessage);
+      }
+    };
 
-        // Invalidate home cache
-        if (profile) {
-          invalidateHomeData(profile.id);
-        }
-
-        fetchTrainings();
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this scheduled training?')) {
+        await performDelete();
       }
     } else {
       Alert.alert(
@@ -234,19 +213,7 @@ export default function ScheduleScreen() {
           {
             text: 'Delete',
             style: 'destructive',
-            onPress: async () => {
-              if (training.notification_id) {
-                await cancelNotification(training.notification_id);
-              }
-              await supabase.from('scheduled_trainings').delete().eq('id', training.id);
-
-              // Invalidate home cache
-              if (profile) {
-                invalidateHomeData(profile.id);
-              }
-
-              fetchTrainings();
-            },
+            onPress: performDelete,
           },
         ]
       );
@@ -313,7 +280,7 @@ export default function ScheduleScreen() {
                 <View style={[styles.notificationBadge, { backgroundColor: '#2A7DE144' }]}>
                   <Bell size={14} color="#2A7DE1" />
                   <Text style={styles.notificationText}>
-                    {training.notification_minutes_before}min before
+                    {`${training.notification_minutes_before || 0} min before`}
                   </Text>
                 </View>
               )}

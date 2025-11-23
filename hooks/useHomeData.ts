@@ -1,15 +1,18 @@
 /**
  * Custom hook for Home screen data fetching with caching
  *
- * Fetches all required data for the home screen in a single, optimized query
+ * Fetches all required data for the home screen from SQLite (offline-first)
  * with automatic caching and loading states.
  * 
- * Now powered by React Query for improved caching and synchronization.
+ * Now powered by React Query + SQLite for offline-first architecture.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { supabase, Workout, Cycle } from '@/lib/supabase';
-import { queryKeys, invalidateQueries } from '@/lib/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Workout, Cycle } from '@/lib/supabase';
+import { getWorkouts, getRecentWorkouts } from '@/lib/db/queries/workouts';
+import { getCycles } from '@/lib/db/queries/cycles';
+import { getGoals, getActiveGoals, getCompletedGoals } from '@/lib/db/queries/goals';
+import { getScheduledTrainings, getUpcomingTrainings } from '@/lib/db/queries/scheduledTrainings';
 
 interface HomeDataStats {
   totalWorkouts: number;
@@ -76,81 +79,49 @@ function calculateStats(workoutData: Workout[]): HomeDataStats {
 }
 
 /**
- * Fetch all home screen data
+ * Fetch all home screen data from SQLite (offline-first)
  * 
  * React Query handles caching automatically
  */
 async function fetchHomeData(userId: string): Promise<HomeData> {
-  console.log('[Home Data] Fetching from API');
+  console.log('[Home Data] Fetching from SQLite');
 
-  // Fetch all data in parallel (6 queries)
+  // Fetch all data in parallel from SQLite
   const [
-    recentWorkouts,
-    allWorkouts,
+    recentWorkoutsData,
+    allWorkoutsData,
     cyclesData,
     completedGoalsData,
     activeGoalsData,
     scheduledTrainingsData,
   ] = await Promise.all([
-    supabase
-      .from('workouts')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(10),
-    supabase
-      .from('workouts')
-      .select('*')
-      .eq('user_id', userId),
-    supabase
-      .from('cycles')
-      .select('*')
-      .eq('user_id', userId)
-      .order('is_active', { ascending: false })
-      .order('start_date', { ascending: false })
-      .limit(3),
-    supabase
-      .from('goals')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('is_completed', true)
-      .order('created_at', { ascending: false })
-      .limit(3),
-    supabase
-      .from('goals')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('is_completed', false)
-      .order('deadline', { ascending: true })
-      .limit(5),
-    supabase
-      .from('scheduled_trainings')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('completed', false)
-      .gte('scheduled_date', new Date().toISOString().split('T')[0])
-      .order('scheduled_date', { ascending: true })
-      .order('scheduled_time', { ascending: true })
-      .limit(5),
+    getRecentWorkouts(userId, 10),
+    getWorkouts(userId),
+    getCycles(userId),
+    getCompletedGoals(userId),
+    getActiveGoals(userId),
+    getUpcomingTrainings(userId),
   ]);
 
-  // Check for errors
-  if (recentWorkouts.error) throw recentWorkouts.error;
-  if (allWorkouts.error) throw allWorkouts.error;
-  if (cyclesData.error) throw cyclesData.error;
-  if (completedGoalsData.error) throw completedGoalsData.error;
-  if (activeGoalsData.error) throw activeGoalsData.error;
-  if (scheduledTrainingsData.error) throw scheduledTrainingsData.error;
-
   // Calculate stats
-  const stats = calculateStats(allWorkouts.data || []);
+  const stats = calculateStats(allWorkoutsData || []);
+
+  // Sort cycles by active status then start date
+  const sortedCycles = (cyclesData || [])
+    .sort((a, b) => {
+      if (a.is_active !== b.is_active) {
+        return a.is_active ? -1 : 1;
+      }
+      return new Date(b.start_date).getTime() - new Date(a.start_date).getTime();
+    })
+    .slice(0, 3);
 
   const homeData: HomeData = {
-    recentWorkouts: recentWorkouts.data || [],
-    cycles: cyclesData.data || [],
-    completedGoals: completedGoalsData.data || [],
-    activeGoals: activeGoalsData.data || [],
-    scheduledTrainings: scheduledTrainingsData.data || [],
+    recentWorkouts: recentWorkoutsData || [],
+    cycles: sortedCycles,
+    completedGoals: (completedGoalsData || []).slice(0, 3), // Limit to 3 for display
+    activeGoals: (activeGoalsData || []).slice(0, 5), // Limit to 5 for display
+    scheduledTrainings: (scheduledTrainingsData || []).slice(0, 5), // Limit to 5
     stats,
   };
 
@@ -158,9 +129,9 @@ async function fetchHomeData(userId: string): Promise<HomeData> {
 }
 
 /**
- * React hook for home screen data with caching
+ * React hook for home screen data with caching (offline-first)
  *
- * Now powered by React Query for automatic caching, refetching, and synchronization
+ * Now powered by React Query + SQLite for offline-first architecture
  *
  * @example
  * const { data, isLoading, error, refetch } = useHomeData(profile?.id);
@@ -172,15 +143,14 @@ async function fetchHomeData(userId: string): Promise<HomeData> {
  */
 export function useHomeData(userId: string | undefined): UseHomeDataResult {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: queryKeys.home(userId || ''),
+    queryKey: ['home', userId],
     queryFn: () => fetchHomeData(userId!),
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // Always refetch when invalidated
   });
 
   return {
-    data: data ?? null, // Use nullish coalescing for better null/undefined handling
+    data: data ?? null,
     isLoading,
     error: error as Error | null,
     refetch: async () => {
@@ -193,8 +163,9 @@ export function useHomeData(userId: string | undefined): UseHomeDataResult {
  * Invalidate home data cache
  * Call this after creating/updating/deleting workouts, goals, cycles, etc.
  * 
- * Now uses React Query's invalidation system
+ * Now uses React Query's invalidation system for SQLite data
  */
 export function invalidateHomeData(userId: string): void {
-  invalidateQueries.home(userId);
+  const queryClient = useQueryClient();
+  queryClient.invalidateQueries({ queryKey: ['home', userId] });
 }

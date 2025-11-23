@@ -6,6 +6,7 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 import { RevenueCatProvider } from '@/contexts/RevenueCatContext';
+import { SyncProvider } from '@/contexts/SyncContext';
 import { queryClient } from '@/lib/react-query';
 
 function AppContent() {
@@ -40,7 +41,9 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <AppContent />
+          <SyncProvider>
+            <AppContent />
+          </SyncProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

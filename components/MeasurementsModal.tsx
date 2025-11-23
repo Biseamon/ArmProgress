@@ -49,8 +49,36 @@ export function MeasurementsModal({
 
   const getMeasurementChange = (index: number, field: 'weight' | 'arm_circumference' | 'forearm_circumference' | 'wrist_circumference') => {
     if (index >= measurements.length - 1) return null;
-    const current = measurements[index][field];
-    const previous = measurements[index + 1][field];
+
+    const currentMeasurement = measurements[index];
+    const previousMeasurement = measurements[index + 1];
+
+    if (field === 'weight') {
+      // Convert both weights to user's current unit before comparing
+      const currentWeight = currentMeasurement.weight;
+      const previousWeight = previousMeasurement.weight;
+      if (!currentWeight || !previousWeight) return null;
+
+      const current = convertWeight(
+        currentWeight,
+        (currentMeasurement.weight_unit || 'lbs') as 'kg' | 'lbs',
+        weightUnit
+      );
+      const previous = convertWeight(
+        previousWeight,
+        (previousMeasurement.weight_unit || 'lbs') as 'kg' | 'lbs',
+        weightUnit
+      );
+      return calculateChange(current, previous);
+    }
+
+    // Circumferences are stored in cm - convert to display unit before comparing
+    const currentValue = currentMeasurement[field];
+    const previousValue = previousMeasurement[field];
+    if (!currentValue || !previousValue) return null;
+
+    const current = convertCircumference(currentValue, weightUnit);
+    const previous = convertCircumference(previousValue, weightUnit);
     return calculateChange(current, previous);
   };
 
@@ -119,7 +147,7 @@ export function MeasurementsModal({
                   </View>
                 </View>
 
-                <View style={styles.measurementGrid}>
+                <Text style={styles.measurementGrid}>
                   {measurement.weight && (
                     <View style={styles.measurementItem}>
                       <Text style={[styles.measurementLabel, { color: colors.textTertiary }]}>Weight</Text>
@@ -224,7 +252,7 @@ export function MeasurementsModal({
                       </View>
                     </View>
                   )}
-                </View>
+                </Text>
 
                 {measurement.notes && (
                   <Text style={[styles.measurementNotes, { color: colors.textSecondary }]}>{measurement.notes}</Text>

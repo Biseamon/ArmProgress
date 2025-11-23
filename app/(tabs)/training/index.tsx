@@ -12,12 +12,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase, Workout, Cycle } from '@/lib/supabase';
-import { queryKeys, invalidateQueries } from '@/lib/react-query';
-import { useWorkoutsInfinite } from '@/hooks/useWorkouts';
+import { Workout, Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { AdMediumRectangle } from '@/components/AdMediumRectangle';
 import { PaywallModal } from '@/components/PaywallModal';
@@ -27,55 +24,48 @@ import { convertFromLbs, convertToLbs, convertWeight } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { validateWorkout, validateExercise, validateCycle, getFirstError } from '@/lib/validation';
 import { handleError } from '@/lib/errorHandling';
+import {
+  useWorkouts,
+  useCycles,
+  useCreateWorkout,
+  useUpdateWorkout,
+  useDeleteWorkout,
+  useCreateCycle,
+  useUpdateCycle,
+  useDeleteCycle,
+  useSetActiveCycle,
+  useCreateExercises,
+} from '@/lib/react-query-sqlite-complete';
+import { getExercises, deleteExercisesByWorkout } from '@/lib/db/queries/exercises';
 
 type Exercise = {
   exercise_name: string;
   sets: number;
   reps: number;
   weight_lbs: number;
+  weight_unit?: 'lbs' | 'kg';
   notes: string;
 };
 
 export default function Training() {
   const { profile, isPremium } = useAuth();
-  const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
+  const { colors, theme } = useTheme();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   
-  // Use React Query hooks for data fetching with pagination
-  const {
-    data: workoutsData,
-    isLoading: workoutsLoading,
-    isFetching: workoutsFetching,
-    hasNextPage,
-    fetchNextPage,
-    refetch: refetchWorkouts,
-  } = useWorkoutsInfinite(profile?.id);
+  // Use SQLite hooks for offline-first data
+  const { data: workouts = [], isLoading: workoutsLoading } = useWorkouts();
+  const { data: cycles = [], isLoading: cyclesLoading } = useCycles();
   
-  const {
-    data: cyclesData,
-    isLoading: cyclesLoading,
-    refetch: refetchCycles,
-  } = useQuery({
-    queryKey: queryKeys.cycles.all(profile?.id || ''),
-    queryFn: async () => {
-      if (!profile?.id) return [];
-      const { data, error } = await supabase
-        .from('cycles')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('start_date', { ascending: false });
-      
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.id,
-    staleTime: 5 * 60 * 1000,
-  });
-  
-  // Ensure data is always an array (never undefined)
-  const workouts = workoutsData || [];
-  const cycles = cyclesData || [];
+  // Mutations
+  const createWorkoutMutation = useCreateWorkout();
+  const updateWorkoutMutation = useUpdateWorkout();
+  const deleteWorkoutMutation = useDeleteWorkout();
+  const createCycleMutation = useCreateCycle();
+  const updateCycleMutation = useUpdateCycle();
+  const deleteCycleMutation = useDeleteCycle();
+  const setActiveCycleMutation = useSetActiveCycle();
+  const createExercisesMutation = useCreateExercises();
   
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCycleModal, setShowCycleModal] = useState(false);
@@ -131,32 +121,21 @@ export default function Training() {
     setNotes(workout.notes || '');
     setSelectedCycleId(workout.cycle_id);
     
-    // Load exercises for this workout
-    const { data: exercisesData, error } = await supabase
-      .from('exercises')
-      .select('*')
-      .eq('workout_id', workout.id);
+    // Load exercises from SQLite
+    const exercisesData = await getExercises(workout.id);
     
-    if (error) {
-      console.error('Error loading exercises:', error);
-    } else if (exercisesData) {
-      const userUnit = profile?.weight_unit || 'lbs';
-      
-      // Convert exercise weights to user's current unit preference
-      const convertedExercises = exercisesData.map(exercise => {
-        const storedUnit = exercise.weight_unit || 'lbs';
-        const convertedWeight = convertWeight(exercise.weight_lbs, storedUnit, userUnit);
-        
-        return {
-          exercise_name: exercise.exercise_name,
-          sets: exercise.sets,
-          reps: exercise.reps,
-          weight_lbs: convertedWeight,
-          notes: exercise.notes || '',
-        };
-      });
-      
-      setExercises(convertedExercises);
+    if (exercisesData) {
+      // Preserve original weight_unit for proper conversion on display
+      const mappedExercises = exercisesData.map(exercise => ({
+        exercise_name: exercise.exercise_name,
+        sets: exercise.sets,
+        reps: exercise.reps,
+        weight_lbs: exercise.weight_lbs,
+        weight_unit: (exercise.weight_unit as 'lbs' | 'kg') || 'lbs',
+        notes: exercise.notes || '',
+      }));
+
+      setExercises(mappedExercises);
     }
     
     setShowWorkoutModal(true);
@@ -173,19 +152,8 @@ export default function Training() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete from database
-              const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
-              
-              if (error) {
-                console.error('Error deleting workout:', error);
-                Alert.alert('Error', 'Failed to delete workout');
-                return;
-              }
-              
-              // Invalidate cache to trigger refetch
-              if (profile?.id) {
-                invalidateQueries.workouts(profile.id);
-              }
+              await deleteWorkoutMutation.mutateAsync(workout.id);
+              // Data refreshes automatically via React Query
             } catch (error) {
               const errorMessage = handleError(error);
               Alert.alert('Error', errorMessage);
@@ -199,7 +167,7 @@ export default function Training() {
   const handleAddExercise = () => {
     setExercises([
       ...exercises,
-      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, weight_unit: profile?.weight_unit || 'lbs', notes: '' },
     ]);
   };
 
@@ -253,7 +221,6 @@ export default function Training() {
     }
 
     setSaving(true);
-    console.log('Starting save workout...');
 
     try {
       let workoutId: string;
@@ -261,46 +228,34 @@ export default function Training() {
 
       if (editingWorkout) {
         // Update existing workout
-        const { error: workoutError } = await supabase
-          .from('workouts')
-          .update({
+        await updateWorkoutMutation.mutateAsync({
+          id: editingWorkout.id,
+          updates: {
             workout_type: workoutType,
             duration_minutes: parseInt(duration),
             intensity: parseInt(intensity),
             notes,
             cycle_id: selectedCycleId,
-          })
-          .eq('id', editingWorkout.id);
-        
-        if (workoutError) throw workoutError;
+          },
+        });
         workoutId = editingWorkout.id;
   
         // Delete existing exercises for this workout
-        await supabase
-          .from('exercises')
-          .delete()
-          .eq('workout_id', workoutId);
+        await deleteExercisesByWorkout(workoutId);
         
       } else {
         // Create new workout
-        const { data: workoutData, error: workoutError } = await supabase
-          .from('workouts')
-          .insert({
-            user_id: profile.id,
-            workout_type: workoutType,
-            duration_minutes: parseInt(duration),
-            intensity: parseInt(intensity),
-            notes,
-            cycle_id: selectedCycleId,
-          })
-          .select()
-          .single();
-        
-        if (workoutError) throw workoutError;
-        workoutId = workoutData.id;
+        workoutId = await createWorkoutMutation.mutateAsync({
+          user_id: profile.id,
+          workout_type: workoutType,
+          duration_minutes: parseInt(duration),
+          intensity: parseInt(intensity),
+          notes,
+          cycle_id: selectedCycleId,
+        });
       }
   
-      // Insert exercises if any exist - WITH UNIT TRACKING
+      // Insert exercises if any exist
       if (exercises.length > 0) {
         const exercisesToInsert = exercises.map(exercise => ({
           workout_id: workoutId,
@@ -308,23 +263,16 @@ export default function Training() {
           sets: exercise.sets,
           reps: exercise.reps,
           weight_lbs: exercise.weight_lbs,
-          weight_unit: userUnit,
+          weight_unit: exercise.weight_unit || userUnit || 'lbs',
           notes: exercise.notes || '',
         }));
-  
-        const { error: exercisesError } = await supabase
-          .from('exercises')
-          .insert(exercisesToInsert);
-        
-        if (exercisesError) throw exercisesError;
+
+        await createExercisesMutation.mutateAsync(exercisesToInsert);
       }
       
       setShowWorkoutModal(false);
       resetForm();
-      // Invalidate cache to refetch workouts
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-      }
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -379,41 +327,48 @@ export default function Training() {
       return;
     }
 
-    if (editingCycle) {
-      await supabase.from('cycles').update({
-        name: cycleName,
-        description: cycleDescription,
-        cycle_type: cycleType,
-        start_date: formatDate(cycleStartDate),
-        end_date: formatDate(cycleEndDate),
-      }).eq('id', editingCycle.id);
-    } else {
-      await supabase.from('cycles').insert({
-        user_id: profile.id,
-        name: cycleName,
-        description: cycleDescription,
-        cycle_type: cycleType,
-        start_date: formatDate(cycleStartDate),
-        end_date: formatDate(cycleEndDate),
-        is_active: false,
-      });
-    }
+    try {
+      if (editingCycle) {
+        await updateCycleMutation.mutateAsync({
+          id: editingCycle.id,
+          updates: {
+            name: cycleName,
+            description: cycleDescription,
+            cycle_type: cycleType,
+            start_date: formatDate(cycleStartDate),
+            end_date: formatDate(cycleEndDate),
+          },
+        });
+      } else {
+        await createCycleMutation.mutateAsync({
+          user_id: profile.id,
+          name: cycleName,
+          description: cycleDescription,
+          cycle_type: cycleType,
+          start_date: formatDate(cycleStartDate),
+          end_date: formatDate(cycleEndDate),
+          is_active: false,
+        });
+      }
 
-    setShowCycleModal(false);
-    resetCycleForm();
-    setEditingCycle(null);
-    // Invalidate cache to refetch cycles
-    if (profile?.id) {
-      invalidateQueries.cycles(profile.id);
+      setShowCycleModal(false);
+      resetCycleForm();
+      setEditingCycle(null);
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
   };
 
   const handleDeleteCycle = async (cycle: Cycle) => {
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this cycle?')) {
-        await supabase.from('cycles').delete().eq('id', cycle.id);
-        if (profile?.id) {
-          invalidateQueries.cycles(profile.id);
+        try {
+          await deleteCycleMutation.mutateAsync(cycle.id);
+        } catch (error) {
+          const errorMessage = handleError(error);
+          Alert.alert('Error', errorMessage);
         }
       }
     } else {
@@ -423,9 +378,11 @@ export default function Training() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await supabase.from('cycles').delete().eq('id', cycle.id);
-            if (profile?.id) {
-              invalidateQueries.cycles(profile.id);
+            try {
+              await deleteCycleMutation.mutateAsync(cycle.id);
+            } catch (error) {
+              const errorMessage = handleError(error);
+              Alert.alert('Error', errorMessage);
             }
           },
         },
@@ -434,16 +391,13 @@ export default function Training() {
   };
 
   const handleToggleActiveCycle = async (cycle: Cycle) => {
-    await supabase.from('cycles').update({ is_active: false }).eq('user_id', profile!.id);
-
-    await supabase
-      .from('cycles')
-      .update({ is_active: !cycle.is_active })
-      .eq('id', cycle.id);
-
-    // Invalidate cache to refetch cycles
-    if (profile?.id) {
-      invalidateQueries.cycles(profile.id);
+    if (!profile) return;
+    
+    try {
+      await setActiveCycleMutation.mutateAsync(cycle.id);
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -573,7 +527,7 @@ export default function Training() {
             </Text>
           </View>
           
-          {workoutsLoading && workouts.length === 0 ? (
+          {workoutsLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading workouts...</Text>
@@ -627,26 +581,6 @@ export default function Training() {
                   )}
                 </View>
               ))}
-              
-              {/* Load More Button */}
-              {hasNextPage && (
-                <TouchableOpacity
-                  style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={fetchNextPage}
-                  disabled={workoutsFetching}
-                >
-                  {workoutsFetching ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <>
-                      <Text style={[styles.loadMoreText, { color: colors.primary }]}>Load More Workouts</Text>
-                      <Text style={[styles.loadMoreSubtext, { color: colors.textSecondary }]}>
-                        Tap to load 20 more
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
             </>
           )}
         </View>
@@ -836,10 +770,24 @@ export default function Training() {
                       </Text>
                       <TextInput
                         style={[styles.smallInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-                        value={String(Math.round(exercise.weight_lbs))}
+                        value={String(Math.round(convertWeight(
+                          exercise.weight_lbs,
+                          exercise.weight_unit || 'lbs',  // Convert from stored unit
+                          profile?.weight_unit || 'lbs'   // To display unit
+                        )))}
                         onChangeText={(val) => {
-                          const inputValue = parseInt(val) || 0;
-                          handleUpdateExercise(index, 'weight_lbs', inputValue);
+                          // Allow empty string for clearing
+                          if (val === '') {
+                            handleUpdateExercise(index, 'weight_lbs', 0);
+                            handleUpdateExercise(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                            return;
+                          }
+                          const inputValue = parseInt(val);
+                          if (!isNaN(inputValue)) {
+                            // Store value in user's current preferred unit
+                            handleUpdateExercise(index, 'weight_lbs', inputValue);
+                            handleUpdateExercise(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                          }
                         }}
                         keyboardType="number-pad"
                       />
