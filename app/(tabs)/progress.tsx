@@ -1293,9 +1293,9 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </TouchableOpacity>
           </View>
 
-          {!isPremium && (
+          {!isPremium ? (
             <Text style={styles.limitText}>Free: {goals.filter(g => !g.is_completed).length}/3 active goals</Text>
-          )}
+          ) : null}
 
           {goals.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
@@ -1459,11 +1459,17 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       )}
                     </View>
                     <View style={styles.testActions}>
-                      <TouchableOpacity onPress={() => handleEditTest(test)}>
-                        <TrendingUp size={18} color={colors.primary} />
+                      <TouchableOpacity 
+                        style={styles.testActionButton}
+                        onPress={() => handleEditTest(test)}
+                      >
+                        <TrendingUp size={20} color={colors.primary} />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteTest(test.id)}>
-                        <Trash2 size={18} color="#EF4444" />
+                      <TouchableOpacity 
+                        style={styles.testActionButton}
+                        onPress={() => handleDeleteTest(test.id)}
+                      >
+                        <Trash2 size={20} color="#EF4444" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -2025,6 +2031,11 @@ const styles = StyleSheet.create({
   },
   testActions: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  testActionButton: {
+    padding: 6,
+    marginLeft: 3,
   },
   reportButton: {
     backgroundColor: '#2A2A2A',
