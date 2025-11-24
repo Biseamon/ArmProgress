@@ -10,15 +10,16 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Workout, Cycle } from '@/lib/supabase';
+import { Workout, Cycle, Exercise as ExerciseType } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { AdMediumRectangle } from '@/components/AdMediumRectangle';
 import { PaywallModal } from '@/components/PaywallModal';
-import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
+import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock, TrendingUp } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { convertFromLbs, convertToLbs, convertWeight } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,6 +81,8 @@ export default function Training() {
   const [saving, setSaving] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
+  const [viewingWorkout, setViewingWorkout] = useState<Workout | null>(null);
+  const [showViewModal, setShowViewModal] = useState(false);
 
   const [workoutType, setWorkoutType] = useState('table_practice');
   const [duration, setDuration] = useState('30');
@@ -457,6 +460,218 @@ export default function Training() {
     });
   };
 
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // Workout Detail Modal Component
+  const WorkoutDetailModal = () => {
+    const [exercises, setExercises] = useState<ExerciseType[]>([]);
+    const [loadingExercises, setLoadingExercises] = useState(false);
+
+    // Fetch exercises when workout is selected
+    useFocusEffect(
+      useCallback(() => {
+        if (viewingWorkout && showViewModal) {
+          setLoadingExercises(true);
+          getExercises(viewingWorkout.id)
+            .then((data) => {
+              setExercises(data || []);
+            })
+            .catch((error) => {
+              console.error('[WorkoutModal] Error fetching exercises:', error);
+              setExercises([]);
+            })
+            .finally(() => {
+              setLoadingExercises(false);
+            });
+        } else {
+          setExercises([]);
+        }
+      }, [viewingWorkout, showViewModal])
+    );
+
+    // Helper function to convert exercise weight to user's preferred unit
+    const getDisplayWeight = (exercise: ExerciseType) => {
+      if (!exercise.weight_lbs || exercise.weight_lbs === 0) return null;
+      
+      const userPreferredUnit = profile?.weight_unit || 'lbs';
+      const storedUnit = exercise.weight_unit || 'lbs';
+      
+      // Convert from stored unit to user's preferred unit
+      const convertedWeight = convertWeight(
+        exercise.weight_lbs,
+        storedUnit as 'lbs' | 'kg',
+        userPreferredUnit as 'lbs' | 'kg'
+      );
+      
+      return {
+        value: convertedWeight,
+        unit: userPreferredUnit,
+      };
+    };
+
+    if (!viewingWorkout) return null;
+
+    return (
+      <Modal
+        visible={showViewModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowViewModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowViewModal(false)}
+        >
+          <Pressable 
+            style={[styles.modalContentView, { backgroundColor: colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 100 }}
+            >
+              <View style={styles.modalHeaderView}>
+                <View style={styles.modalTitleRow}>
+                  <TrendingUp size={24} color={colors.primary} />
+                  <Text style={[styles.modalTitleView, { color: colors.text }]}>Workout Details</Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => setShowViewModal(false)}
+                  style={styles.closeButtonView}
+                >
+                  <X size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalBodyView}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>
+                    {viewingWorkout.workout_type.replace(/_/g, ' ').toUpperCase()}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Date</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {formatDateTime(viewingWorkout.created_at)}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Duration</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingWorkout.duration_minutes} minutes
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Intensity</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingWorkout.intensity} / 10
+                  </Text>
+                </View>
+
+                {viewingWorkout.notes && (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic' }]}>
+                      {viewingWorkout.notes}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Exercises Section */}
+                {loadingExercises ? (
+                  <View style={styles.exercisesSectionView}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>Exercises</Text>
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+                  </View>
+                ) : exercises.length > 0 ? (
+                  <View style={styles.exercisesSectionView}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>
+                      Exercises ({exercises.length})
+                    </Text>
+                    {exercises.map((exercise, index) => (
+                      <View 
+                        key={exercise.id} 
+                        style={[styles.exerciseCardView, { backgroundColor: colors.background }]}
+                      >
+                        <View style={styles.exerciseHeaderView}>
+                          <Text style={[styles.exerciseNameView, { color: colors.text }]}>
+                            {index + 1}. {exercise.exercise_name}
+                          </Text>
+                        </View>
+                        <View style={styles.exerciseDetailsView}>
+                          {exercise.sets > 0 && (
+                            <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                              {exercise.sets} sets
+                            </Text>
+                          )}
+                          {exercise.reps > 0 && (
+                            <>
+                              <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                              <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                {exercise.reps} reps
+                              </Text>
+                            </>
+                          )}
+                          {(() => {
+                            const displayWeight = getDisplayWeight(exercise);
+                            return displayWeight ? (
+                              <>
+                                <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                                <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                  {displayWeight.value} {displayWeight.unit}
+                                </Text>
+                              </>
+                            ) : null;
+                          })()}
+                        </View>
+                        {exercise.notes && (
+                          <Text style={[styles.exerciseNotesView, { color: colors.textTertiary }]}>
+                            {exercise.notes}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                <View style={styles.modalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.modalButtonSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                    onPress={() => {
+                      setShowViewModal(false);
+                      setTimeout(() => handleEditWorkout(viewingWorkout), 300);
+                    }}
+                  >
+                    <Pencil size={18} color={colors.primary} />
+                    <Text style={[styles.modalButtonSecondaryText, { color: colors.primary }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowViewModal(false)}
+                  >
+                    <Text style={styles.modalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
@@ -553,7 +768,15 @@ export default function Training() {
           ) : (
             <>
               {workouts.map((workout) => (
-                <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}>
+                <TouchableOpacity 
+                  key={workout.id} 
+                  style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}
+                  onPress={() => {
+                    setViewingWorkout(workout);
+                    setShowViewModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.workoutHeader}>
                     <View style={styles.workoutInfo}>
                       <Text style={[styles.workoutType, { color: colors.primary }]}>
@@ -566,13 +789,19 @@ export default function Training() {
                     <View style={styles.workoutActions}>
                       <TouchableOpacity
                         style={styles.iconButton}
-                        onPress={() => handleEditWorkout(workout)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEditWorkout(workout);
+                        }}
                       >
                         <Pencil size={18} color="#E63946" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.iconButton}
-                        onPress={() => handleDeleteWorkout(workout)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteWorkout(workout);
+                        }}
                       >
                         <Trash2 size={18} color="#FF6B6B" />
                       </TouchableOpacity>
@@ -592,7 +821,7 @@ export default function Training() {
                       {workout.notes}
                     </Text>
                   )}
-                </View>
+                </TouchableOpacity>
               ))}
               
               {hasMoreWorkouts && (
@@ -1040,6 +1269,9 @@ export default function Training() {
         onUpgrade={() => setShowPaywall(false)}
         feature="Unlimited workout tracking"
       />
+
+      {/* Workout Detail View Modal */}
+      <WorkoutDetailModal />
     </View>
   );
 }
@@ -1437,5 +1669,131 @@ const styles = StyleSheet.create({
   },
   dateButtonText: {
     fontSize: 16,
+  },
+  // View Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContentView: {
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalHeaderView: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalTitleView: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  closeButtonView: {
+    padding: 4,
+  },
+  modalBodyView: {
+    gap: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 2,
+  },
+  modalButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exercisesSectionView: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  exercisesSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  exerciseCardView: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  exerciseHeaderView: {
+    marginBottom: 6,
+  },
+  exerciseNameView: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exerciseDetailsView: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  exerciseDetailText: {
+    fontSize: 14,
+  },
+  exerciseDivider: {
+    fontSize: 14,
+    marginHorizontal: 6,
+  },
+  exerciseNotesView: {
+    fontSize: 13,
+    marginTop: 6,
+    fontStyle: 'italic',
   },
 });

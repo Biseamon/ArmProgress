@@ -10,6 +10,7 @@ import {
   Dimensions,
   Platform,
   Alert,
+  Pressable,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -144,6 +145,10 @@ export default function Progress() {
 
   const [showReportModal, setShowReportModal] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [viewingGoal, setViewingGoal] = useState<Goal | null>(null);
+  const [showGoalViewModal, setShowGoalViewModal] = useState(false);
+  const [viewingPR, setViewingPR] = useState<StrengthTest | null>(null);
+  const [showPRViewModal, setShowPRViewModal] = useState(false);
 
   const reportRef = useRef<View>(null);
 
@@ -557,7 +562,8 @@ export default function Progress() {
   ];
 
   const getProgressPercentage = (goal: Goal) => {
-    return Math.min((goal.current_value / goal.target_value) * 100, 100);
+    if (!goal.target_value || goal.target_value === 0) return 0;
+    return Math.min(((goal.current_value || 0) / goal.target_value) * 100, 100);
   };
 
   const getLatestPRsByType = () => {
@@ -1180,11 +1186,279 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
   }
 };
 
+  // Goal Detail Modal Component
+  const GoalDetailModal = () => {
+    if (!viewingGoal) return null;
+
+    return (
+      <Modal
+        visible={showGoalViewModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGoalViewModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowGoalViewModal(false)}
+        >
+          <Pressable 
+            style={[styles.viewModalContent, { backgroundColor: colors.surface }]}
+            onPress={(e: any) => e.stopPropagation()}
+          >
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 100 }}
+            >
+              <View style={styles.viewModalHeader}>
+                <View style={styles.viewModalTitleRow}>
+                  <Target size={24} color={colors.primary} style={{ marginRight: 12 }} />
+                  <Text style={[styles.viewModalTitle, { color: colors.text }]}>Goal Details</Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => setShowGoalViewModal(false)}
+                  style={styles.viewModalCloseButton}
+                >
+                  <X size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.viewModalBody}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Description</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingGoal.goal_type || 'No description'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Progress</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingGoal.current_value || 0} / {viewingGoal.target_value || 0}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Completion</Text>
+                  <Text style={[styles.detailValue, { color: colors.secondary }]}>
+                    {Math.round(getProgressPercentage(viewingGoal))}%
+                  </Text>
+                </View>
+
+                {viewingGoal.deadline ? (
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Deadline</Text>
+                    <Text style={[styles.detailValue, { color: colors.text }]}>
+                      {new Date(viewingGoal.deadline).toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {viewingGoal.notes && viewingGoal.notes.trim() ? (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic', textAlign: 'left' }]}>
+                      {viewingGoal.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={[styles.progressBarContainer, { backgroundColor: colors.background, marginTop: 20 }]}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      { width: `${getProgressPercentage(viewingGoal)}%`, backgroundColor: viewingGoal.is_completed ? '#FFD700' : colors.secondary }
+                    ]}
+                  />
+                </View>
+
+                {viewingGoal.is_completed ? (
+                  <View style={styles.completedBadge}>
+                    <Trophy size={20} color="#FFD700" style={{ marginRight: 8 }} />
+                    <Text style={styles.completedText}>Completed! 🎉</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.viewModalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                    onPress={() => {
+                      setShowGoalViewModal(false);
+                      setTimeout(() => handleEditGoal(viewingGoal), 300);
+                    }}
+                  >
+                    <Pencil size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                    <Text style={[styles.viewModalButtonSecondaryText, { color: colors.primary }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowGoalViewModal(false)}
+                  >
+                    <Text style={styles.viewModalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  // PR Detail Modal Component
+  const PRDetailModal = () => {
+    if (!viewingPR) return null;
+
+    // Get all entries for this PR type (history)
+    const prHistory = strengthTests
+      .filter(t => t.test_type === viewingPR.test_type)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return (
+      <Modal
+        visible={showPRViewModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPRViewModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowPRViewModal(false)}
+        >
+          <Pressable 
+            style={[styles.viewModalContent, { backgroundColor: colors.surface }]}
+            onPress={(e: any) => e.stopPropagation()}
+          >
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 100 }}
+            >
+              <View style={styles.viewModalHeader}>
+                <View style={styles.viewModalTitleRow}>
+                  <TrendingUp size={24} color={colors.primary} style={{ marginRight: 12 }} />
+                  <Text style={[styles.viewModalTitle, { color: colors.text }]}>PR Details</Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => setShowPRViewModal(false)}
+                  style={styles.viewModalCloseButton}
+                >
+                  <X size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.viewModalBody}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>
+                    {(viewingPR.test_type || '').replace(/_/g, ' ').toUpperCase() || 'Unknown'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Current PR</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {formatWeight(
+                      convertWeight(viewingPR.result_value || 0, viewingPR.result_unit || 'lbs', displayWeightUnit),
+                      displayWeightUnit
+                    )}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Latest Date</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {new Date(viewingPR.created_at).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </View>
+
+                {viewingPR.notes && viewingPR.notes.trim() ? (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic', textAlign: 'left' }]}>
+                      {viewingPR.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* History Section */}
+                {prHistory.length > 1 ? (
+                  <View style={styles.prHistorySection}>
+                    <Text style={[styles.prHistorySectionTitle, { color: colors.text }]}>
+                      History ({prHistory.length} entries)
+                    </Text>
+                    {prHistory.map((entry, index) => {
+                      const displayValue = convertWeight(entry.result_value || 0, entry.result_unit || 'lbs', displayWeightUnit);
+                      return (
+                        <View 
+                          key={entry.id || index} 
+                          style={[styles.prHistoryCard, { backgroundColor: colors.background }]}
+                        >
+                          <View style={styles.prHistoryHeader}>
+                            <Text style={[styles.prHistoryIndex, { color: colors.textSecondary }]}>
+                              #{index + 1}
+                            </Text>
+                            <Text style={[styles.prHistoryDate, { color: colors.textSecondary }]}>
+                              {new Date(entry.created_at || new Date()).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </Text>
+                          </View>
+                          <Text style={[styles.prHistoryValue, { color: colors.primary }]}>
+                            {formatWeight(displayValue, displayWeightUnit)}
+                          </Text>
+                          {entry.notes && entry.notes.trim() ? (
+                            <Text style={[styles.prHistoryNotes, { color: colors.textTertiary }]}>
+                              {entry.notes}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                <View style={styles.viewModalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                    onPress={() => {
+                      setShowPRViewModal(false);
+                      setTimeout(() => handleEditTest(viewingPR), 300);
+                    }}
+                  >
+                    <TrendingUp size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                    <Text style={[styles.viewModalButtonSecondaryText, { color: colors.primary }]}>Update</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowPRViewModal(false)}
+                  >
+                    <Text style={styles.viewModalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Confetti active={showConfetti} />
       {renderTestTooltipModal()}
       {renderGoalsTooltipModal()}
+      <GoalDetailModal />
+      <PRDetailModal />
 
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={[styles.title, { color: colors.text }]}>Progress</Text>
@@ -1305,13 +1579,18 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </View>
           ) : (
             goals.map((goal) => (
-              <View
+              <TouchableOpacity
                 key={goal.id}
                 style={[
                   styles.goalCard,
                   { backgroundColor: colors.surface },
                   goal.is_completed && styles.goalCardCompleted,
                 ]}
+                onPress={() => {
+                  setViewingGoal(goal);
+                  setShowGoalViewModal(true);
+                }}
+                activeOpacity={0.7}
               >
                 <View style={{ flex: 1 }}>
                   <View style={styles.goalHeader}>
@@ -1332,13 +1611,19 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={styles.actionButtons}>
                       <TouchableOpacity
                         style={[styles.editButton, { marginRight: 8 }]}
-                        onPress={() => handleEditGoal(goal)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEditGoal(goal);
+                        }}
                       >
                         <Pencil size={16} color="#2A7DE1" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.deleteButton}
-                        onPress={() => handleDeleteGoal(goal.id)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteGoal(goal.id);
+                        }}
                       >
                         <Trash2 size={16} color="#E63946" />
                       </TouchableOpacity>
@@ -1363,7 +1648,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       {!goal.is_completed && goal.current_value > 0 && (
                         <TouchableOpacity
                           style={[styles.decrementButton, { marginRight: 8 }]}
-                          onPress={(e) => {
+                          onPress={(e: any) => {
                             e.stopPropagation();
                             handleDecrementGoal(goal);
                           }}
@@ -1374,7 +1659,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       {!goal.is_completed && goal.current_value < goal.target_value && (
                         <TouchableOpacity
                           style={styles.incrementButton}
-                          onPress={(e) => {
+                          onPress={(e: any) => {
                             e.stopPropagation();
                             handleIncrementGoal(goal);
                           }}
@@ -1398,7 +1683,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     {Math.round(getProgressPercentage(goal))}% complete
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
@@ -1446,7 +1731,15 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               const historyCount = strengthTests.filter(t => t.test_type === test.test_type).length;
               
               return (
-                <View key={test.id} style={[styles.testCard, { backgroundColor: colors.surface }]}>
+                <TouchableOpacity 
+                  key={test.id} 
+                  style={[styles.testCard, { backgroundColor: colors.surface }]}
+                  onPress={() => {
+                    setViewingPR(test);
+                    setShowPRViewModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.testHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.testType, { color: colors.text }]}>
@@ -1461,13 +1754,19 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={styles.testActions}>
                       <TouchableOpacity 
                         style={styles.testActionButton}
-                        onPress={() => handleEditTest(test)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEditTest(test);
+                        }}
                       >
                         <TrendingUp size={20} color={colors.primary} />
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={styles.testActionButton}
-                        onPress={() => handleDeleteTest(test.id)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTest(test.id);
+                        }}
                       >
                         <Trash2 size={20} color="#EF4444" />
                       </TouchableOpacity>
@@ -1484,7 +1783,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   <Text style={[styles.testDate, { color: colors.textSecondary }]}>
                     Latest: {new Date(test.created_at).toLocaleDateString()}
                   </Text>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
@@ -2559,5 +2858,145 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // View Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  viewModalContent: {
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  viewModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  viewModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  viewModalCloseButton: {
+    padding: 4,
+  },
+  viewModalBody: {
+    // gap removed - using marginBottom on child elements instead
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  viewModalButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 24,
+    justifyContent: 'space-between',
+  },
+  viewModalButtonPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginLeft: 6,
+  },
+  viewModalButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  viewModalButtonSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    borderWidth: 2,
+    marginRight: 6,
+  },
+  viewModalButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    marginTop: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+  },
+  completedText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFD700',
+  },
+  prHistorySection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  prHistorySectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  prHistoryCard: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  prHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  prHistoryIndex: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  prHistoryDate: {
+    fontSize: 12,
+  },
+  prHistoryValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  prHistoryNotes: {
+    fontSize: 13,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });

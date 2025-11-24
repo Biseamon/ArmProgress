@@ -11,6 +11,8 @@ import {
   Image,
   ActivityIndicator,
   Animated,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,10 +21,13 @@ import { useSync } from '@/contexts/SyncContext';
 import { Cycle } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { AdMediumRectangle } from '@/components/AdMediumRectangle';
-import { Calendar, TrendingUp, Target, Clock } from 'lucide-react-native';
+import { Calendar, TrendingUp, Target, Clock, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/lib/useResponsive';
 import { useHomeData } from '@/hooks/useHomeData';
+import { getExercises } from '@/lib/db/queries/exercises';
+import type { Exercise } from '@/lib/supabase';
+import { convertWeight } from '@/lib/weightUtils';
 
 // Helper function to validate URL
 const isValidHttpUrl = (str: string) => {
@@ -44,6 +49,10 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [showInitialLoading, setShowInitialLoading] = useState(true);
+  const [selectedGoal, setSelectedGoal] = useState<any>(null);
+  const [selectedWorkout, setSelectedWorkout] = useState<any>(null);
+  const [goalModalVisible, setGoalModalVisible] = useState(false);
+  const [workoutModalVisible, setWorkoutModalVisible] = useState(false);
 
   // Use custom hook with caching - replaces all manual fetching!
   const { data: homeData, isLoading: loading, refetch } = useHomeData(profile?.id);
@@ -180,6 +189,289 @@ export default function Home() {
           { backgroundColor: colors.surface, width, height, opacity },
         ]}
       />
+    );
+  };
+
+  // Goal Detail Modal Component
+  const GoalDetailModal = () => {
+    if (!selectedGoal) return null;
+
+    return (
+      <Modal
+        visible={goalModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGoalModalVisible(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setGoalModalVisible(false)}
+        >
+          <Pressable 
+            style={[styles.modalContent, { backgroundColor: colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Target size={24} color={colors.primary} />
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Goal Details</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => setGoalModalVisible(false)}
+                style={styles.closeButton}
+              >
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Goal Type</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGoal.goal_type}</Text>
+              </View>
+
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Progress</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>
+                  {selectedGoal.current_value} / {selectedGoal.target_value}
+                </Text>
+              </View>
+
+              <View style={styles.detailRow}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Completion</Text>
+                <Text style={[styles.detailValue, { color: colors.secondary }]}>
+                  {Math.round(getProgressPercentage(selectedGoal))}%
+                </Text>
+              </View>
+
+              {selectedGoal.deadline && (
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Deadline</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {new Date(selectedGoal.deadline).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </View>
+              )}
+
+              <View style={[styles.progressBarContainer, { backgroundColor: colors.background, marginTop: 20 }]}>
+                <View
+                  style={[
+                    styles.progressBar,
+                    { width: `${getProgressPercentage(selectedGoal)}%`, backgroundColor: colors.secondary }
+                  ]}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary, marginTop: 24 }]}
+                onPress={() => {
+                  setGoalModalVisible(false);
+                  router.push('/progress');
+                }}
+              >
+                <Text style={styles.modalButtonText}>View All Goals</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+  // Workout Detail Modal Component
+  const WorkoutDetailModal = () => {
+    const [exercises, setExercises] = useState<Exercise[]>([]);
+    const [loadingExercises, setLoadingExercises] = useState(false);
+
+    // Fetch exercises when workout is selected
+    useEffect(() => {
+      if (selectedWorkout && workoutModalVisible) {
+        setLoadingExercises(true);
+        getExercises(selectedWorkout.id)
+          .then((data) => {
+            setExercises(data || []);
+          })
+          .catch((error) => {
+            console.error('[WorkoutModal] Error fetching exercises:', error);
+            setExercises([]);
+          })
+          .finally(() => {
+            setLoadingExercises(false);
+          });
+      } else {
+        setExercises([]);
+      }
+    }, [selectedWorkout, workoutModalVisible]);
+
+    // Helper function to convert exercise weight to user's preferred unit
+    const getDisplayWeight = (exercise: Exercise) => {
+      if (!exercise.weight_lbs || exercise.weight_lbs === 0) return null;
+      
+      const userPreferredUnit = profile?.weight_unit || 'lbs';
+      const storedUnit = exercise.weight_unit || 'lbs';
+      
+      // Convert from stored unit to user's preferred unit
+      const convertedWeight = convertWeight(
+        exercise.weight_lbs,
+        storedUnit as 'lbs' | 'kg',
+        userPreferredUnit as 'lbs' | 'kg'
+      );
+      
+      return {
+        value: convertedWeight,
+        unit: userPreferredUnit,
+      };
+    };
+
+    if (!selectedWorkout) return null;
+
+    console.log('[WorkoutModal] Rendering for workout:', selectedWorkout.id, selectedWorkout.workout_type);
+
+    return (
+      <Modal
+        visible={workoutModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWorkoutModalVisible(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setWorkoutModalVisible(false)}
+        >
+          <Pressable 
+            style={[styles.modalContent, { backgroundColor: colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 100 }}
+            >
+              <View style={styles.modalHeader}>
+                <View style={styles.modalTitleRow}>
+                  <TrendingUp size={24} color={colors.primary} />
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Details</Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => setWorkoutModalVisible(false)}
+                  style={styles.closeButton}
+                >
+                  <X size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalBody}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>
+                    {selectedWorkout.workout_type.replace(/_/g, ' ').toUpperCase()}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Date</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {formatDate(selectedWorkout.created_at)}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Duration</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {selectedWorkout.duration_minutes} minutes
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Intensity</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {selectedWorkout.intensity} / 10
+                  </Text>
+                </View>
+
+                {selectedWorkout.notes && (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic' }]}>
+                      {selectedWorkout.notes}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Exercises Section */}
+                {loadingExercises ? (
+                  <View style={styles.exercisesSection}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>Exercises</Text>
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+                  </View>
+                ) : exercises.length > 0 ? (
+                  <View style={styles.exercisesSection}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>
+                      Exercises ({exercises.length})
+                    </Text>
+                    {exercises.map((exercise, index) => (
+                      <View 
+                        key={exercise.id} 
+                        style={[styles.exerciseCard, { backgroundColor: colors.background }]}
+                      >
+                        <View style={styles.exerciseHeader}>
+                          <Text style={[styles.exerciseName, { color: colors.text }]}>
+                            {index + 1}. {exercise.exercise_name}
+                          </Text>
+                        </View>
+                        <View style={styles.exerciseDetails}>
+                          {exercise.sets > 0 && (
+                            <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                              {exercise.sets} sets
+                            </Text>
+                          )}
+                          {exercise.reps > 0 && (
+                            <>
+                              <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                              <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                {exercise.reps} reps
+                              </Text>
+                            </>
+                          )}
+                          {(() => {
+                            const displayWeight = getDisplayWeight(exercise);
+                            return displayWeight ? (
+                              <>
+                                <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                                <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                  {displayWeight.value} {displayWeight.unit}
+                                </Text>
+                              </>
+                            ) : null;
+                          })()}
+                        </View>
+                        {exercise.notes && (
+                          <Text style={[styles.exerciseNotes, { color: colors.textTertiary }]}>
+                            {exercise.notes}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: colors.primary, marginTop: 24 }]}
+                  onPress={() => {
+                    setWorkoutModalVisible(false);
+                    router.push('/(tabs)/training');
+                  }}
+                >
+                  <Text style={styles.modalButtonText}>View All Workouts</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     );
   };
 
@@ -395,7 +687,10 @@ export default function Home() {
             <TouchableOpacity
               key={goal.id}
               style={[styles.goalCard, { backgroundColor: colors.surface }]}
-              onPress={() => router.push('/progress')}
+              onPress={() => {
+                setSelectedGoal(goal);
+                setGoalModalVisible(true);
+              }}
               activeOpacity={0.7}
             >
               <View style={styles.goalHeader}>
@@ -565,7 +860,15 @@ export default function Home() {
           </View>
         ) : (
           workouts.map((workout) => (
-            <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity 
+              key={workout.id} 
+              style={[styles.workoutCard, { backgroundColor: colors.surface }]}
+              onPress={() => {
+                setSelectedWorkout(workout);
+                setWorkoutModalVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
               <View style={styles.workoutHeader}>
                 <Text style={[styles.workoutType, { color: colors.primary }]}>
                   {workout.workout_type.replace(/_/g, ' ').toUpperCase()}
@@ -586,12 +889,16 @@ export default function Home() {
                   {workout.notes}
                 </Text>
               )}
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </View>
 
       <View style={styles.bottomSpacing} />
+
+      {/* Modals */}
+      <GoalDetailModal />
+      <WorkoutDetailModal />
     </ScrollView>
   );
 }
@@ -1037,5 +1344,110 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalBody: {
+    gap: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  modalButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exercisesSection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  exercisesSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  exerciseCard: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  exerciseHeader: {
+    marginBottom: 6,
+  },
+  exerciseName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exerciseDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  exerciseDetailText: {
+    fontSize: 14,
+  },
+  exerciseDivider: {
+    fontSize: 14,
+    marginHorizontal: 6,
+  },
+  exerciseNotes: {
+    fontSize: 13,
+    marginTop: 6,
+    fontStyle: 'italic',
   },
 });
