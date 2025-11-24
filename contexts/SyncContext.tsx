@@ -79,25 +79,35 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * Initialize database and sync on user login
+   * ONLY runs when user is authenticated (has both profile AND session)
    */
   useEffect(() => {
-    if (!profile?.id) return;
+    // CRITICAL: Only initialize if BOTH profile and session exist
+    // This prevents syncing with stale data when user is on login page
+    if (!profile?.id || !session?.user) {
+      console.log('[SyncContext] No authenticated session, skipping initialization');
+      return;
+    }
+
+    // Verify the profile ID matches the session user ID
+    if (profile.id !== session.user.id) {
+      console.warn('[SyncContext] Profile ID mismatch with session, skipping initialization');
+      return;
+    }
 
     console.log('[SyncContext] User logged in, initializing...');
 
-    // Initialize database
-    getDatabase()
-      .then((db) => {
+    // Initialize database and start sync in background
+    const initializeAsync = async () => {
+      try {
+        // Initialize database
+        const db = await getDatabase();
         console.log('[SyncContext] Database initialized');
         
         // Verify sync_metadata table exists
-        return db.getFirstAsync('SELECT * FROM sync_metadata WHERE id = 1')
-          .then((result) => {
-            console.log('[SyncContext] Sync metadata table verified:', result);
-            return db;
-          });
-      })
-      .then(async () => {
+        const result = await db.getFirstAsync('SELECT * FROM sync_metadata WHERE id = 1');
+        console.log('[SyncContext] Sync metadata table verified:', result);
+
         // Preload profile picture (non-blocking, runs in background)
         if (profile.avatar_url) {
           preloadProfilePicture(profile.id, profile.avatar_url)
@@ -107,39 +117,76 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             });
         }
         
-        // Trigger initial sync to pull all data from Supabase
-        console.log('[SyncContext] Triggering initial full sync...');
+        // CRITICAL: Sync profile FIRST (blocking) to avoid foreign key errors
+        console.log('[SyncContext] Syncing profile to SQLite (blocking)...');
         setIsSyncing(true);
+        
         try {
-          await forceFullSync(profile.id);
-          console.log('[SyncContext] Initial sync completed');
-          
-          // Invalidate all queries to refresh UI with new data
-          queryClient.invalidateQueries();
-          console.log('[SyncContext] Invalidated all queries after initial sync');
+          // Sync profile to SQLite FIRST (blocking operation)
+          await db.runAsync(
+            `INSERT OR REPLACE INTO profiles (
+              id, email, full_name, is_premium, is_test_user,
+              weight_unit, avatar_url, avatar_local_path, avatar_cached_at,
+              created_at, updated_at, modified_at, pending_sync, deleted
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+            [
+              profile.id,
+              profile.email,
+              profile.full_name || '',
+              profile.is_premium ? 1 : 0,
+              profile.is_test_user ? 1 : 0,
+              profile.weight_unit || 'lbs',
+              profile.avatar_url || null,
+              null, // avatar_local_path
+              null, // avatar_cached_at
+              profile.created_at || new Date().toISOString(),
+              profile.updated_at || new Date().toISOString(),
+              new Date().toISOString(),
+            ]
+          );
+          console.log('[SyncContext] Profile synced to SQLite successfully');
         } catch (error) {
-          console.error('[SyncContext] Initial sync failed:', error);
-          setSyncError('Initial sync failed. Please try refreshing.');
-        } finally {
-          setIsSyncing(false);
+          console.error('[SyncContext] Failed to sync profile to SQLite:', error);
+          throw error;
         }
         
+        // NOW trigger full sync in background (non-blocking)
+        console.log('[SyncContext] Triggering initial full sync in background...');
+        
+        // Run sync in background without awaiting
+        forceFullSync(profile.id)
+          .then(() => {
+            console.log('[SyncContext] Initial sync completed');
+            setLastSyncAt(new Date());
+            
+            // Invalidate all queries to refresh UI with new data
+            queryClient.invalidateQueries();
+            console.log('[SyncContext] Invalidated all queries after initial sync');
+          })
+          .catch(error => {
+            console.error('[SyncContext] Initial sync failed:', error);
+            setSyncError('Initial sync failed. Please try refreshing.');
+          })
+          .finally(() => {
+            setIsSyncing(false);
+          });
+        
         // Start auto-sync
-        return startAutoSync(profile.id);
-      })
-      .then((cleanup) => {
+        const cleanup = await startAutoSync(profile.id);
         console.log('[SyncContext] Auto-sync started');
         
-        // Return cleanup function
         return cleanup;
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('[SyncContext] Initialization failed:', error);
         console.error('[SyncContext] Error details:', JSON.stringify(error, null, 2));
         setSyncError('Database initialization failed. Please restart the app.');
-      });
+      }
+    };
 
-  }, [profile?.id, session]);
+    // Run initialization without blocking
+    initializeAsync();
+
+  }, [profile?.id, session, queryClient]);
 
   /**
    * Sync when app comes to foreground

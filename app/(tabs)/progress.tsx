@@ -1316,9 +1316,9 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                 <View style={{ flex: 1 }}>
                   <View style={styles.goalHeader}>
                     <View style={styles.goalInfo}>
-                      {goal.is_completed && (
+                      {goal.is_completed ? (
                         <Trophy size={20} color="#FFD700" style={styles.goalIcon} />
-                      )}
+                      ) : null}
                       <Text
                         style={[
                           styles.goalType,

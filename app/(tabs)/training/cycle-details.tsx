@@ -145,10 +145,11 @@ export default function CycleDetails() {
   const handleUpdateExercise = (
     index: number,
     field: keyof Exercise,
-    value: any
+    value: any,
+    additionalUpdates?: Partial<Exercise>
   ) => {
     const updated = [...exercises];
-    updated[index] = { ...updated[index], [field]: value };
+    updated[index] = { ...updated[index], [field]: value, ...additionalUpdates };
     setExercises(updated);
   };
 
@@ -507,15 +508,13 @@ export default function CycleDetails() {
                         onChangeText={(val) => {
                           // Allow empty string for clearing
                           if (val === '') {
-                            handleUpdateExercise(index, 'weight_lbs', 0);
-                            handleUpdateExercise(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                            handleUpdateExercise(index, 'weight_lbs', 0, { weight_unit: profile?.weight_unit || 'lbs' });
                             return;
                           }
                           const inputValue = parseInt(val);
                           if (!isNaN(inputValue)) {
-                            // Store in user's current preferred unit
-                            handleUpdateExercise(index, 'weight_lbs', inputValue);
-                            handleUpdateExercise(index, 'weight_unit', profile?.weight_unit || 'lbs');
+                            // Store value in user's current preferred unit
+                            handleUpdateExercise(index, 'weight_lbs', inputValue, { weight_unit: profile?.weight_unit || 'lbs' });
                           }
                         }}
                         keyboardType="number-pad"

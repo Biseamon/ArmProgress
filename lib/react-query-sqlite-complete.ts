@@ -12,9 +12,13 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { InteractionManager } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { Workout, Cycle, Goal, StrengthTest, BodyMeasurement, ScheduledTraining, Profile } from './supabase';
 import { triggerSync } from './sync/syncEngine';
+
+// Default stale time (5 minutes) to prevent excessive refetches
+const DEFAULT_STALE_TIME = 5 * 60 * 1000;
 
 // Workouts
 import {
@@ -152,9 +156,13 @@ export const useWorkouts = () => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.workouts(profile?.id || ''),
-    queryFn: () => getWorkouts(profile!.id),
+    queryFn: async () => {
+      // Defer until after animations/interactions complete
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getWorkouts(profile!.id);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME, // Reduced refetch frequency
   });
 };
 
@@ -162,9 +170,12 @@ export const useRecentWorkouts = (limit: number = 10) => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.recentWorkouts(profile?.id || '', limit),
-    queryFn: () => getRecentWorkouts(profile!.id, limit),
+    queryFn: async () => {
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getRecentWorkouts(profile!.id, limit);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 
@@ -173,7 +184,7 @@ export const useWorkout = (id: string) => {
     queryKey: queryKeys.workout(id),
     queryFn: () => getWorkoutById(id),
     enabled: !!id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 
@@ -181,9 +192,12 @@ export const useWorkoutStats = () => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.workoutStats(profile?.id || ''),
-    queryFn: () => getWorkoutStats(profile!.id),
+    queryFn: async () => {
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getWorkoutStats(profile!.id);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 
@@ -279,9 +293,12 @@ export const useCycles = () => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.cycles(profile?.id || ''),
-    queryFn: () => getCycles(profile!.id),
+    queryFn: async () => {
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getCycles(profile!.id);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 
@@ -378,9 +395,12 @@ export const useGoals = () => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.goals(profile?.id || ''),
-    queryFn: () => getGoals(profile!.id),
+    queryFn: async () => {
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getGoals(profile!.id);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 
@@ -498,9 +518,12 @@ export const useStrengthTests = () => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.strengthTests(profile?.id || ''),
-    queryFn: () => getStrengthTests(profile!.id),
+    queryFn: async () => {
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getStrengthTests(profile!.id);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 
@@ -578,9 +601,12 @@ export const useMeasurements = () => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.measurements(profile?.id || ''),
-    queryFn: () => getMeasurements(profile!.id),
+    queryFn: async () => {
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getMeasurements(profile!.id);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 
@@ -658,9 +684,12 @@ export const useScheduledTrainings = () => {
   const { profile } = useAuth();
   return useQuery({
     queryKey: queryKeys.scheduledTrainings(profile?.id || ''),
-    queryFn: () => getScheduledTrainings(profile!.id),
+    queryFn: async () => {
+      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      return getScheduledTrainings(profile!.id);
+    },
     enabled: !!profile?.id,
-    staleTime: 0, // Refetch immediately when invalidated
+    staleTime: DEFAULT_STALE_TIME,
   });
 };
 

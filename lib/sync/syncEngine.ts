@@ -56,8 +56,8 @@ export const triggerSync = async (userId: string) => {
     await updateSyncMetadata(userId);
     
     console.log('[Sync] Sync completed successfully');
-  } catch (error) {
-    console.error('[Sync] Sync failed:', error);
+  } catch (error: any) {
+    console.error('[Sync] Sync failed:', error?.message || error);
     throw error;
   } finally {
     isSyncing = false;
@@ -74,65 +74,105 @@ export const triggerSync = async (userId: string) => {
 
 /**
  * PUSH: Upload local changes to Supabase
+ * 
+ * CRITICAL: Push in dependency order to avoid foreign key errors:
+ * 1. Cycles (no dependencies)
+ * 2. Workouts (depends on cycles)
+ * 3. Exercises (depends on workouts)
+ * 4. Goals, Measurements, Tests, Trainings (no dependencies)
  */
 const pushLocalChanges = async (userId: string) => {
   console.log('[Sync] Pushing local changes...');
   
-  // Get all pending workouts
-  const pendingWorkouts = await getPendingWorkouts();
+  let hasChanges = false;
   
-  if (pendingWorkouts.length === 0) {
-    console.log('[Sync] No pending changes to push');
-    return;
-  }
-  
-  console.log(`[Sync] Pushing ${pendingWorkouts.length} workouts...`);
-  
-  for (const workout of pendingWorkouts) {
-    try {
-      if (workout.deleted) {
-        // Delete from Supabase
-        const { error } = await supabase
-          .from('workouts')
-          .delete()
-          .eq('id', workout.id);
-        
-        if (error) throw error;
-        
-        console.log(`[Sync] Deleted workout ${workout.id} from Supabase`);
-      } else {
-        // Upsert to Supabase
-        const { error } = await supabase
-          .from('workouts')
-          .upsert({
-            id: workout.id,
-            user_id: workout.user_id,
-            cycle_id: workout.cycle_id,
-            workout_type: workout.workout_type,
-            duration_minutes: workout.duration_minutes,
-            intensity: workout.intensity,
-            notes: workout.notes,
-            weight_unit: 'lbs',
-            created_at: workout.created_at,
+  // STEP 1: Push Cycles FIRST (workouts depend on cycles)
+  const pendingCycles = await getPendingCycles();
+  if (pendingCycles.length > 0) {
+    hasChanges = true;
+    console.log(`[Sync] Pushing ${pendingCycles.length} cycles...`);
+    for (const cycle of pendingCycles) {
+      try {
+        if (cycle.deleted) {
+          const { error } = await supabase.from('cycles').delete().eq('id', cycle.id);
+          if (error) throw error;
+          console.log(`[Sync] Deleted cycle ${cycle.id} from Supabase`);
+        } else {
+          const { error } = await supabase.from('cycles').upsert({
+            id: cycle.id,
+            user_id: cycle.user_id,
+            name: cycle.name,
+            description: cycle.description,
+            cycle_type: cycle.cycle_type,
+            start_date: cycle.start_date,
+            end_date: cycle.end_date,
+            is_active: cycle.is_active,
+            created_at: cycle.created_at,
             updated_at: new Date().toISOString(),
           });
-        
-        if (error) throw error;
-        
-        console.log(`[Sync] Pushed workout ${workout.id} to Supabase`);
+          if (error) throw error;
+          console.log(`[Sync] Pushed cycle ${cycle.id} to Supabase`);
+        }
+        await markCycleSynced(cycle.id);
+      } catch (error) {
+        console.error(`[Sync] Failed to push cycle ${cycle.id}:`, error);
       }
-      
-      // Mark as synced in SQLite
-      await markWorkoutSynced(workout.id);
-    } catch (error) {
-      console.error(`[Sync] Failed to push workout ${workout.id}:`, error);
-      // Continue with other workouts instead of failing entire sync
     }
   }
   
-  // Push Exercises (must be after workouts since exercises reference workout_id)
+  // STEP 2: Push Workouts (depends on cycles being pushed first)
+  const pendingWorkouts = await getPendingWorkouts();
+  if (pendingWorkouts.length > 0) {
+    hasChanges = true;
+    console.log(`[Sync] Pushing ${pendingWorkouts.length} workouts...`);
+    
+    for (const workout of pendingWorkouts) {
+      try {
+        if (workout.deleted) {
+          // Delete from Supabase
+          const { error } = await supabase
+            .from('workouts')
+            .delete()
+            .eq('id', workout.id);
+          
+          if (error) throw error;
+          
+          console.log(`[Sync] Deleted workout ${workout.id} from Supabase`);
+        } else {
+          // Upsert to Supabase
+          const { error } = await supabase
+            .from('workouts')
+            .upsert({
+              id: workout.id,
+              user_id: workout.user_id,
+              cycle_id: workout.cycle_id,
+              workout_type: workout.workout_type,
+              duration_minutes: workout.duration_minutes,
+              intensity: workout.intensity,
+              notes: workout.notes,
+              weight_unit: 'lbs',
+              created_at: workout.created_at,
+              updated_at: new Date().toISOString(),
+            });
+          
+          if (error) throw error;
+          
+          console.log(`[Sync] Pushed workout ${workout.id} to Supabase`);
+        }
+        
+        // Mark as synced in SQLite
+        await markWorkoutSynced(workout.id);
+      } catch (error) {
+        console.error(`[Sync] Failed to push workout ${workout.id}:`, error);
+        // Continue with other workouts instead of failing entire sync
+      }
+    }
+  }
+  
+  // STEP 3: Push Exercises (must be after workouts since exercises reference workout_id)
   const pendingExercises = await getPendingExercises();
   if (pendingExercises.length > 0) {
+    hasChanges = true;
     console.log(`[Sync] Pushing ${pendingExercises.length} exercises...`);
     for (const exercise of pendingExercises) {
       try {
@@ -162,49 +202,21 @@ const pushLocalChanges = async (userId: string) => {
     }
   }
   
-  // Push Cycles
-  const pendingCycles = await getPendingCycles();
-  if (pendingCycles.length > 0) {
-    console.log(`[Sync] Pushing ${pendingCycles.length} cycles...`);
-    for (const cycle of pendingCycles) {
-      try {
-        if (cycle.deleted) {
-          const { error } = await supabase.from('cycles').delete().eq('id', cycle.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('cycles').upsert({
-            id: cycle.id,
-            user_id: cycle.user_id,
-            name: cycle.name,
-            description: cycle.description,
-            cycle_type: cycle.cycle_type,
-            start_date: cycle.start_date,
-            end_date: cycle.end_date,
-            is_active: cycle.is_active,
-            created_at: cycle.created_at,
-            updated_at: new Date().toISOString(),
-          });
-          if (error) throw error;
-        }
-        await markCycleSynced(cycle.id);
-      } catch (error) {
-        console.error(`[Sync] Failed to push cycle ${cycle.id}:`, error);
-      }
-    }
-  }
-  
-  // Push Goals
+  // STEP 4: Push Goals (no dependencies)
   const pendingGoals = await getPendingGoals();
   if (pendingGoals.length > 0) {
+    hasChanges = true;
     console.log(`[Sync] Pushing ${pendingGoals.length} goals...`);
     for (const goal of pendingGoals) {
       try {
         if (goal.deleted) {
           const { error } = await supabase.from('goals').delete().eq('id', goal.id);
           if (error) throw error;
+          console.log(`[Sync] Deleted goal ${goal.id} from Supabase`);
         } else {
           const { error } = await supabase.from('goals').upsert(goal);
           if (error) throw error;
+          console.log(`[Sync] Pushed goal ${goal.id} to Supabase`);
         }
         await markGoalSynced(goal.id);
       } catch (error) {
@@ -213,18 +225,21 @@ const pushLocalChanges = async (userId: string) => {
     }
   }
   
-  // Push Measurements
+  // STEP 5: Push Measurements (no dependencies)
   const pendingMeasurements = await getPendingMeasurements();
   if (pendingMeasurements.length > 0) {
+    hasChanges = true;
     console.log(`[Sync] Pushing ${pendingMeasurements.length} measurements...`);
     for (const measurement of pendingMeasurements) {
       try {
         if (measurement.deleted) {
           const { error } = await supabase.from('body_measurements').delete().eq('id', measurement.id);
           if (error) throw error;
+          console.log(`[Sync] Deleted measurement ${measurement.id} from Supabase`);
         } else {
           const { error } = await supabase.from('body_measurements').upsert(measurement);
           if (error) throw error;
+          console.log(`[Sync] Pushed measurement ${measurement.id} to Supabase`);
         }
         await markMeasurementSynced(measurement.id);
       } catch (error) {
@@ -233,18 +248,21 @@ const pushLocalChanges = async (userId: string) => {
     }
   }
   
-  // Push Strength Tests (PRs)
+  // STEP 6: Push Strength Tests (no dependencies)
   const pendingTests = await getPendingStrengthTests();
   if (pendingTests.length > 0) {
+    hasChanges = true;
     console.log(`[Sync] Pushing ${pendingTests.length} strength tests...`);
     for (const test of pendingTests) {
       try {
         if (test.deleted) {
           const { error } = await supabase.from('strength_tests').delete().eq('id', test.id);
           if (error) throw error;
+          console.log(`[Sync] Deleted strength test ${test.id} from Supabase`);
         } else {
           const { error } = await supabase.from('strength_tests').upsert(test);
           if (error) throw error;
+          console.log(`[Sync] Pushed strength test ${test.id} to Supabase`);
         }
         await markStrengthTestSynced(test.id);
       } catch (error) {
@@ -253,18 +271,21 @@ const pushLocalChanges = async (userId: string) => {
     }
   }
   
-  // Push Scheduled Trainings
+  // STEP 7: Push Scheduled Trainings (no dependencies)
   const pendingTrainings = await getPendingScheduledTrainings();
   if (pendingTrainings.length > 0) {
+    hasChanges = true;
     console.log(`[Sync] Pushing ${pendingTrainings.length} scheduled trainings...`);
     for (const training of pendingTrainings) {
       try {
         if (training.deleted) {
           const { error } = await supabase.from('scheduled_trainings').delete().eq('id', training.id);
           if (error) throw error;
+          console.log(`[Sync] Deleted scheduled training ${training.id} from Supabase`);
         } else {
           const { error } = await supabase.from('scheduled_trainings').upsert(training);
           if (error) throw error;
+          console.log(`[Sync] Pushed scheduled training ${training.id} to Supabase`);
         }
         await markScheduledTrainingSynced(training.id);
       } catch (error) {
@@ -273,17 +294,31 @@ const pushLocalChanges = async (userId: string) => {
     }
   }
   
-  console.log('[Sync] Push completed');
+  if (!hasChanges) {
+    console.log('[Sync] No pending changes to push');
+  } else {
+    console.log('[Sync] Push completed');
+  }
 };
 
 /**
  * PULL: Download remote changes from Supabase
+ * 
+ * Important: This also handles deletions by comparing local vs remote IDs
  */
 const pullRemoteChanges = async (userId: string) => {
   console.log('[Sync] Pulling remote changes...');
   
   const syncMetadata = await getSyncMetadata();
   const lastSyncAt = syncMetadata?.last_sync_at;
+  const db = await getDatabase();
+  
+  // Temporarily disable foreign key constraints for cleanup operations
+  // This prevents foreign key errors during deletion cascades
+  await db.execAsync('PRAGMA foreign_keys = OFF');
+  console.log('[Sync] Foreign key constraints disabled for cleanup');
+  
+  try {
   
   // STEP 1: Sync profile FIRST (required for foreign keys)
   console.log('[Sync] Pulling profile...');
@@ -329,6 +364,34 @@ const pullRemoteChanges = async (userId: string) => {
   // STEP 2: Sync cycles (needed before workouts since workouts reference cycles)
   console.log('[Sync] Pulling cycles...');
   try {
+    // Get all remote cycle IDs to detect deletions
+    const { data: remoteCycleIds } = await supabase
+      .from('cycles')
+      .select('id')
+      .eq('user_id', userId);
+    
+    // Get all local cycle IDs
+    const localCycles = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM cycles WHERE user_id = ? AND pending_sync = 0',
+      [userId]
+    );
+    
+    // Clean up deleted cycles
+    const remoteCIds = new Set((remoteCycleIds || []).map(c => c.id));
+    const localCIds = new Set(localCycles.map(c => c.id));
+    const deletedCycleIds = [...localCIds].filter(id => !remoteCIds.has(id));
+    
+    if (deletedCycleIds.length > 0) {
+      console.log(`[Sync] Cleaning up ${deletedCycleIds.length} deleted cycles...`);
+      for (const id of deletedCycleIds) {
+        // First delete all workouts that reference this cycle
+        await db.runAsync('DELETE FROM workouts WHERE cycle_id = ?', [id]);
+        // Then delete the cycle
+        await db.runAsync('DELETE FROM cycles WHERE id = ?', [id]);
+      }
+    }
+    
+    // Pull cycle details
     let cyclesQuery = supabase.from('cycles').select('*').eq('user_id', userId);
     if (lastSyncAt) {
       cyclesQuery = cyclesQuery.gt('modified_at', lastSyncAt);
@@ -348,30 +411,58 @@ const pullRemoteChanges = async (userId: string) => {
   
   // STEP 3: Now sync workouts (profile and cycles exist, foreign keys will work)
   console.log('[Sync] Pulling workouts...');
-  let query = supabase
+  
+  // Get ALL remote workouts (not just changes since last sync) to detect deletions
+  const { data: remoteWorkouts, error } = await supabase
     .from('workouts')
-    .select('*')
+    .select('id')
     .eq('user_id', userId);
-  
-  // Only pull changes since last sync
-  if (lastSyncAt) {
-    query = query.gt('modified_at', lastSyncAt);
-  }
-  
-  const { data: remoteWorkouts, error } = await query;
   
   if (error) {
     console.error('[Sync] Pull failed:', error);
     throw error;
   }
   
-  if (!remoteWorkouts || remoteWorkouts.length === 0) {
-    console.log('[Sync] No remote workouts to pull');
-  } else {
-    console.log(`[Sync] Pulling ${remoteWorkouts.length} workouts...`);
+  // Get all local workout IDs (including deleted ones)
+  const localWorkouts = await db.getAllAsync<{ id: string }>(
+    'SELECT id FROM workouts WHERE user_id = ? AND pending_sync = 0',
+    [userId]
+  );
+  
+  // Find IDs that exist locally but not remotely (these were deleted elsewhere)
+  const remoteIds = new Set((remoteWorkouts || []).map(w => w.id));
+  const localIds = new Set(localWorkouts.map(w => w.id));
+  const deletedIds = [...localIds].filter(id => !remoteIds.has(id));
+  
+  if (deletedIds.length > 0) {
+    console.log(`[Sync] Cleaning up ${deletedIds.length} deleted workouts...`);
+    for (const id of deletedIds) {
+      // Delete exercises first (they reference workouts)
+      await db.runAsync('DELETE FROM exercises WHERE workout_id = ?', [id]);
+      // Then delete the workout
+      await db.runAsync('DELETE FROM workouts WHERE id = ?', [id]);
+    }
+  }
+  
+  // Now pull actual workout data (only changed since last sync for efficiency)
+  let detailQuery = supabase
+    .from('workouts')
+    .select('*')
+    .eq('user_id', userId);
+  
+  if (lastSyncAt) {
+    detailQuery = detailQuery.gt('modified_at', lastSyncAt);
+  }
+  
+  const { data: remoteWorkoutDetails, error: detailError } = await detailQuery;
+  
+  if (detailError) {
+    console.error('[Sync] Workout details pull failed:', detailError);
+  } else if (remoteWorkoutDetails && remoteWorkoutDetails.length > 0) {
+    console.log(`[Sync] Pulling ${remoteWorkoutDetails.length} workout updates...`);
     
     // Handle conflicts and merge
-    for (const remoteWorkout of remoteWorkouts) {
+    for (const remoteWorkout of remoteWorkoutDetails) {
       try {
         await resolveConflictAndMerge(remoteWorkout);
       } catch (error) {
@@ -410,6 +501,31 @@ const pullRemoteChanges = async (userId: string) => {
   // STEP 4: Sync goals
   console.log('[Sync] Pulling goals...');
   try {
+    // Get all remote goal IDs to detect deletions
+    const { data: remoteGoalIds } = await supabase
+      .from('goals')
+      .select('id')
+      .eq('user_id', userId);
+    
+    // Get all local goal IDs
+    const localGoals = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM goals WHERE user_id = ? AND pending_sync = 0',
+      [userId]
+    );
+    
+    // Clean up deleted goals
+    const remoteGIds = new Set((remoteGoalIds || []).map(g => g.id));
+    const localGIds = new Set(localGoals.map(g => g.id));
+    const deletedGoalIds = [...localGIds].filter(id => !remoteGIds.has(id));
+    
+    if (deletedGoalIds.length > 0) {
+      console.log(`[Sync] Cleaning up ${deletedGoalIds.length} deleted goals...`);
+      for (const id of deletedGoalIds) {
+        await db.runAsync('DELETE FROM goals WHERE id = ?', [id]);
+      }
+    }
+    
+    // Pull goal details
     let goalsQuery = supabase.from('goals').select('*').eq('user_id', userId);
     if (lastSyncAt) {
       goalsQuery = goalsQuery.gt('modified_at', lastSyncAt);
@@ -430,6 +546,31 @@ const pullRemoteChanges = async (userId: string) => {
   // STEP 5: Sync body measurements
   console.log('[Sync] Pulling measurements...');
   try {
+    // Get all remote measurement IDs to detect deletions
+    const { data: remoteMeasurementIds } = await supabase
+      .from('body_measurements')
+      .select('id')
+      .eq('user_id', userId);
+    
+    // Get all local measurement IDs
+    const localMeasurements = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM body_measurements WHERE user_id = ? AND pending_sync = 0',
+      [userId]
+    );
+    
+    // Clean up deleted measurements
+    const remoteMIds = new Set((remoteMeasurementIds || []).map(m => m.id));
+    const localMIds = new Set(localMeasurements.map(m => m.id));
+    const deletedMeasurementIds = [...localMIds].filter(id => !remoteMIds.has(id));
+    
+    if (deletedMeasurementIds.length > 0) {
+      console.log(`[Sync] Cleaning up ${deletedMeasurementIds.length} deleted measurements...`);
+      for (const id of deletedMeasurementIds) {
+        await db.runAsync('DELETE FROM body_measurements WHERE id = ?', [id]);
+      }
+    }
+    
+    // Pull measurement details
     let measurementsQuery = supabase.from('body_measurements').select('*').eq('user_id', userId);
     if (lastSyncAt) {
       measurementsQuery = measurementsQuery.gt('modified_at', lastSyncAt);
@@ -450,6 +591,31 @@ const pullRemoteChanges = async (userId: string) => {
   // STEP 6: Sync strength tests (PRs)
   console.log('[Sync] Pulling strength tests...');
   try {
+    // Get all remote strength test IDs to detect deletions
+    const { data: remoteTestIds } = await supabase
+      .from('strength_tests')
+      .select('id')
+      .eq('user_id', userId);
+    
+    // Get all local strength test IDs
+    const localTests = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM strength_tests WHERE user_id = ? AND pending_sync = 0',
+      [userId]
+    );
+    
+    // Clean up deleted strength tests
+    const remoteTIds = new Set((remoteTestIds || []).map(t => t.id));
+    const localTIds = new Set(localTests.map(t => t.id));
+    const deletedTestIds = [...localTIds].filter(id => !remoteTIds.has(id));
+    
+    if (deletedTestIds.length > 0) {
+      console.log(`[Sync] Cleaning up ${deletedTestIds.length} deleted strength tests...`);
+      for (const id of deletedTestIds) {
+        await db.runAsync('DELETE FROM strength_tests WHERE id = ?', [id]);
+      }
+    }
+    
+    // Pull strength test details
     let testsQuery = supabase.from('strength_tests').select('*').eq('user_id', userId);
     if (lastSyncAt) {
       testsQuery = testsQuery.gt('modified_at', lastSyncAt);
@@ -470,6 +636,31 @@ const pullRemoteChanges = async (userId: string) => {
   // STEP 7: Sync scheduled trainings
   console.log('[Sync] Pulling scheduled trainings...');
   try {
+    // Get all remote scheduled training IDs to detect deletions
+    const { data: remoteTrainingIds } = await supabase
+      .from('scheduled_trainings')
+      .select('id')
+      .eq('user_id', userId);
+    
+    // Get all local scheduled training IDs
+    const localTrainings = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM scheduled_trainings WHERE user_id = ? AND pending_sync = 0',
+      [userId]
+    );
+    
+    // Clean up deleted scheduled trainings
+    const remoteStIds = new Set((remoteTrainingIds || []).map(t => t.id));
+    const localStIds = new Set(localTrainings.map(t => t.id));
+    const deletedTrainingIds = [...localStIds].filter(id => !remoteStIds.has(id));
+    
+    if (deletedTrainingIds.length > 0) {
+      console.log(`[Sync] Cleaning up ${deletedTrainingIds.length} deleted scheduled trainings...`);
+      for (const id of deletedTrainingIds) {
+        await db.runAsync('DELETE FROM scheduled_trainings WHERE id = ?', [id]);
+      }
+    }
+    
+    // Pull scheduled training details
     let trainingsQuery = supabase.from('scheduled_trainings').select('*').eq('user_id', userId);
     if (lastSyncAt) {
       trainingsQuery = trainingsQuery.gt('modified_at', lastSyncAt);
@@ -485,6 +676,12 @@ const pullRemoteChanges = async (userId: string) => {
     }
   } catch (error) {
     console.error('[Sync] Scheduled trainings pull failed:', error);
+  }
+  
+  } finally {
+    // Re-enable foreign key constraints
+    await db.execAsync('PRAGMA foreign_keys = ON');
+    console.log('[Sync] Foreign key constraints re-enabled');
   }
   
   console.log('[Sync] Pull completed');

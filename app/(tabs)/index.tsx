@@ -457,16 +457,16 @@ export default function Home() {
                   })}
                 </Text>
               </View>
-              <Text style={styles.trainingDetails}>
+              <View style={styles.trainingDetails}>
                 <Text style={[styles.trainingTime, { color: colors.textSecondary }]}>
                   ⏰ {training.scheduled_time.slice(0, 5)}
                 </Text>
-                {training.notification_enabled && (
+                {training.notification_enabled ? (
                   <Text style={[styles.trainingNotif, { color: colors.secondary }]}>
                     🔔 {training.notification_minutes_before}m before
                   </Text>
-                )}
-              </Text>
+                ) : null}
+              </View>
               {training.description && (
                 <Text style={[styles.trainingDescription, { color: colors.textTertiary }]} numberOfLines={2}>
                   {training.description}
@@ -938,11 +938,12 @@ const styles = StyleSheet.create({
   },
   trainingDetails: {
     flexDirection: 'row',
-    gap: 16,
+    alignItems: 'center',
     marginBottom: 8,
   },
   trainingTime: {
     fontSize: 14,
+    marginRight: 16,
   },
   trainingNotif: {
     fontSize: 14,

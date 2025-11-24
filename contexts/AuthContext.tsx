@@ -194,8 +194,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * Clears session and profile data
    */
   const signOut = async () => {
-    await supabase.auth.signOut();
+    console.log('[AuthContext] Signing out...');
+    
+    // Clear profile state first
     setProfile(null);
+    
+    // Sign out from Supabase
+    await supabase.auth.signOut();
+    
+    console.log('[AuthContext] Sign out complete');
   };
 
   /**
