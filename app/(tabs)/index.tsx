@@ -27,6 +27,7 @@ import { useHomeData } from '@/hooks/useHomeData';
 import { getExercises } from '@/lib/db/queries/exercises';
 import type { Exercise } from '@/lib/supabase';
 import { convertWeight } from '@/lib/weightUtils';
+import { getCachedProfilePicture } from '@/lib/cache/imageCache';
 
 // Helper function to validate URL
 const isValidHttpUrl = (str: string) => {
@@ -47,6 +48,7 @@ export default function Home() {
   const { isTablet } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
   const [showInitialLoading, setShowInitialLoading] = useState(true);
   const [selectedGoal, setSelectedGoal] = useState<any>(null);
   const [selectedWorkout, setSelectedWorkout] = useState<any>(null);
@@ -60,10 +62,23 @@ export default function Home() {
   useEffect(() => {
     const checkAvatar = async () => {
       setAvatarError(false);
+      setLocalAvatarUri(null);
       
       if (profile?.avatar_url) {
         if (__DEV__) {
           console.log('[Home] Profile avatar URL changed to:', profile.avatar_url);
+        }
+
+        // Try to use cached avatar for offline launch; fall back to remote URL
+        try {
+          const cached = await getCachedProfilePicture(profile.id, profile.avatar_url);
+          if (cached) {
+            setLocalAvatarUri(cached);
+          }
+        } catch (err) {
+          if (__DEV__) {
+            console.warn('[Home] Failed to load cached avatar', err);
+          }
         }
         
         const baseUrl = profile.avatar_url.split('?')[0];
@@ -538,18 +553,20 @@ export default function Home() {
               onPress={() => router.push('/(tabs)/profile')}
               activeOpacity={0.7}
             >
-              {profile?.avatar_url && !avatarError && isValidHttpUrl(profile.avatar_url) ? (
+              {(localAvatarUri || profile?.avatar_url) && !avatarError && (
+                (localAvatarUri?.startsWith('file:')) || (profile?.avatar_url && isValidHttpUrl(profile.avatar_url))
+              ) ? (
                 <Image
                   source={{ 
-                    uri: profile.avatar_url,
+                    uri: localAvatarUri || profile!.avatar_url!,
                     cache: 'reload' // Force reload to get latest image
                   }}
                   style={styles.avatarImage}
-                  key={`home-avatar-${profile.avatar_url}-${profile.id}`}
+                  key={`home-avatar-${localAvatarUri || profile?.avatar_url}-${profile?.id}`}
                   onError={(e) => {
                     if (__DEV__) {
                       console.warn('[Home] Avatar load error:', e.nativeEvent.error);
-                      console.warn('[Home] Failed avatar URL:', profile.avatar_url);
+                      console.warn('[Home] Failed avatar URL:', localAvatarUri || profile?.avatar_url);
                     }
                     // Delay setting error to avoid race conditions during upload
                     setTimeout(() => setAvatarError(true), 500);

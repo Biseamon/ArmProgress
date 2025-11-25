@@ -3,13 +3,12 @@ import { Home, Dumbbell, TrendingUp, User, Calendar } from 'lucide-react-native'
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useResponsive } from '@/lib/useResponsive';
-import { View, ActivityIndicator, StyleSheet, StatusBar, useColorScheme } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, StatusBar } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const { session, loading } = useAuth();
-  const { colors } = useTheme();
-  const colorScheme = useColorScheme();
+  const { colors, isDark } = useTheme();
   const { isTablet } = useResponsive();
   const insets = useSafeAreaInsets();
 
@@ -41,7 +40,7 @@ export default function TabLayout() {
   return (
     <>
       <StatusBar
-        barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
+        barStyle={isDark ? 'light-content' : 'dark-content'}
         backgroundColor="transparent"
         translucent
       />

@@ -29,6 +29,7 @@ import { convertAllDataToNewUnit } from '@/lib/db/queries/weightConversion';
 import { triggerSync } from '@/lib/sync/syncEngine';
 import { handleError } from '@/lib/errorHandling';
 import { useQueryClient } from '@tanstack/react-query';
+import { getCachedProfilePicture } from '@/lib/cache/imageCache';
 
 // Helper function to validate URL
 const isValidHttpUrl = (str: string) => {
@@ -61,6 +62,15 @@ export default function Profile() {
     const checkAndFixAvatar = async () => {
       if (profile?.avatar_url) {
         console.log('Profile avatar URL changed:', profile.avatar_url);
+        
+        // Try to use locally cached avatar when available (works offline)
+        const cached = await getCachedProfilePicture(profile.id, profile.avatar_url);
+        if (cached) {
+          setAvatarUrl(cached);
+          setImageKey(Date.now());
+          setImageError(false);
+          return;
+        }
         
         // Extract the base URL without query params
         const baseUrl = profile.avatar_url.split('?')[0];
@@ -517,7 +527,9 @@ export default function Profile() {
             onPress={pickImage}
             disabled={uploading}
           >
-            {avatarUrl && !imageError && isValidHttpUrl(avatarUrl) ? (
+            {avatarUrl && !imageError && (
+              avatarUrl.startsWith('file:') || isValidHttpUrl(avatarUrl)
+            ) ? (
               <Image
                 source={{
                   uri: avatarUrl.includes('?t=') ? avatarUrl : `${avatarUrl}?t=${imageKey}`,
