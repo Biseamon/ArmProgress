@@ -10,6 +10,8 @@ import { supabase, Profile } from '@/lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
+import NetInfo from '@react-native-community/netinfo';
+import { getProfile } from '@/lib/db/queries/profile';
 
 /**
  * Type definition for the authentication context
@@ -53,40 +55,101 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Fetch user profile from database
    * Called after successful authentication to load user data
+   * If offline, loads from SQLite cache instead
    */
-  const fetchProfile = async (userId: string) => {
-    console.log('[AuthContext] Fetching profile from Supabase...');
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle(); // Returns null if no profile found (won't throw error)
+  const fetchProfile = async (userId: string, forceOffline = false) => {
+    // Check network connectivity
+    const netInfo = await NetInfo.fetch();
+    const isOnline = netInfo.isConnected && !forceOffline;
 
-    if (data) {
-      console.log('[AuthContext] Profile fetched, weight_unit:', data.weight_unit);
-      console.log('[AuthContext] Avatar URL:', data.avatar_url);
-      setProfile(data);
+    if (isOnline) {
+      // Online: fetch from Supabase
+      console.log('[AuthContext] Fetching profile from Supabase...');
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle(); // Returns null if no profile found (won't throw error)
+
+      if (data) {
+        console.log('[AuthContext] Profile fetched, weight_unit:', data.weight_unit);
+        console.log('[AuthContext] Avatar URL:', data.avatar_url);
+        setProfile(data);
+      } else {
+        console.log('[AuthContext] No profile data returned');
+      }
     } else {
-      console.log('[AuthContext] No profile data returned');
+      // Offline: load from SQLite cache
+      console.log('[AuthContext] Offline mode - loading profile from SQLite cache...');
+      try {
+        const cachedProfile = await getProfile(userId);
+        if (cachedProfile) {
+          console.log('[AuthContext] Profile loaded from cache, weight_unit:', cachedProfile.weight_unit);
+          setProfile(cachedProfile);
+        } else {
+          console.log('[AuthContext] No cached profile found in SQLite');
+        }
+      } catch (error) {
+        console.error('[AuthContext] Failed to load cached profile:', error);
+      }
     }
   };
 
   /**
    * Effect: Initialize authentication on app startup
    *
-   * 1. Retrieves existing session from storage (if user was previously logged in)
-   * 2. Sets up a listener for auth state changes (login, logout, token refresh)
-   * 3. Fetches user profile when session is available
+   * 1. Checks network connectivity
+   * 2. If offline, loads cached session and profile from local storage/SQLite
+   * 3. If online, retrieves session from Supabase (validates tokens)
+   * 4. Sets up a listener for auth state changes (login, logout, token refresh)
+   * 5. Fetches user profile when session is available
    */
   useEffect(() => {
-    // Get existing session from local storage on app start
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) {
-        fetchProfile(session.user.id);
+    const initAuth = async () => {
+      try {
+        // Check network connectivity
+        const netInfo = await NetInfo.fetch();
+        const isOnline = netInfo.isConnected;
+
+        if (!isOnline) {
+          // Offline mode: Try to load cached session from AsyncStorage
+          console.log('[AuthContext] Offline mode detected - loading cached session...');
+
+          try {
+            // Supabase stores session in AsyncStorage, we can access it directly
+            const { data: { session }, error } = await supabase.auth.getSession();
+
+            if (session?.user && !error) {
+              console.log('[AuthContext] Cached session found for user:', session.user.email);
+              setSession(session);
+              // Load profile from SQLite cache (forceOffline = true)
+              await fetchProfile(session.user.id, true);
+            } else {
+              console.log('[AuthContext] No cached session available offline');
+            }
+          } catch (error) {
+            console.log('[AuthContext] Failed to load cached session offline:', error);
+          }
+
+          setLoading(false);
+        } else {
+          // Online mode: Normal flow - validate session with Supabase
+          console.log('[AuthContext] Online mode - validating session with Supabase...');
+          const { data: { session } } = await supabase.auth.getSession();
+          setSession(session);
+          if (session?.user) {
+            await fetchProfile(session.user.id);
+          }
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('[AuthContext] Auth initialization error:', error);
+        setLoading(false);
       }
-      setLoading(false);
-    });
+    };
+
+    // Initialize auth
+    initAuth();
 
     // Listen for authentication state changes
     // This fires when user logs in, logs out, or token is refreshed
