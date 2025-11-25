@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { X, Save } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { getCircumferenceUnit } from '@/lib/weightUtils';
@@ -73,7 +73,11 @@ export function AddMeasurementModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+      >
         <View style={styles.header}>
           <Text style={[styles.title, { color: colors.text }]}>
             {isEditing ? 'Edit Measurement' : 'Add Measurement'}
@@ -83,7 +87,12 @@ export function AddMeasurementModal({
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.content}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             All fields are optional. {weightUnit === 'lbs' ? 'Circumferences will be stored in cm (enter in inches, we\'ll convert).' : 'Enter measurements to track your progress.'}
           </Text>
@@ -159,7 +168,7 @@ export function AddMeasurementModal({
             </Text>
           </TouchableOpacity>
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -212,6 +221,7 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+    paddingBottom: 12,
   },
   saveButton: {
     flexDirection: 'row',
