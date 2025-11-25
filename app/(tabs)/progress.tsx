@@ -22,7 +22,7 @@ import { PaywallModal } from '@/components/PaywallModal';
 import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
 import { ProgressReport } from '@/components/ProgressReport';
 import { Confetti } from '@/components/Confetti';
-import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar, Pencil, Trash2, Activity, Info, Minus } from 'lucide-react-native';
+import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar, Pencil, Trash2, Activity, Info, Minus, RotateCcw } from 'lucide-react-native';
 import { MeasurementsModal } from '@/components/MeasurementsModal';
 import { AddMeasurementModal } from '@/components/AddMeasurementModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -376,6 +376,21 @@ export default function Progress() {
     // Remove the toggle functionality - goals should only complete via increment
     // Just do nothing or show info
     return;
+  };
+
+  const handleUndoGoalCompletion = async (goal: Goal) => {
+    try {
+      await updateGoalMutation.mutateAsync({
+        id: goal.id,
+        updates: {
+          is_completed: false,
+        },
+      });
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
+    }
   };
 
   const handleSaveTest = async () => {
@@ -1586,6 +1601,17 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       </Text>
                     </View>
                     <View style={styles.actionButtons}>
+                      {goal.is_completed ? (
+                        <TouchableOpacity
+                          style={[styles.editButton, { marginRight: 8 }]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleUndoGoalCompletion(goal);
+                          }}
+                        >
+                          <RotateCcw size={16} color="#10B981" />
+                        </TouchableOpacity>
+                      ) : null}
                       <TouchableOpacity
                         style={[styles.editButton, { marginRight: 8 }]}
                         onPress={(e) => {
