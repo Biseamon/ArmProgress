@@ -10,7 +10,6 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
-  Pressable,
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -522,36 +521,26 @@ export default function Training() {
     return (
       <Modal
         visible={showViewModal}
-        transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowViewModal(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowViewModal(false)}
-        >
-          <Pressable 
-            style={[styles.modalContentView, { backgroundColor: colors.surface }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <ScrollView 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 100 }}
-            >
-              <View style={styles.modalHeaderView}>
-                <View style={styles.modalTitleRow}>
-                  <TrendingUp size={24} color={colors.primary} />
-                  <Text style={[styles.modalTitleView, { color: colors.text }]}>Workout Details</Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => setShowViewModal(false)}
-                  style={styles.closeButtonView}
-                >
-                  <X size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TrendingUp size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowViewModal(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
-              <View style={styles.modalBodyView}>
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
                 <View style={styles.detailRow}>
                   <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
                   <Text style={[styles.detailValue, { color: colors.primary }]}>
@@ -666,8 +655,7 @@ export default function Training() {
                 </View>
               </View>
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
       </Modal>
     );
   };
@@ -1681,6 +1669,7 @@ const styles = StyleSheet.create({
   modalContentView: {
     width: '100%',
     maxWidth: 500,
+    height: '80%',
     borderRadius: 20,
     padding: 24,
     shadowColor: '#000',
@@ -1693,7 +1682,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modalScrollView: {
+    flex: 1,
   },
   modalTitleRow: {
     flexDirection: 'row',
@@ -1709,6 +1703,7 @@ const styles = StyleSheet.create({
   },
   modalBodyView: {
     gap: 16,
+    paddingTop: 16,
   },
   detailRow: {
     flexDirection: 'row',

@@ -12,7 +12,6 @@ import {
   ActivityIndicator,
   Animated,
   Modal,
-  Pressable,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -199,32 +198,26 @@ export default function Home() {
     return (
       <Modal
         visible={goalModalVisible}
-        transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setGoalModalVisible(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setGoalModalVisible(false)}
-        >
-          <Pressable 
-            style={[styles.modalContent, { backgroundColor: colors.surface }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.modalHeader}>
-              <View style={styles.modalTitleRow}>
-                <Target size={24} color={colors.primary} />
-                <Text style={[styles.modalTitle, { color: colors.text }]}>Goal Details</Text>
-              </View>
-              <TouchableOpacity 
-                onPress={() => setGoalModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <X size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Target size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Goal Details</Text>
             </View>
+            <TouchableOpacity onPress={() => setGoalModalVisible(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
-            <View style={styles.modalBody}>
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
               <View style={styles.detailRow}>
                 <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Goal Type</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGoal.goal_type}</Text>
@@ -276,8 +269,8 @@ export default function Home() {
                 <Text style={styles.modalButtonText}>View All Goals</Text>
               </TouchableOpacity>
             </View>
-          </Pressable>
-        </Pressable>
+          </ScrollView>
+        </View>
       </Modal>
     );
   };
@@ -334,36 +327,26 @@ export default function Home() {
     return (
       <Modal
         visible={workoutModalVisible}
-        transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setWorkoutModalVisible(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setWorkoutModalVisible(false)}
-        >
-          <Pressable 
-            style={[styles.modalContent, { backgroundColor: colors.surface }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <ScrollView 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 100 }}
-            >
-              <View style={styles.modalHeader}>
-                <View style={styles.modalTitleRow}>
-                  <TrendingUp size={24} color={colors.primary} />
-                  <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Details</Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => setWorkoutModalVisible(false)}
-                  style={styles.closeButton}
-                >
-                  <X size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TrendingUp size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => setWorkoutModalVisible(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
-              <View style={styles.modalBody}>
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
                 <View style={styles.detailRow}>
                   <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
                   <Text style={[styles.detailValue, { color: colors.primary }]}>
@@ -469,8 +452,7 @@ export default function Home() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
       </Modal>
     );
   };
@@ -1352,22 +1334,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#1A1A1A',
+  },
   modalContent: {
-    width: '100%',
-    maxWidth: 500,
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    flex: 1,
+    padding: 20,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    padding: 20,
+    borderBottomWidth: 1,
+  },
+  modalScrollView: {
+    flex: 1,
   },
   modalTitleRow: {
     flexDirection: 'row',
@@ -1383,6 +1366,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     gap: 16,
+    paddingTop: 16,
   },
   detailRow: {
     flexDirection: 'row',

@@ -134,6 +134,7 @@ export default function CalendarScreen() {
   const [addIntensity, setAddIntensity] = useState('5');
   const [addWorkoutNotes, setAddWorkoutNotes] = useState('');
   const [addExercises, setAddExercises] = useState<Exercise[]>([]);
+  const [addWorkoutCycleId, setAddWorkoutCycleId] = useState<string | null>(null);
 
   // Schedule training modal state (for future dates)
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -606,6 +607,7 @@ export default function CalendarScreen() {
     setAddIntensity('5');
     setAddWorkoutNotes('');
     setAddExercises([]);
+    setAddWorkoutCycleId(null);
   };
 
   const handleAddWorkout = async () => {
@@ -660,6 +662,7 @@ export default function CalendarScreen() {
         duration_minutes: parseInt(addDuration) || 0,
         intensity: parseInt(addIntensity) || 5,
         notes: addWorkoutNotes,
+        cycle_id: addWorkoutCycleId,
         created_at: dateStr,
       });
 
@@ -716,6 +719,7 @@ export default function CalendarScreen() {
         scheduled_time: scheduleTime,
         notification_enabled: false,
         notification_minutes_before: 30,
+        notification_id: null,
         completed: false,
       });
 
@@ -922,6 +926,13 @@ export default function CalendarScreen() {
                           if (isFuture) {
                             setShowScheduleModal(true);
                           } else {
+                            // Auto-select cycle if there's exactly one active on this date
+                            const cycleInfo = isDateInCycle(selectedDate);
+                            if (cycleInfo.allCycles && cycleInfo.allCycles.length === 1) {
+                              setAddWorkoutCycleId(cycleInfo.allCycles[0].id);
+                            } else {
+                              setAddWorkoutCycleId(null);
+                            }
                             setShowAddWorkoutModal(true);
                           }
                         }}
@@ -1337,6 +1348,53 @@ export default function CalendarScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {selectedDate && isDateInCycle(selectedDate).isInCycle && (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Training Cycle (Optional)</Text>
+                <View style={styles.typeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border },
+                      addWorkoutCycleId === null && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                    ]}
+                    onPress={() => setAddWorkoutCycleId(null)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        { color: colors.textSecondary },
+                        addWorkoutCycleId === null && [styles.typeButtonTextActive, { color: '#FFF' }],
+                      ]}
+                    >
+                      None
+                    </Text>
+                  </TouchableOpacity>
+                  {isDateInCycle(selectedDate).allCycles?.map((cycle) => (
+                    <TouchableOpacity
+                      key={cycle.id}
+                      style={[
+                        styles.typeButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        addWorkoutCycleId === cycle.id && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                      ]}
+                      onPress={() => setAddWorkoutCycleId(cycle.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeButtonText,
+                          { color: colors.textSecondary },
+                          addWorkoutCycleId === cycle.id && [styles.typeButtonTextActive, { color: '#FFF' }],
+                        ]}
+                      >
+                        {cycle.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
             <Text style={[styles.label, { color: colors.text }]}>Duration (minutes)</Text>
             <TextInput

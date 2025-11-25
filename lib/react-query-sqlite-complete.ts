@@ -204,9 +204,9 @@ export const useWorkoutStats = () => {
 export const useCreateWorkout = () => {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
-  
+
   return useMutation({
-    mutationFn: async (workout: Omit<Workout, 'id' | 'created_at' | 'updated_at'>) => {
+    mutationFn: async (workout: Omit<Workout, 'id' | 'updated_at' | 'created_at'> & { created_at?: string }) => {
       const id = await createWorkout(workout);
       return id;
     },

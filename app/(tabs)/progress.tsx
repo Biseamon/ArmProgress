@@ -10,7 +10,6 @@ import {
   Dimensions,
   Platform,
   Alert,
-  Pressable,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1193,36 +1192,26 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
     return (
       <Modal
         visible={showGoalViewModal}
-        transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowGoalViewModal(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowGoalViewModal(false)}
-        >
-          <Pressable 
-            style={[styles.viewModalContent, { backgroundColor: colors.surface }]}
-            onPress={(e: any) => e.stopPropagation()}
-          >
-            <ScrollView 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 100 }}
-            >
-              <View style={styles.viewModalHeader}>
-                <View style={styles.viewModalTitleRow}>
-                  <Target size={24} color={colors.primary} style={{ marginRight: 12 }} />
-                  <Text style={[styles.viewModalTitle, { color: colors.text }]}>Goal Details</Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => setShowGoalViewModal(false)}
-                  style={styles.viewModalCloseButton}
-                >
-                  <X size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Target size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Goal Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowGoalViewModal(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
-              <View style={styles.viewModalBody}>
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
                 <View style={styles.detailRow}>
                   <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Description</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>
@@ -1302,8 +1291,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                 </View>
               </View>
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
       </Modal>
     );
   };
@@ -1320,36 +1308,26 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
     return (
       <Modal
         visible={showPRViewModal}
-        transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowPRViewModal(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowPRViewModal(false)}
-        >
-          <Pressable 
-            style={[styles.viewModalContent, { backgroundColor: colors.surface }]}
-            onPress={(e: any) => e.stopPropagation()}
-          >
-            <ScrollView 
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 100 }}
-            >
-              <View style={styles.viewModalHeader}>
-                <View style={styles.viewModalTitleRow}>
-                  <TrendingUp size={24} color={colors.primary} style={{ marginRight: 12 }} />
-                  <Text style={[styles.viewModalTitle, { color: colors.text }]}>PR Details</Text>
-                </View>
-                <TouchableOpacity 
-                  onPress={() => setShowPRViewModal(false)}
-                  style={styles.viewModalCloseButton}
-                >
-                  <X size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TrendingUp size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>PR Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowPRViewModal(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
-              <View style={styles.viewModalBody}>
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
                 <View style={styles.detailRow}>
                   <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
                   <Text style={[styles.detailValue, { color: colors.primary }]}>
@@ -1446,8 +1424,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                 </View>
               </View>
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
       </Modal>
     );
   };
@@ -2870,6 +2847,7 @@ const styles = StyleSheet.create({
   viewModalContent: {
     width: '100%',
     maxWidth: 500,
+    height: '80%',
     borderRadius: 20,
     padding: 24,
     shadowColor: '#000',
@@ -2882,7 +2860,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  viewModalScrollView: {
+    flex: 1,
   },
   viewModalTitleRow: {
     flexDirection: 'row',
@@ -2896,7 +2879,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   viewModalBody: {
-    // gap removed - using marginBottom on child elements instead
+    paddingTop: 16,
   },
   detailRow: {
     flexDirection: 'row',
