@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { X, TrendingUp, TrendingDown, Minus, Award } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
+import { convertWeight } from '@/lib/weightUtils';
 
 type ProgressReportProps = {
   visible: boolean;
@@ -27,9 +28,20 @@ export function ProgressReport({
     const sorted = [...strengthTests].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
-    const oldest = Number(sorted[0].result_value) || 0;
-    const newest = Number(sorted[sorted.length - 1].result_value) || 0;
-    const change = ((newest - oldest) / oldest) * 100;
+    
+    // Convert values to user's preferred unit before calculating trend
+    const oldestValue = convertWeight(
+      Number(sorted[0].result_value) || 0,
+      sorted[0].result_unit || 'lbs',
+      weightUnit as 'kg' | 'lbs'
+    );
+    const newestValue = convertWeight(
+      Number(sorted[sorted.length - 1].result_value) || 0,
+      sorted[sorted.length - 1].result_unit || 'lbs',
+      weightUnit as 'kg' | 'lbs'
+    );
+    
+    const change = ((newestValue - oldestValue) / oldestValue) * 100;
 
     if (change > 5) return { trend: 'up', change };
     if (change < -5) return { trend: 'down', change };

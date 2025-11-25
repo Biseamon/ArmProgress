@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,10 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase, Goal, StrengthTest, Workout, Cycle } from '@/lib/supabase';
+import { Goal, StrengthTest, Workout, Cycle } from '@/lib/supabase';
 import { invalidateHomeData } from '@/hooks/useHomeData';
 import { AdBanner } from '@/components/AdBanner';
 import { AdMediumRectangle } from '@/components/AdMediumRectangle';
@@ -22,7 +22,7 @@ import { PaywallModal } from '@/components/PaywallModal';
 import { EnhancedProgressGraphs } from '@/components/EnhancedProgressGraphs';
 import { ProgressReport } from '@/components/ProgressReport';
 import { Confetti } from '@/components/Confetti';
-import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar, Pencil, Trash2, Activity, Info, Minus } from 'lucide-react-native';
+import { Plus, Target, X, Save, Trophy, TrendingUp, Calendar, Pencil, Trash2, Activity, Info, Minus, RotateCcw } from 'lucide-react-native';
 import { MeasurementsModal } from '@/components/MeasurementsModal';
 import { AddMeasurementModal } from '@/components/AddMeasurementModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -37,23 +37,84 @@ import { captureRef } from 'react-native-view-shot';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/lib/useResponsive';
+import {
+  useGoals,
+  useStrengthTests,
+  useWorkouts,
+  useCycles,
+  useMeasurements,
+  useCreateGoal,
+  useUpdateGoal,
+  useDeleteGoal,
+  useIncrementGoal,
+  useDecrementGoal,
+  useCreateStrengthTest,
+  useUpdateStrengthTest,
+  useDeleteStrengthTest,
+  useCreateMeasurement,
+  useUpdateMeasurement,
+  useDeleteMeasurement,
+} from '@/lib/react-query-sqlite-complete';
+import { handleError } from '@/lib/errorHandling';
 
 const { width } = Dimensions.get('window');
 
 export default function Progress() {
   const { profile, isPremium } = useAuth();
-  const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
+  const { colors, theme } = useTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  
+  // Track weight unit changes to force re-render
+  const [displayWeightUnit, setDisplayWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
+  
+  // Debug: Log whenever profile changes
+  useEffect(() => {
+    console.log('[Progress] Profile updated:', { weight_unit: profile?.weight_unit, displayWeightUnit });
+  }, [profile]);
+  
+  // Update display weight unit when profile changes
+  useEffect(() => {
+    console.log('[Progress] Weight unit effect triggered:', { 
+      profileUnit: profile?.weight_unit, 
+      currentDisplay: displayWeightUnit,
+      willUpdate: profile?.weight_unit && profile.weight_unit !== displayWeightUnit
+    });
+    
+    if (profile?.weight_unit && profile.weight_unit !== displayWeightUnit) {
+      console.log('[Progress] ✅ Updating display weight unit:', profile.weight_unit);
+      setDisplayWeightUnit(profile.weight_unit);
+    }
+  }, [profile?.weight_unit, displayWeightUnit]);
+  
+  // Use SQLite hooks for offline-first data
+  const { data: goals = [], isLoading: goalsLoading } = useGoals();
+  const { data: strengthTests = [], isLoading: testsLoading } = useStrengthTests();
+  const { data: workouts = [], isLoading: workoutsLoading } = useWorkouts();
+  const { data: cycles = [] } = useCycles();
+  const { data: measurements = [] } = useMeasurements();
+  
+  // Mutations
+  const createGoalMutation = useCreateGoal();
+  const updateGoalMutation = useUpdateGoal();
+  const deleteGoalMutation = useDeleteGoal();
+  const incrementGoalMutation = useIncrementGoal();
+  const decrementGoalMutation = useDecrementGoal();
+  const createTestMutation = useCreateStrengthTest();
+  const updateTestMutation = useUpdateStrengthTest();
+  const deleteTestMutation = useDeleteStrengthTest();
+  const createMeasurementMutation = useCreateMeasurement();
+  const updateMeasurementMutation = useUpdateMeasurement();
+  const deleteMeasurementMutation = useDeleteMeasurement();
+  
+  const loading = goalsLoading || testsLoading || workoutsLoading;
+  
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalType, setGoalType] = useState('');
@@ -70,7 +131,6 @@ export default function Progress() {
   const [isCustomTest, setIsCustomTest] = useState(false);
 
   const [showMeasurements, setShowMeasurements] = useState(false);
-  const [measurements, setMeasurements] = useState<any[]>([]);
   const [showAddMeasurement, setShowAddMeasurement] = useState(false);
   const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
   const [weight, setWeight] = useState('');
@@ -79,66 +139,19 @@ export default function Progress() {
   const [wristCircumference, setWristCircumference] = useState('');
   const [measurementNotes, setMeasurementNotes] = useState('');
 
-  const [cycles, setCycles] = useState<Cycle[]>([]);
   const [showTestTooltip, setShowTestTooltip] = useState(false);
   const [showGoalsTooltip, setShowGoalsTooltip] = useState(false);
 
   const [showReportModal, setShowReportModal] = useState(false);
   const [generatingReport, setGeneratingReport] = useState(false);
+  const [viewingGoal, setViewingGoal] = useState<Goal | null>(null);
+  const [showGoalViewModal, setShowGoalViewModal] = useState(false);
+  const [viewingPR, setViewingPR] = useState<StrengthTest | null>(null);
+  const [showPRViewModal, setShowPRViewModal] = useState(false);
 
   const reportRef = useRef<View>(null);
 
-  // Only refetch when screen is focused and profile.id changes
-  // Removed profile?.weight_unit dependency as it causes unnecessary refetches
-  useFocusEffect(
-    useCallback(() => {
-      if (profile?.id) {
-        fetchData();
-      }
-    }, [profile?.id])
-  );
-
-  const fetchData = async () => {
-    if (!profile) return;
-
-    const [goalsResponse, testsResponse, workoutsResponse, measurementsResponse, cyclesResponse] = await Promise.all([
-      supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('strength_tests')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(10),
-      supabase
-        .from('workouts')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('body_measurements')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('measured_at', { ascending: false })
-        .limit(10),
-      supabase
-        .from('cycles')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('start_date', { ascending: false }),
-    ]);
-
-    if (goalsResponse.data) setGoals(goalsResponse.data);
-    if (testsResponse.data) setStrengthTests(testsResponse.data);
-    if (workoutsResponse.data) setWorkouts(workoutsResponse.data);
-    if (measurementsResponse.data) setMeasurements(measurementsResponse.data);
-    if (cyclesResponse.data) setCycles(cyclesResponse.data);
-
-    setLoading(false);
-  };
+  // Data is now loaded automatically via React Query hooks - no need for fetchData
 
   const handleSaveMeasurement = async () => {
     if (!profile) {
@@ -166,7 +179,11 @@ export default function Progress() {
 
     const userUnit = profile.weight_unit || 'lbs';
     
-    // Convert circumferences back to cm for storage
+    // IMPORTANT: Store weight in the USER'S UNIT (not converted)
+    // The weight value entered is already in the user's preferred unit
+    const weightValue = weight ? parseFloat(weight) : null;
+    
+    // Convert circumferences back to cm for storage (always stored in cm)
     const armCm = armCircumference 
       ? (userUnit === 'lbs' ? parseFloat(armCircumference) * 2.54 : parseFloat(armCircumference))
       : null;
@@ -181,8 +198,8 @@ export default function Progress() {
   
     const measurementData = {
       user_id: profile.id,
-      weight: weight ? parseFloat(weight) : null,
-      weight_unit: userUnit,
+      weight: weightValue,
+      weight_unit: userUnit, // Store the unit so we know what the weight value represents
       arm_circumference: armCm,
       forearm_circumference: forearmCm,
       wrist_circumference: wristCm,
@@ -190,39 +207,33 @@ export default function Progress() {
       measured_at: editingMeasurement?.measured_at || new Date().toISOString(),
     };
   
-    console.log('Saving measurement:', measurementData);
+    console.log('Saving measurement with unit:', { ...measurementData, unit: userUnit });
   
-    let error;
-    if (editingMeasurement) {
-      // Update existing measurement
-      const { error: updateError } = await supabase
-        .from('body_measurements')
-        .update(measurementData)
-        .eq('id', editingMeasurement.id);
-      error = updateError;
-    } else {
-      // Insert new measurement
-      const { error: insertError } = await supabase
-        .from('body_measurements')
-        .insert(measurementData);
-      error = insertError;
+    try {
+      if (editingMeasurement) {
+        // Update existing measurement
+        await updateMeasurementMutation.mutateAsync({
+          id: editingMeasurement.id,
+          updates: measurementData,
+        });
+      } else {
+        // Insert new measurement
+        await createMeasurementMutation.mutateAsync(measurementData);
+      }
+    
+      setWeight('');
+      setArmCircumference('');
+      setForearmCircumference('');
+      setWristCircumference('');
+      setMeasurementNotes('');
+      setEditingMeasurement(null);
+      setShowAddMeasurement(false);
+      Alert.alert('Success', `Measurement ${editingMeasurement ? 'updated' : 'saved'} successfully!`);
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
-  
-    if (error) {
-      console.error('Error saving measurement:', error);
-      Alert.alert('Error', `Failed to save measurement: ${error.message}`);
-      return;
-    }
-  
-    setWeight('');
-    setArmCircumference('');
-    setForearmCircumference('');
-    setWristCircumference('');
-    setMeasurementNotes('');
-    setEditingMeasurement(null);
-    setShowAddMeasurement(false);
-    await fetchData();
-    Alert.alert('Success', `Measurement ${editingMeasurement ? 'updated' : 'saved'} successfully!`);
   };
 
   const handleAddGoal = () => {
@@ -235,48 +246,67 @@ export default function Progress() {
     };
   
   const handleSaveGoal = async () => {
-      if (!goalType || !targetValue) {
+      if (!goalType || !targetValue || !profile?.id) {
         Alert.alert('Error', 'Please fill in all fields.');
         return;
+      }
+
+      // Check goal limit for non-premium users when creating a new goal
+      if (!editingGoal && !isPremium) {
+        const activeGoalsCount = goals.filter(g => !g.is_completed).length;
+        if (activeGoalsCount >= 3) {
+          Alert.alert(
+            'Goal Limit Reached',
+            'Free users can create up to 3 active goals. Please complete or delete an existing goal, or upgrade to Premium for unlimited goals.',
+            [
+              { text: 'OK', style: 'cancel' },
+              { text: 'Upgrade to Premium', onPress: () => {
+                setShowGoalModal(false);
+                setShowPaywall(true);
+              }}
+            ]
+          );
+          return;
+        }
       }
 
       const goalData = {
         goal_type: goalType,
         target_value: parseFloat(targetValue),
-        deadline: deadline.toISOString(),
+        deadline: deadline.toISOString().split('T')[0],
         notes: goalNotes || null,
-        user_id: profile?.id,
+        user_id: profile.id,
       };
 
-      if (editingGoal) {
-        // When editing, recalculate is_completed based on new target
-        // If current_value hasn't reached the new target, goal should be active again
-        const isCompleted = editingGoal.current_value >= parseFloat(targetValue);
-        
-        await supabase
-          .from('goals')
-          .update({
+      try {
+        if (editingGoal) {
+          // When editing, recalculate is_completed based on new target
+          // If current_value hasn't reached the new target, goal should be active again
+          const isCompleted = editingGoal.current_value >= parseFloat(targetValue);
+          
+          await updateGoalMutation.mutateAsync({
+            id: editingGoal.id,
+            updates: {
+              ...goalData,
+              current_value: editingGoal.current_value,
+              is_completed: isCompleted,
+            },
+          });
+        } else {
+          // When creating new, set initial values
+          await createGoalMutation.mutateAsync({
             ...goalData,
-            current_value: editingGoal.current_value,
-            is_completed: isCompleted,
-          })
-          .eq('id', editingGoal.id);
-      } else {
-        // When creating new, set initial values
-        await supabase.from('goals').insert({
-          ...goalData,
-          current_value: 0,
-          is_completed: false,
-        });
-      }
+            current_value: 0,
+            is_completed: false,
+          });
+        }
 
-      // Invalidate home screen cache
-      if (profile?.id) {
-        invalidateHomeData(profile.id);
+        setShowGoalModal(false);
+        // Data refreshes automatically via React Query
+      } catch (error) {
+        const errorMessage = handleError(error);
+        Alert.alert('Error', errorMessage);
       }
-
-      setShowGoalModal(false);
-      fetchData();
     };
   
   const handleEditGoal = (goal: Goal) => {
@@ -289,59 +319,46 @@ export default function Progress() {
   };
 
   const handleIncrementGoal = async (goal: Goal) => {
-    const newValue = goal.current_value + 1;
-    const isCompleted = newValue >= goal.target_value;
-
-    await supabase
-      .from('goals')
-      .update({
-        current_value: newValue,
-        is_completed: isCompleted,
-      })
-      .eq('id', goal.id);
-
-    if (isCompleted) {
-      setShowConfetti(true);
-      setTimeout(() => setShowConfetti(false), 5000);
+    try {
+      await incrementGoalMutation.mutateAsync(goal.id);
+      
+      // Check if goal is now completed
+      const newValue = goal.current_value + 1;
+      if (newValue >= goal.target_value) {
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 5000);
+      }
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
-
-    // Invalidate home screen cache so it shows updated goals
-    if (profile?.id) {
-      invalidateHomeData(profile.id);
-    }
-
-    fetchData();
   };
 
   const handleDecrementGoal = async (goal: Goal) => {
-    const newValue = Math.max(goal.current_value - 1, 0);
-    const isCompleted = newValue >= goal.target_value;
-
-    await supabase
-      .from('goals')
-      .update({
-        current_value: newValue,
-        is_completed: isCompleted,
-      })
-      .eq('id', goal.id);
-
-    // Invalidate home screen cache so it shows updated goals
-    if (profile?.id) {
-      invalidateHomeData(profile.id);
+    try {
+      await decrementGoalMutation.mutateAsync(goal.id);
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
-
-    fetchData();
   };
 
   const handleDeleteGoal = async (goalId: string) => {
+    const performDelete = async () => {
+      try {
+        await deleteGoalMutation.mutateAsync(goalId);
+        // Data refreshes automatically via React Query
+      } catch (error) {
+        const errorMessage = handleError(error);
+        Alert.alert('Error', errorMessage);
+      }
+    };
+
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this goal?')) {
-        await supabase.from('goals').delete().eq('id', goalId);
-        // Invalidate home screen cache
-        if (profile?.id) {
-          invalidateHomeData(profile.id);
-        }
-        fetchData();
+        await performDelete();
       }
     } else {
       Alert.alert('Delete Goal', 'Are you sure you want to delete this goal?', [
@@ -349,14 +366,7 @@ export default function Progress() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            await supabase.from('goals').delete().eq('id', goalId);
-            // Invalidate home screen cache
-            if (profile?.id) {
-              invalidateHomeData(profile.id);
-            }
-            fetchData();
-          },
+          onPress: performDelete,
         },
       ]);
     }
@@ -366,6 +376,21 @@ export default function Progress() {
     // Remove the toggle functionality - goals should only complete via increment
     // Just do nothing or show info
     return;
+  };
+
+  const handleUndoGoalCompletion = async (goal: Goal) => {
+    try {
+      await updateGoalMutation.mutateAsync({
+        id: goal.id,
+        updates: {
+          is_completed: false,
+        },
+      });
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
+    }
   };
 
   const handleSaveTest = async () => {
@@ -395,17 +420,13 @@ export default function Progress() {
       test_type: finalTestType,
       result_value: resultValue,
       result_unit: userUnit,
-      notes: testNotes || null,
+      notes: testNotes || undefined,
     };
   
     try {
       // Always create a new entry (never update)
       // This preserves history for calendar and graphs
-      const { error } = await supabase
-        .from('strength_tests')
-        .insert(testData);
-  
-      if (error) throw error;
+      await createTestMutation.mutateAsync(testData);
   
       setTestType('max_wrist_curl');
       setCustomTestName('');
@@ -414,11 +435,11 @@ export default function Progress() {
       setTestNotes('');
       setEditingTest(null);
       setShowTestModal(false);
-      await fetchData();
       Alert.alert('Success', 'PR saved successfully!');
-    } catch (error: any) {
-      console.error('Error saving test:', error);
-      Alert.alert('Error', `Failed to save PR: ${error.message}`);
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
   };
   
@@ -438,7 +459,7 @@ export default function Progress() {
       setCustomTestName(test.test_type.replace(/_/g, ' '));
     }
     
-    const userUnit = profile?.weight_unit || 'lbs';
+    const userUnit = displayWeightUnit;
     const storedUnit = test.result_unit || 'lbs';
     const displayValue = convertWeight(test.result_value, storedUnit, userUnit);
     
@@ -448,10 +469,19 @@ export default function Progress() {
   };
 
   const handleDeleteTest = async (testId: string) => {
+    const performDelete = async () => {
+      try {
+        await deleteTestMutation.mutateAsync(testId);
+        // Data refreshes automatically via React Query
+      } catch (error) {
+        const errorMessage = handleError(error);
+        Alert.alert('Error', errorMessage);
+      }
+    };
+
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this test?')) {
-        await supabase.from('strength_tests').delete().eq('id', testId);
-        fetchData();
+        await performDelete();
       }
     } else {
       Alert.alert('Delete PR', 'Are you sure you want to delete this test?', [
@@ -459,10 +489,7 @@ export default function Progress() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            await supabase.from('strength_tests').delete().eq('id', testId);
-            fetchData();
-          },
+          onPress: performDelete,
         },
       ]);
     }
@@ -470,7 +497,7 @@ export default function Progress() {
 
   const handleEditMeasurement = (measurement: any) => {
     setEditingMeasurement(measurement);
-    const userUnit = profile?.weight_unit || 'lbs';
+    const userUnit = displayWeightUnit;
     const storedUnit = measurement.weight_unit || 'lbs';
     
     if (measurement.weight) {
@@ -513,10 +540,19 @@ export default function Progress() {
   };
 
   const handleDeleteMeasurement = async (measurementId: string) => {
+    const performDelete = async () => {
+      try {
+        await deleteMeasurementMutation.mutateAsync(measurementId);
+        // Data refreshes automatically via React Query
+      } catch (error) {
+        const errorMessage = handleError(error);
+        Alert.alert('Error', errorMessage);
+      }
+    };
+
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this measurement?')) {
-        await supabase.from('body_measurements').delete().eq('id', measurementId);
-        fetchData();
+        await performDelete();
       }
     } else {
       Alert.alert('Delete Measurement', 'Are you sure you want to delete this measurement?', [
@@ -524,10 +560,7 @@ export default function Progress() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            await supabase.from('body_measurements').delete().eq('id', measurementId);
-            fetchData();
-          },
+          onPress: performDelete,
         },
       ]);
     }
@@ -543,7 +576,8 @@ export default function Progress() {
   ];
 
   const getProgressPercentage = (goal: Goal) => {
-    return Math.min((goal.current_value / goal.target_value) * 100, 100);
+    if (!goal.target_value || goal.target_value === 0) return 0;
+    return Math.min(((goal.current_value || 0) / goal.target_value) * 100, 100);
   };
 
   const getLatestPRsByType = () => {
@@ -714,15 +748,15 @@ export default function Progress() {
     
     const latestArm = recentMeasurements
       .filter(m => m.arm_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
     
     const latestForearm = recentMeasurements
       .filter(m => m.forearm_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
     
     const latestWrist = recentMeasurements
       .filter(m => m.wrist_circumference)
-      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.createdAt).getTime())[0];
+      .sort((a, b) => new Date(b.measured_at || b.created_at).getTime() - new Date(a.measured_at || a.created_at).getTime())[0];
     
     // Get oldest measurements for comparison (from 3 months ago)
     const oldestWeight = recentMeasurements
@@ -763,7 +797,7 @@ export default function Progress() {
       completedGoals,
       activeCycles,
       generatedAt: new Date().toLocaleDateString(),
-      userUnit: profile?.weight_unit || 'lbs',
+      userUnit: displayWeightUnit,
       periodStart: threeMonthsAgo.toLocaleDateString(),
     };
   };
@@ -978,8 +1012,8 @@ export default function Progress() {
                     <div class="stat-label">Arm (${getCircumferenceUnit(reportData.userUnit)})</div>
                     ${(() => {
                       const change = calculateChange(
-                        reportData.latestArm?.arm_circumference,
-                        reportData.oldestArm?.arm_circumference
+                        reportData.latestArm?.arm_circumference ?? null,
+                        reportData.oldestArm?.arm_circumference ?? null
                       );
                       return change !== null 
                         ? `<div class="change ${change >= 0 ? 'change-positive' : 'change-negative'}">${change >= 0 ? '+' : ''}${change.toFixed(1)}% (3mo)</div>` 
@@ -996,8 +1030,8 @@ export default function Progress() {
                     <div class="stat-label">Forearm (${getCircumferenceUnit(reportData.userUnit)})</div>
                     ${(() => {
                       const change = calculateChange(
-                        reportData.latestForearm?.forearm_circumference,
-                        reportData.oldestForearm?.forearm_circumference
+                        reportData.latestForearm?.forearm_circumference ?? null,
+                        reportData.oldestForearm?.forearm_circumference ?? null
                       );
                       return change !== null 
                         ? `<div class="change ${change >= 0 ? 'change-positive' : 'change-negative'}">${change >= 0 ? '+' : ''}${change.toFixed(1)}% (3mo)</div>` 
@@ -1014,8 +1048,8 @@ export default function Progress() {
                     <div class="stat-label">Wrist (${getCircumferenceUnit(reportData.userUnit)})</div>
                     ${(() => {
                       const change = calculateChange(
-                        reportData.latestWrist?.wrist_circumference,
-                        reportData.oldestWrist?.wrist_circumference
+                        reportData.latestWrist?.wrist_circumference ?? null,
+                        reportData.oldestWrist?.wrist_circumference ?? null
                       );
                       return change !== null 
                         ? `<div class="change ${change >= 0 ? 'change-positive' : 'change-negative'}">${change >= 0 ? '+' : ''}${change.toFixed(1)}% (3mo)</div>` 
@@ -1166,11 +1200,257 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
   }
 };
 
+  // Goal Detail Modal Component
+  const GoalDetailModal = () => {
+    if (!viewingGoal) return null;
+
+    return (
+      <Modal
+        visible={showGoalViewModal}
+        animationType="slide"
+        onRequestClose={() => setShowGoalViewModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Target size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Goal Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowGoalViewModal(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Description</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingGoal.goal_type || 'No description'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Progress</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingGoal.current_value || 0} / {viewingGoal.target_value || 0}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Completion</Text>
+                  <Text style={[styles.detailValue, { color: colors.secondary }]}>
+                    {Math.round(getProgressPercentage(viewingGoal))}%
+                  </Text>
+                </View>
+
+                {viewingGoal.deadline ? (
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Deadline</Text>
+                    <Text style={[styles.detailValue, { color: colors.text }]}>
+                      {new Date(viewingGoal.deadline).toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {viewingGoal.notes && viewingGoal.notes.trim() ? (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic', textAlign: 'left' }]}>
+                      {viewingGoal.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={[styles.progressBarContainer, { backgroundColor: colors.background, marginTop: 20 }]}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      { width: `${getProgressPercentage(viewingGoal)}%`, backgroundColor: viewingGoal.is_completed ? '#FFD700' : colors.secondary }
+                    ]}
+                  />
+                </View>
+
+                {viewingGoal.is_completed ? (
+                  <View style={styles.completedBadge}>
+                    <Trophy size={20} color="#FFD700" style={{ marginRight: 8 }} />
+                    <Text style={styles.completedText}>Completed! 🎉</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.viewModalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                    onPress={() => {
+                      setShowGoalViewModal(false);
+                      setTimeout(() => handleEditGoal(viewingGoal), 300);
+                    }}
+                  >
+                    <Pencil size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                    <Text style={[styles.viewModalButtonSecondaryText, { color: colors.primary }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowGoalViewModal(false)}
+                  >
+                    <Text style={styles.viewModalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+      </Modal>
+    );
+  };
+
+  // PR Detail Modal Component
+  const PRDetailModal = () => {
+    if (!viewingPR) return null;
+
+    // Get all entries for this PR type (history)
+    const prHistory = strengthTests
+      .filter(t => t.test_type === viewingPR.test_type)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return (
+      <Modal
+        visible={showPRViewModal}
+        animationType="slide"
+        onRequestClose={() => setShowPRViewModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TrendingUp size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>PR Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowPRViewModal(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>
+                    {(viewingPR.test_type || '').replace(/_/g, ' ').toUpperCase() || 'Unknown'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Current PR</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {formatWeight(
+                      convertWeight(viewingPR.result_value || 0, viewingPR.result_unit || 'lbs', displayWeightUnit),
+                      displayWeightUnit
+                    )}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Latest Date</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {new Date(viewingPR.created_at).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </View>
+
+                {viewingPR.notes && viewingPR.notes.trim() ? (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic', textAlign: 'left' }]}>
+                      {viewingPR.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* History Section */}
+                {prHistory.length > 1 ? (
+                  <View style={styles.prHistorySection}>
+                    <Text style={[styles.prHistorySectionTitle, { color: colors.text }]}>
+                      History ({prHistory.length} entries)
+                    </Text>
+                    {prHistory.map((entry, index) => {
+                      const displayValue = convertWeight(entry.result_value || 0, entry.result_unit || 'lbs', displayWeightUnit);
+                      return (
+                        <View 
+                          key={entry.id || index} 
+                          style={[styles.prHistoryCard, { backgroundColor: colors.background }]}
+                        >
+                          <View style={styles.prHistoryHeader}>
+                            <Text style={[styles.prHistoryIndex, { color: colors.textSecondary }]}>
+                              #{index + 1}
+                            </Text>
+                            <Text style={[styles.prHistoryDate, { color: colors.textSecondary }]}>
+                              {new Date(entry.created_at || new Date()).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </Text>
+                          </View>
+                          <Text style={[styles.prHistoryValue, { color: colors.primary }]}>
+                            {formatWeight(displayValue, displayWeightUnit)}
+                          </Text>
+                          {entry.notes && entry.notes.trim() ? (
+                            <Text style={[styles.prHistoryNotes, { color: colors.textTertiary }]}>
+                              {entry.notes}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                <View style={styles.viewModalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                    onPress={() => {
+                      setShowPRViewModal(false);
+                      setTimeout(() => handleEditTest(viewingPR), 300);
+                    }}
+                  >
+                    <TrendingUp size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                    <Text style={[styles.viewModalButtonSecondaryText, { color: colors.primary }]}>Update</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowPRViewModal(false)}
+                  >
+                    <Text style={styles.viewModalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+      </Modal>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Confetti active={showConfetti} />
       {renderTestTooltipModal()}
       {renderGoalsTooltipModal()}
+      <GoalDetailModal />
+      <PRDetailModal />
 
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={[styles.title, { color: colors.text }]}>Progress</Text>
@@ -1198,17 +1478,17 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             strengthTests={strengthTests}
             measurements={measurements}
             cycles={cycles}
-            weightUnit={profile?.weight_unit || 'lbs'}
+            weightUnit={displayWeightUnit}
             isPremium={isPremium}
             onUpgrade={() => setShowPaywall(true)}
-            key={`graphs-${isPremium ? 'premium' : 'free'}-${strengthTests.length}-${profile?.weight_unit}`}
+            key={`graphs-${isPremium ? 'premium' : 'free'}-${strengthTests.length}-${displayWeightUnit}`}
           />
         </View>
 
         {/* AdMob Medium Rectangle - Automatic test/production ads */}
         <AdMediumRectangle />
 
-        <View style={styles.section}>
+        <View style={styles.section} key={`measurements-${displayWeightUnit}`}>
           <TouchableOpacity
             style={[styles.measurementsCard, { backgroundColor: colors.surface }]}
             onPress={() => setShowMeasurements(true)}
@@ -1226,19 +1506,35 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                 <View style={styles.latestStats}>
                   {measurements[0].weight && (
                     <Text style={[styles.latestStat, { color: colors.text }]}>
-                      {Math.round(convertWeight(
+                      Weight: {Math.round(convertWeight(
                         measurements[0].weight,
                         measurements[0].weight_unit || 'lbs',
-                        profile?.weight_unit || 'lbs'
-                      ))} {profile?.weight_unit || 'lbs'}
+                        displayWeightUnit
+                      ))} {displayWeightUnit}
                     </Text>
                   )}
                   {measurements[0].arm_circumference && (
                     <Text style={[styles.latestStat, { color: colors.text }]}>
-                      Arm: {profile?.weight_unit === 'lbs' 
-                        ? Math.round(convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs'))
-                        : convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                      }{getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                      Arm: {displayWeightUnit === 'lbs' 
+                        ? Math.round(convertCircumference(measurements[0].arm_circumference, displayWeightUnit))
+                        : convertCircumference(measurements[0].arm_circumference, displayWeightUnit).toFixed(1)
+                      }{getCircumferenceUnit(displayWeightUnit)}
+                    </Text>
+                  )}
+                  {measurements[0].forearm_circumference && (
+                    <Text style={[styles.latestStat, { color: colors.text }]}>
+                      Forearm: {displayWeightUnit === 'lbs' 
+                        ? Math.round(convertCircumference(measurements[0].forearm_circumference, displayWeightUnit))
+                        : convertCircumference(measurements[0].forearm_circumference, displayWeightUnit).toFixed(1)
+                      }{getCircumferenceUnit(displayWeightUnit)}
+                    </Text>
+                  )}
+                  {measurements[0].wrist_circumference && (
+                    <Text style={[styles.latestStat, { color: colors.text }]}>
+                      Wrist: {displayWeightUnit === 'lbs' 
+                        ? Math.round(convertCircumference(measurements[0].wrist_circumference, displayWeightUnit))
+                        : convertCircumference(measurements[0].wrist_circumference, displayWeightUnit).toFixed(1)
+                      }{getCircumferenceUnit(displayWeightUnit)}
                     </Text>
                   )}
                 </View>
@@ -1263,9 +1559,9 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </TouchableOpacity>
           </View>
 
-          {!isPremium && (
-            <Text style={styles.limitText}>Free: {goals.length}/3 goals</Text>
-          )}
+          {!isPremium ? (
+            <Text style={styles.limitText}>Free: {goals.filter(g => !g.is_completed).length}/3 active goals</Text>
+          ) : null}
 
           {goals.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
@@ -1275,20 +1571,25 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </View>
           ) : (
             goals.map((goal) => (
-              <View
+              <TouchableOpacity
                 key={goal.id}
                 style={[
                   styles.goalCard,
                   { backgroundColor: colors.surface },
                   goal.is_completed && styles.goalCardCompleted,
                 ]}
+                onPress={() => {
+                  setViewingGoal(goal);
+                  setShowGoalViewModal(true);
+                }}
+                activeOpacity={0.7}
               >
                 <View style={{ flex: 1 }}>
                   <View style={styles.goalHeader}>
                     <View style={styles.goalInfo}>
-                      {goal.is_completed && (
+                      {goal.is_completed ? (
                         <Trophy size={20} color="#FFD700" style={styles.goalIcon} />
-                      )}
+                      ) : null}
                       <Text
                         style={[
                           styles.goalType,
@@ -1296,19 +1597,36 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                           goal.is_completed && styles.goalTypeCompleted,
                         ]}
                       >
-                        {goal.goal_type}
+                        {goal.goal_type?.trim() || 'Goal'}
                       </Text>
                     </View>
                     <View style={styles.actionButtons}>
+                      {goal.is_completed ? (
+                        <TouchableOpacity
+                          style={[styles.editButton, { marginRight: 8 }]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleUndoGoalCompletion(goal);
+                          }}
+                        >
+                          <RotateCcw size={16} color="#10B981" />
+                        </TouchableOpacity>
+                      ) : null}
                       <TouchableOpacity
-                        style={styles.editButton}
-                        onPress={() => handleEditGoal(goal)}
+                        style={[styles.editButton, { marginRight: 8 }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEditGoal(goal);
+                        }}
                       >
                         <Pencil size={16} color="#2A7DE1" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.deleteButton}
-                        onPress={() => handleDeleteGoal(goal.id)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteGoal(goal.id);
+                        }}
                       >
                         <Trash2 size={16} color="#E63946" />
                       </TouchableOpacity>
@@ -1319,7 +1637,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       {new Date(goal.deadline).toLocaleDateString()}
                     </Text>
                   )}
-                  {goal.notes && (
+                  {goal.notes && goal.notes.trim() && (
                     <Text style={[styles.goalNotesText, { color: colors.textSecondary }]} numberOfLines={2}>
                       {goal.notes}
                     </Text>
@@ -1328,12 +1646,12 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <Text style={[styles.goalProgress, { color: colors.text }]}>
                       {goal.current_value} / {goal.target_value}
                     </Text>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flexDirection: 'row' }}>
                       {/* Show minus button if current_value > 0 */}
                       {!goal.is_completed && goal.current_value > 0 && (
                         <TouchableOpacity
-                          style={styles.decrementButton}
-                          onPress={(e) => {
+                          style={[styles.decrementButton, { marginRight: 8 }]}
+                          onPress={(e: any) => {
                             e.stopPropagation();
                             handleDecrementGoal(goal);
                           }}
@@ -1344,7 +1662,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       {!goal.is_completed && goal.current_value < goal.target_value && (
                         <TouchableOpacity
                           style={styles.incrementButton}
-                          onPress={(e) => {
+                          onPress={(e: any) => {
                             e.stopPropagation();
                             handleIncrementGoal(goal);
                           }}
@@ -1368,12 +1686,12 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     {Math.round(getProgressPercentage(goal))}% complete
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
 
-        <View style={styles.section}>
+        <View style={styles.section} key={`prs-${displayWeightUnit}`}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>Personal Records</Text>
@@ -1408,7 +1726,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
             </View>
           ) : (
             getLatestPRsByType().map((test) => {
-              const userUnit = profile?.weight_unit || 'lbs';
+              const userUnit = displayWeightUnit;
               const storedUnit = test.result_unit || 'lbs';
               const displayValue = convertWeight(test.result_value, storedUnit, userUnit);
               
@@ -1416,7 +1734,15 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               const historyCount = strengthTests.filter(t => t.test_type === test.test_type).length;
               
               return (
-                <View key={test.id} style={[styles.testCard, { backgroundColor: colors.surface }]}>
+                <TouchableOpacity 
+                  key={test.id} 
+                  style={[styles.testCard, { backgroundColor: colors.surface }]}
+                  onPress={() => {
+                    setViewingPR(test);
+                    setShowPRViewModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.testHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.testType, { color: colors.text }]}>
@@ -1429,11 +1755,23 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                       )}
                     </View>
                     <View style={styles.testActions}>
-                      <TouchableOpacity onPress={() => handleEditTest(test)}>
-                        <TrendingUp size={18} color={colors.primary} />
+                      <TouchableOpacity 
+                        style={styles.testActionButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEditTest(test);
+                        }}
+                      >
+                        <TrendingUp size={20} color={colors.primary} />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteTest(test.id)}>
-                        <Trash2 size={18} color="#EF4444" />
+                      <TouchableOpacity 
+                        style={styles.testActionButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTest(test.id);
+                        }}
+                      >
+                        <Trash2 size={20} color="#EF4444" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1448,7 +1786,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                   <Text style={[styles.testDate, { color: colors.textSecondary }]}>
                     Latest: {new Date(test.created_at).toLocaleDateString()}
                   </Text>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
@@ -1538,7 +1876,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
 
             <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSaveGoal}>
               <Save size={20} color="#FFF" />
-              <Text style={styles.saveButtonText}>Save Goal</Text>
+              <Text style={[styles.saveButtonText, { marginLeft: 8 }]}>Save Goal</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -1632,7 +1970,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               </>
             )}
 
-            <Text style={[styles.label, { color: colors.text }]}>Result ({profile?.weight_unit || 'lbs'})</Text>
+            <Text style={[styles.label, { color: colors.text }]}>Result ({displayWeightUnit})</Text>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
               value={testResult}
@@ -1655,7 +1993,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
 
             <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSaveTest}>
               <Save size={20} color="#FFF" />
-              <Text style={styles.saveButtonText}>{editingTest ? 'Update PR' : 'Save PR'}</Text>
+              <Text style={[styles.saveButtonText, { marginLeft: 8 }]}>{editingTest ? 'Update PR' : 'Save PR'}</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -1756,7 +2094,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     🏆 Personal Records
                   </Text>
                   {getLatestPRsByType().slice(0, 4).map((test) => {
-                    const userUnit = profile?.weight_unit || 'lbs';
+                    const userUnit = displayWeightUnit;
                     const storedUnit = test.result_unit || 'lbs';
                     const displayValue = Math.round(convertWeight(test.result_value, storedUnit, userUnit));
                     
@@ -1814,8 +2152,8 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                         {Math.round(convertWeight(
                           measurements[0].weight,
                           measurements[0].weight_unit || 'lbs',
-                          profile?.weight_unit || 'lbs'
-                        ))} {profile?.weight_unit || 'lbs'}
+                          displayWeightUnit
+                        ))} {displayWeightUnit}
                       </Text>
                     </View>
                   )}
@@ -1823,10 +2161,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
                       <Text style={[styles.reportPRName, { color: colors.text }]}>Arm</Text>
                       <Text style={[styles.reportPRValue, { color: colors.primary }]}>
-                        {profile?.weight_unit === 'lbs'
-                          ? Math.round(convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs'))
-                          : convertCircumference(measurements[0].arm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                        {displayWeightUnit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].arm_circumference, displayWeightUnit))
+                          : convertCircumference(measurements[0].arm_circumference, displayWeightUnit).toFixed(1)
+                        } {getCircumferenceUnit(displayWeightUnit)}
                       </Text>
                     </View>
                   )}
@@ -1834,10 +2172,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
                       <Text style={[styles.reportPRName, { color: colors.text }]}>Forearm</Text>
                       <Text style={[styles.reportPRValue, { color: colors.primary }]}>
-                        {profile?.weight_unit === 'lbs'
-                          ? Math.round(convertCircumference(measurements[0].forearm_circumference, profile?.weight_unit || 'lbs'))
-                          : convertCircumference(measurements[0].forearm_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                        {displayWeightUnit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].forearm_circumference, displayWeightUnit))
+                          : convertCircumference(measurements[0].forearm_circumference, displayWeightUnit).toFixed(1)
+                        } {getCircumferenceUnit(displayWeightUnit)}
                       </Text>
                     </View>
                   )}
@@ -1845,10 +2183,10 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
                     <View style={[styles.reportPRItem, { backgroundColor: colors.background }]}>
                       <Text style={[styles.reportPRName, { color: colors.text }]}>Wrist</Text>
                       <Text style={[styles.reportPRValue, { color: colors.primary }]}>
-                        {profile?.weight_unit === 'lbs'
-                          ? Math.round(convertCircumference(measurements[0].wrist_circumference, profile?.weight_unit || 'lbs'))
-                          : convertCircumference(measurements[0].wrist_circumference, profile?.weight_unit || 'lbs').toFixed(1)
-                        } {getCircumferenceUnit(profile?.weight_unit || 'lbs')}
+                        {displayWeightUnit === 'lbs'
+                          ? Math.round(convertCircumference(measurements[0].wrist_circumference, displayWeightUnit))
+                          : convertCircumference(measurements[0].wrist_circumference, displayWeightUnit).toFixed(1)
+                        } {getCircumferenceUnit(displayWeightUnit)}
                       </Text>
                     </View>
                   )}
@@ -1925,7 +2263,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         strengthTests={strengthTests}
         workouts={workouts}
         goals={goals}
-        weightUnit={profile?.weight_unit || 'lbs'}
+        weightUnit={displayWeightUnit}
       />
 
       <PaywallModal
@@ -1938,7 +2276,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
       <MeasurementsModal
         visible={showMeasurements}
         onClose={() => setShowMeasurements(false)}
-        measurements={measurements}
+        measurements={measurements as any}
         onAddNew={() => {
           setEditingMeasurement(null);
           setWeight('');
@@ -1951,7 +2289,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         }}
         onEdit={handleEditMeasurement}
         onDelete={handleDeleteMeasurement}
-        weightUnit={profile?.weight_unit || 'lbs'}
+        weightUnit={displayWeightUnit}
       />
 
       <AddMeasurementModal
@@ -1971,7 +2309,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         setWristCircumference={setWristCircumference}
         notes={measurementNotes}
         setNotes={setMeasurementNotes}
-        weightUnit={profile?.weight_unit || 'lbs'}
+        weightUnit={displayWeightUnit}
         isEditing={!!editingMeasurement}
       />
     </View>
@@ -1995,7 +2333,11 @@ const styles = StyleSheet.create({
   },
   testActions: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+  },
+  testActionButton: {
+    padding: 6,
+    marginLeft: 3,
   },
   reportButton: {
     backgroundColor: '#2A2A2A',
@@ -2025,7 +2367,6 @@ const styles = StyleSheet.create({
   measurementsTitle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
   },
   measurementsTitleText: {
     fontSize: 18,
@@ -2049,12 +2390,14 @@ const styles = StyleSheet.create({
   },
   latestStats: {
     flexDirection: 'row',
-    gap: 16,
+    flexWrap: 'wrap',
   },
   latestStat: {
     fontSize: 14,
     color: '#FFF',
     fontWeight: '600',
+    marginRight: 12,
+    marginBottom: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -2070,10 +2413,10 @@ const styles = StyleSheet.create({
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
   infoButton: {
     padding: 4,
+    marginLeft: 8,
   },
   addButton: {
     backgroundColor: '#E63946',
@@ -2223,7 +2566,6 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 8,
   },
   editButton: {
     backgroundColor: '#2A7DE144',
@@ -2282,13 +2624,14 @@ const styles = StyleSheet.create({
   typeContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
   },
   typeButton: {
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderWidth: 1,
+    marginRight: 8,
+    marginBottom: 8,
   },
   typeButtonActive: {
     // Dynamic styles applied inline
@@ -2305,7 +2648,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
     marginTop: 24,
   },
   dateButton: {
@@ -2430,12 +2772,10 @@ const styles = StyleSheet.create({
   reportStatsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginBottom: 20,
   },
   reportStatsRow: {
     flexDirection: 'row',
-    gap: 10,
   },
   reportStatCard: {
     flex: 1,
@@ -2443,6 +2783,7 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
+    margin: 5,
   },
   reportStatValue: {
     fontSize: 24,
@@ -2495,7 +2836,6 @@ const styles = StyleSheet.create({
   },
   shareOptions: {
     padding: 20,
-    gap: 12,
   },
   shareTitle: {
     fontSize: 18,
@@ -2521,5 +2861,151 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // View Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  viewModalContent: {
+    width: '100%',
+    maxWidth: 500,
+    height: '80%',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  viewModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  viewModalScrollView: {
+    flex: 1,
+  },
+  viewModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  viewModalCloseButton: {
+    padding: 4,
+  },
+  viewModalBody: {
+    paddingTop: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  viewModalButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 24,
+    justifyContent: 'space-between',
+  },
+  viewModalButtonPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginLeft: 6,
+  },
+  viewModalButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  viewModalButtonSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    borderWidth: 2,
+    marginRight: 6,
+  },
+  viewModalButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    marginTop: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+  },
+  completedText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFD700',
+  },
+  prHistorySection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  prHistorySectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  prHistoryCard: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  prHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  prHistoryIndex: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  prHistoryDate: {
+    fontSize: 12,
+  },
+  prHistoryValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  prHistoryNotes: {
+    fontSize: 13,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 });

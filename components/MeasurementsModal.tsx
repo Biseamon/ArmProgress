@@ -49,8 +49,36 @@ export function MeasurementsModal({
 
   const getMeasurementChange = (index: number, field: 'weight' | 'arm_circumference' | 'forearm_circumference' | 'wrist_circumference') => {
     if (index >= measurements.length - 1) return null;
-    const current = measurements[index][field];
-    const previous = measurements[index + 1][field];
+
+    const currentMeasurement = measurements[index];
+    const previousMeasurement = measurements[index + 1];
+
+    if (field === 'weight') {
+      // Convert both weights to user's current unit before comparing
+      const currentWeight = currentMeasurement.weight;
+      const previousWeight = previousMeasurement.weight;
+      if (!currentWeight || !previousWeight) return null;
+
+      const current = convertWeight(
+        currentWeight,
+        (currentMeasurement.weight_unit || 'lbs') as 'kg' | 'lbs',
+        weightUnit
+      );
+      const previous = convertWeight(
+        previousWeight,
+        (previousMeasurement.weight_unit || 'lbs') as 'kg' | 'lbs',
+        weightUnit
+      );
+      return calculateChange(current, previous);
+    }
+
+    // Circumferences are stored in cm - convert to display unit before comparing
+    const currentValue = currentMeasurement[field];
+    const previousValue = previousMeasurement[field];
+    if (!currentValue || !previousValue) return null;
+
+    const current = convertCircumference(currentValue, weightUnit);
+    const previous = convertCircumference(previousValue, weightUnit);
     return calculateChange(current, previous);
   };
 
@@ -333,11 +361,12 @@ const styles = StyleSheet.create({
   measurementGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    marginHorizontal: -6,
   },
   measurementItem: {
-    flex: 1,
-    minWidth: '45%',
+    width: '50%',
+    paddingHorizontal: 6,
+    marginBottom: 12,
   },
   measurementLabel: {
     fontSize: 12,

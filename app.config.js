@@ -14,6 +14,7 @@ module.exports = {
     ios: {
       supportsTablet: true,
       bundleIdentifier: "com.armprogress.app",
+      buildNumber: "8",
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: false,
       },
@@ -34,6 +35,11 @@ module.exports = {
     web: {
       bundler: "metro",
       output: "single",
+    },
+    splash: {
+      image: "./assets/images/icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#1A1A1A"
     },
     plugins: [
       "expo-router",

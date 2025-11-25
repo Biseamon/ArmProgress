@@ -11,17 +11,31 @@ import {
   Alert,
   TextInput,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, Workout, StrengthTest } from '@/lib/supabase';
-import { invalidateQueries } from '@/lib/react-query';
-import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2, Save, Plus } from 'lucide-react-native';
+import { Workout, StrengthTest, Goal } from '@/lib/supabase';
+import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2, Save, Plus, Target, Trophy } from 'lucide-react-native';
 import { convertWeight, formatWeight, convertFromLbs, convertToLbs } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleError } from '@/lib/errorHandling';
+import { validateWorkout, validateExercise, getFirstError } from '@/lib/validation';
 import { AdBanner } from '@/components/AdBanner';
+import {
+  useWorkouts,
+  useCycles,
+  useGoals,
+  useStrengthTests,
+  useScheduledTrainings,
+  useUpdateWorkout,
+  useDeleteWorkout,
+  useCreateWorkout,
+  useCreateExercises,
+  useCreateScheduledTraining,
+} from '@/lib/react-query-sqlite-complete';
+import { getExercises, deleteExercisesByWorkout } from '@/lib/db/queries/exercises';
 
 interface Cycle {
   id: string;
@@ -29,13 +43,6 @@ interface Cycle {
   start_date: string;
   end_date: string;
   cycle_type: string;
-}
-
-interface Goal {
-  id: string;
-  goal_type: string;
-  deadline: string;
-  is_completed: boolean;
 }
 
 interface DayData {
@@ -53,20 +60,49 @@ type Exercise = {
   sets: number;
   reps: number;
   weight_lbs: number;
+  weight_unit?: 'lbs' | 'kg';
   notes: string;
 }
 
 export default function CalendarScreen() {
   const { colors } = useTheme();
-  const { profile, isPremium } = useAuth(); // Add isPremium here
+  const { profile, isPremium } = useAuth();
   const insets = useSafeAreaInsets();
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [strengthTests, setStrengthTests] = useState<StrengthTest[]>([]);
-  const [scheduledTrainings, setScheduledTrainings] = useState<any[]>([]);
+  
+  // Use SQLite hooks for offline-first data
+  const { data: allWorkouts = [] } = useWorkouts();
+  const { data: cycles = [] } = useCycles();
+  const { data: allGoals = [] } = useGoals();
+  const { data: strengthTests = [] } = useStrengthTests();
+  const { data: scheduledTrainings = [] } = useScheduledTrainings();
+  
+  // Mutations
+  const updateWorkoutMutation = useUpdateWorkout();
+  const deleteWorkoutMutation = useDeleteWorkout();
+  const createWorkoutMutation = useCreateWorkout();
+  const createExercisesMutation = useCreateExercises();
+  const createScheduledTrainingMutation = useCreateScheduledTraining();
+  
+  // Filter data for current month view
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  
+  // Filter workouts and goals for the current month ± 1 month
+  const prevMonth = new Date(currentYear, currentMonth - 1, 1);
+  const nextMonth = new Date(currentYear, currentMonth + 2, 0);
+  const startDate = prevMonth.toISOString().split('T')[0];
+  const endDate = nextMonth.toISOString().split('T')[0];
+  
+  const workouts = allWorkouts.filter(w => {
+    const wDate = w.created_at.split('T')[0];
+    return wDate >= startDate && wDate <= endDate;
+  });
+  
+  const goals = allGoals.filter(g => {
+    if (!g.deadline) return false;
+    return g.deadline >= startDate && g.deadline <= endDate;
+  });
+  
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
@@ -92,6 +128,7 @@ export default function CalendarScreen() {
   const [addIntensity, setAddIntensity] = useState('5');
   const [addWorkoutNotes, setAddWorkoutNotes] = useState('');
   const [addExercises, setAddExercises] = useState<Exercise[]>([]);
+  const [addWorkoutCycleId, setAddWorkoutCycleId] = useState<string | null>(null);
 
   // Schedule training modal state (for future dates)
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -99,79 +136,34 @@ export default function CalendarScreen() {
   const [scheduleDescription, setScheduleDescription] = useState('');
   const [scheduleTime, setScheduleTime] = useState('09:00');
 
+  // View modal states
+  const [showWorkoutViewModal, setShowWorkoutViewModal] = useState(false);
+  const [showGoalViewModal, setShowGoalViewModal] = useState(false);
+  const [showPRViewModal, setShowPRViewModal] = useState(false);
+
+  // Selected items for viewing
+  const [viewingWorkout, setViewingWorkout] = useState<Workout | null>(null);
+  const [viewingGoal, setViewingGoal] = useState<Goal | null>(null);
+  const [viewingPR, setViewingPR] = useState<StrengthTest | null>(null);
+
+  // Workout exercises loading for view modal
+  const [viewModalExercises, setViewModalExercises] = useState<Exercise[]>([]);
+  const [loadingViewExercises, setLoadingViewExercises] = useState(false);
+
+  // Set available years based on profile
   useFocusEffect(
     useCallback(() => {
-      if (profile?.id) {
-        fetchData();
+      if (profile?.created_at) {
+        const registrationYear = new Date(profile.created_at).getFullYear();
+        const currentYearNow = new Date().getFullYear();
+        const years = [];
+        for (let year = registrationYear; year <= currentYearNow + 2; year++) {
+          years.push(year);
+        }
+        setAvailableYears(years);
       }
-      return () => {};
-    }, [profile?.id, currentYear, currentMonth])
+    }, [profile?.created_at])
   );
-
-  const fetchData = async () => {
-    if (!profile) return;
-
-    // Fetch data for current month ± 1 month (3 months total) for better performance
-    const prevMonth = new Date(currentYear, currentMonth - 1, 1);
-    const nextMonth = new Date(currentYear, currentMonth + 2, 0); // Last day of next month
-
-    const startDate = prevMonth.toISOString().split('T')[0];
-    const endDate = nextMonth.toISOString().split('T')[0];
-
-    const [workoutsRes, cyclesRes, goalsRes, strengthTestsRes, scheduledTrainingsRes, profileRes] = await Promise.all([
-      supabase
-        .from('workouts')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
-        .order('created_at', { ascending: true }),
-      supabase
-        .from('cycles')
-        .select('*')
-        .eq('user_id', profile.id),
-      supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('deadline', startDate)
-        .lte('deadline', endDate),
-      supabase
-        .from('strength_tests')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('created_at', startDate)
-        .lte('created_at', endDate)
-        .order('created_at', { ascending: true }),
-      supabase
-        .from('scheduled_trainings')
-        .select('*')
-        .eq('user_id', profile.id)
-        .gte('scheduled_date', startDate)
-        .lte('scheduled_date', endDate),
-      supabase
-        .from('profiles')
-        .select('created_at')
-        .eq('id', profile.id)
-        .single(),
-    ]);
-
-    if (workoutsRes.data) setWorkouts(workoutsRes.data);
-    if (cyclesRes.data) setCycles(cyclesRes.data);
-    if (goalsRes.data) setGoals(goalsRes.data);
-    if (strengthTestsRes.data) setStrengthTests(strengthTestsRes.data);
-    if (scheduledTrainingsRes.data) setScheduledTrainings(scheduledTrainingsRes.data);
-
-    if (profileRes.data) {
-      const registrationYear = new Date(profileRes.data.created_at).getFullYear();
-      const currentYear = new Date().getFullYear();
-      const years = [];
-      for (let year = registrationYear; year <= currentYear + 2; year++) {
-        years.push(year);
-      }
-      setAvailableYears(years);
-    }
-  };
 
   const getWorkoutCountForDate = (date: Date): number => {
     const year = date.getFullYear();
@@ -243,7 +235,7 @@ export default function CalendarScreen() {
     return { isInCycle: false, cycleCount: 0 };
   };
 
-  const getDayColor = (workoutCount: number, isInCycle: boolean, scheduledCount: number, strengthTestCount: number, isFuture: boolean): string => {
+  const getDayColor = (workoutCount: number, isInCycle: boolean, scheduledCount: number, strengthTestCount: number, isTodayOrFuture: boolean): string => {
     if (!showWorkouts && !showCycles && !showStrengthTests) return colors.surface;
     if (!showWorkouts && isInCycle && showCycles) return '#2A7DE144';
     if (!showCycles && workoutCount > 0 && showWorkouts) {
@@ -252,7 +244,8 @@ export default function CalendarScreen() {
       if (workoutCount >= 3) return '#E63946';
     }
 
-    if (isFuture && scheduledCount > 0) return '#FFA50055';
+    // Show scheduled trainings for today and future (orange background)
+    if (scheduledCount > 0 && isTodayOrFuture) return '#FFA50055';
 
     // Priority for strength tests
     if (strengthTestCount > 0 && showStrengthTests) return '#10B98155';
@@ -344,7 +337,8 @@ export default function CalendarScreen() {
       const strengthTestCount = getStrengthTestCountForDate(date);
       const cycleInfo = isDateInCycle(date);
       const isFuture = date > today;
-      const dayColor = getDayColor(workoutCount, cycleInfo.isInCycle, scheduledCount, strengthTestCount, isFuture);
+      const isTodayOrFuture = date >= today;
+      const dayColor = getDayColor(workoutCount, cycleInfo.isInCycle, scheduledCount, strengthTestCount, isTodayOrFuture);
   
       const isToday = date.getDate() === today.getDate() &&
                       date.getMonth() === today.getMonth() &&
@@ -369,8 +363,8 @@ export default function CalendarScreen() {
             style={[
               styles.dayText,
               { color: (workoutCount > 0 || scheduledCount > 0 || strengthTestCount > 0) ? '#FFF' : colors.text },
-              (workoutCount > 0 || scheduledCount > 0 || strengthTestCount > 0) && styles.dayTextActive,
-              isToday && !workoutCount && !strengthTestCount && { color: colors.primary, fontWeight: 'bold' },
+              (workoutCount > 0 || scheduledCount > 0 || strengthTestCount > 0) ? styles.dayTextActive : null,
+              isToday && !workoutCount && !strengthTestCount ? { color: colors.primary, fontWeight: 'bold' } : null,
             ]}
           >
             {day}
@@ -390,7 +384,7 @@ export default function CalendarScreen() {
               <Text style={styles.strengthTestIndicatorText}>💪</Text>
             </View>
           )}
-          {scheduledCount > 0 && isFuture && (
+          {scheduledCount > 0 && (
             <View style={styles.scheduledIndicator}>
               <Text style={styles.scheduledIndicatorText}>📅</Text>
             </View>
@@ -446,13 +440,10 @@ export default function CalendarScreen() {
     // Close day modal first
     setShowDayModal(false);
     
-    // Fetch exercises for this workout BEFORE setting state
-    const { data: exercisesData } = await supabase
-      .from('exercises')
-      .select('*')
-      .eq('workout_id', workout.id);
+    // Fetch exercises from SQLite
+    const exercisesData = await getExercises(workout.id);
 
-    // Prepare exercises array
+    // Prepare exercises array - preserve weight_unit for proper conversion on display
     let exercisesToSet: Exercise[] = [];
     if (exercisesData && exercisesData.length > 0) {
       exercisesToSet = exercisesData.map(ex => ({
@@ -461,6 +452,7 @@ export default function CalendarScreen() {
         sets: ex.sets,
         reps: ex.reps,
         weight_lbs: ex.weight_lbs,
+        weight_unit: (ex.weight_unit as 'lbs' | 'kg') || 'lbs',
         notes: ex.notes || '',
       }));
     }
@@ -482,7 +474,7 @@ export default function CalendarScreen() {
   const handleAddExercise = () => {
     setExercises([
       ...exercises,
-      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, weight_unit: profile?.weight_unit || 'lbs', notes: '' },
     ]);
   };
 
@@ -493,11 +485,14 @@ export default function CalendarScreen() {
   const handleUpdateExercise = (
     index: number,
     field: keyof Exercise,
-    value: any
+    value: any,
+    additionalUpdates?: Partial<Exercise>
   ) => {
-    const updated = [...exercises];
-    updated[index] = { ...updated[index], [field]: value };
-    setExercises(updated);
+    setExercises(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value, ...additionalUpdates };
+      return updated;
+    });
   };
 
   const handleSaveWorkout = async () => {
@@ -505,26 +500,54 @@ export default function CalendarScreen() {
       return;
     }
 
+    // Validate workout data
+    const workoutValidation = validateWorkout({
+      workout_type: workoutType,
+      duration_minutes: parseInt(duration) || 0,
+      intensity: parseInt(intensity) || 0,
+      notes: workoutNotes,
+    });
+
+    if (!workoutValidation.isValid) {
+      Alert.alert('Validation Error', getFirstError(workoutValidation) || 'Invalid workout data');
+      return;
+    }
+
+    // Validate exercises
+    for (let i = 0; i < exercises.length; i++) {
+      const exerciseValidation = validateExercise({
+        exercise_name: exercises[i].exercise_name,
+        sets: exercises[i].sets,
+        reps: exercises[i].reps,
+        weight_lbs: exercises[i].weight_lbs,
+        notes: exercises[i].notes,
+      });
+
+      if (!exerciseValidation.isValid) {
+        Alert.alert(
+          'Exercise Validation Error',
+          `Exercise ${i + 1}: ${getFirstError(exerciseValidation)}`
+        );
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
       // Update workout
-      const { error: updateError } = await supabase
-        .from('workouts')
-        .update({
+      await updateWorkoutMutation.mutateAsync({
+        id: editingWorkout.id,
+        updates: {
           workout_type: workoutType,
           duration_minutes: parseInt(duration) || 0,
           intensity: parseInt(intensity) || 5,
           notes: workoutNotes,
-        })
-        .eq('id', editingWorkout.id);
-
-      if (updateError) {
-        throw updateError;
-      }
+        },
+      });
 
       // Delete old exercises
-      await supabase.from('exercises').delete().eq('workout_id', editingWorkout.id);
+      await deleteExercisesByWorkout(editingWorkout.id);
 
       // Insert new exercises if any
       if (exercises.length > 0) {
@@ -534,29 +557,17 @@ export default function CalendarScreen() {
           sets: ex.sets,
           reps: ex.reps,
           weight_lbs: ex.weight_lbs,
+          weight_unit: ex.weight_unit || profile.weight_unit || 'lbs',
           notes: ex.notes || '',
         }));
-        
-        const { error: exercisesError } = await supabase
-          .from('exercises')
-          .insert(exercisesData);
-          
-        if (exercisesError) {
-          console.error('Error inserting exercises:', exercisesError);
-        }
-      }
 
-      // Invalidate cache and refresh
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-        invalidateQueries.home(profile.id);
-        invalidateQueries.calendar(profile.id);
+        await createExercisesMutation.mutateAsync(exercisesData);
       }
 
       setSaving(false);
       setShowEditWorkoutModal(false);
       resetForm();
-      await fetchData();
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -577,7 +588,7 @@ export default function CalendarScreen() {
   const handleAddExerciseToNew = () => {
     setAddExercises([
       ...addExercises,
-      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, weight_unit: profile?.weight_unit || 'lbs', notes: '' },
     ]);
   };
 
@@ -588,11 +599,14 @@ export default function CalendarScreen() {
   const handleUpdateExerciseInNew = (
     index: number,
     field: keyof Exercise,
-    value: any
+    value: any,
+    additionalUpdates?: Partial<Exercise>
   ) => {
-    const updated = [...addExercises];
-    updated[index] = { ...updated[index], [field]: value };
-    setAddExercises(updated);
+    setAddExercises(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value, ...additionalUpdates };
+      return updated;
+    });
   };
 
   const resetAddWorkoutForm = () => {
@@ -601,11 +615,44 @@ export default function CalendarScreen() {
     setAddIntensity('5');
     setAddWorkoutNotes('');
     setAddExercises([]);
+    setAddWorkoutCycleId(null);
   };
 
   const handleAddWorkout = async () => {
     if (!profile || !selectedDate) {
       return;
+    }
+
+    // Validate workout data
+    const workoutValidation = validateWorkout({
+      workout_type: addWorkoutType,
+      duration_minutes: parseInt(addDuration) || 0,
+      intensity: parseInt(addIntensity) || 0,
+      notes: addWorkoutNotes,
+    });
+
+    if (!workoutValidation.isValid) {
+      Alert.alert('Validation Error', getFirstError(workoutValidation) || 'Invalid workout data');
+      return;
+    }
+
+    // Validate exercises
+    for (let i = 0; i < addExercises.length; i++) {
+      const exerciseValidation = validateExercise({
+        exercise_name: addExercises[i].exercise_name,
+        sets: addExercises[i].sets,
+        reps: addExercises[i].reps,
+        weight_lbs: addExercises[i].weight_lbs,
+        notes: addExercises[i].notes,
+      });
+
+      if (!exerciseValidation.isValid) {
+        Alert.alert(
+          'Exercise Validation Error',
+          `Exercise ${i + 1}: ${getFirstError(exerciseValidation)}`
+        );
+        return;
+      }
     }
 
     setSaving(true);
@@ -614,57 +661,38 @@ export default function CalendarScreen() {
       const year = selectedDate.getFullYear();
       const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const day = String(selectedDate.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
+      const dateStr = `${year}-${month}-${day}T00:00:00Z`;
 
-      // Insert workout
-      const { data: workoutData, error: workoutError } = await supabase
-        .from('workouts')
-        .insert({
-          user_id: profile.id,
-          workout_type: addWorkoutType,
-          duration_minutes: parseInt(addDuration) || 0,
-          intensity: parseInt(addIntensity) || 5,
-          notes: addWorkoutNotes,
-          created_at: dateStr,
-        })
-        .select()
-        .single();
-
-      if (workoutError) {
-        throw workoutError;
-      }
+      // Create workout
+      const workoutId = await createWorkoutMutation.mutateAsync({
+        user_id: profile.id,
+        workout_type: addWorkoutType,
+        duration_minutes: parseInt(addDuration) || 0,
+        intensity: parseInt(addIntensity) || 5,
+        notes: addWorkoutNotes,
+        cycle_id: addWorkoutCycleId,
+        created_at: dateStr,
+      });
 
       // Insert exercises if any
-      if (addExercises.length > 0 && workoutData) {
+      if (addExercises.length > 0) {
         const exercisesData = addExercises.map((ex) => ({
-          workout_id: workoutData.id,
+          workout_id: workoutId,
           exercise_name: ex.exercise_name,
           sets: ex.sets,
           reps: ex.reps,
           weight_lbs: ex.weight_lbs,
+          weight_unit: ex.weight_unit || profile.weight_unit || 'lbs',
           notes: ex.notes || '',
         }));
 
-        const { error: exercisesError } = await supabase
-          .from('exercises')
-          .insert(exercisesData);
-
-        if (exercisesError) {
-          console.error('Error inserting exercises:', exercisesError);
-        }
-      }
-
-      // Invalidate cache and refresh
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-        invalidateQueries.home(profile.id);
-        invalidateQueries.calendar(profile.id);
+        await createExercisesMutation.mutateAsync(exercisesData);
       }
 
       setSaving(false);
       setShowAddWorkoutModal(false);
       resetAddWorkoutForm();
-      await fetchData();
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -689,35 +717,26 @@ export default function CalendarScreen() {
       const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const day = String(selectedDate.getDate()).padStart(2, '0');
       const dateStr = `${year}-${month}-${day}`;
-
-      // Insert scheduled training
-      const { error: scheduleError } = await supabase
-        .from('scheduled_trainings')
-        .insert({
-          user_id: profile.id,
-          title: scheduleTitle,
-          description: scheduleDescription,
-          scheduled_date: dateStr,
-          scheduled_time: scheduleTime,
-        });
-
-      if (scheduleError) {
-        throw scheduleError;
-      }
-
-      // Invalidate cache and refresh
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-        invalidateQueries.home(profile.id);
-        invalidateQueries.calendar(profile.id);
-      }
+      
+      // Create scheduled training
+      await createScheduledTrainingMutation.mutateAsync({
+        user_id: profile.id,
+        title: scheduleTitle,
+        description: scheduleDescription,
+        scheduled_date: dateStr,
+        scheduled_time: scheduleTime,
+        notification_enabled: false,
+        notification_minutes_before: 30,
+        notification_id: null,
+        completed: false,
+      });
 
       setSaving(false);
       setShowScheduleModal(false);
       setScheduleTitle('');
       setScheduleDescription('');
       setScheduleTime('09:00');
-      await fetchData();
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -736,22 +755,8 @@ export default function CalendarScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete from database
-              const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
-              
-              if (error) {
-                console.error('Error deleting workout:', error);
-                Alert.alert('Error', 'Failed to delete workout');
-                return;
-              }
-              
-              // Invalidate cache to trigger refetch
-              if (profile?.id) {
-                invalidateQueries.workouts(profile.id);
-              }
-              
-              // Refresh calendar data
-              fetchData();
+              await deleteWorkoutMutation.mutateAsync(workout.id);
+              // Data refreshes automatically via React Query
             } catch (error) {
               const errorMessage = handleError(error);
               Alert.alert('Error', errorMessage);
@@ -760,6 +765,81 @@ export default function CalendarScreen() {
         },
       ]
     );
+  };
+
+  // View modal handlers
+  const handleViewWorkout = async (workout: Workout) => {
+    setViewingWorkout(workout);
+    setLoadingViewExercises(true);
+
+    // Close day modal first
+    setShowDayModal(false);
+
+    // Load exercises
+    try {
+      const exercisesData = await getExercises(workout.id);
+      setViewModalExercises(exercisesData || []);
+    } catch (error) {
+      console.error('Error loading exercises:', error);
+      setViewModalExercises([]);
+    } finally {
+      setLoadingViewExercises(false);
+    }
+
+    // Open view modal after day modal closes
+    setTimeout(() => {
+      setShowWorkoutViewModal(true);
+    }, 300);
+  };
+
+  const handleViewGoal = (goal: Goal) => {
+    setViewingGoal(goal);
+
+    // Close day modal first
+    setShowDayModal(false);
+
+    // Open view modal after day modal closes
+    setTimeout(() => {
+      setShowGoalViewModal(true);
+    }, 300);
+  };
+
+  const handleViewPR = (pr: StrengthTest) => {
+    setViewingPR(pr);
+
+    // Close day modal first
+    setShowDayModal(false);
+
+    // Open view modal after day modal closes
+    setTimeout(() => {
+      setShowPRViewModal(true);
+    }, 300);
+  };
+
+  const handleEditFromViewModal = (workout: Workout) => {
+    setShowWorkoutViewModal(false);
+    setTimeout(() => handleEditWorkout(workout), 300);
+  };
+
+  const handleCloseViewModal = (modalType: 'workout' | 'goal' | 'pr') => {
+    // Close the view modal
+    if (modalType === 'workout') {
+      setShowWorkoutViewModal(false);
+    } else if (modalType === 'goal') {
+      setShowGoalViewModal(false);
+    } else if (modalType === 'pr') {
+      setShowPRViewModal(false);
+    }
+
+    // Reopen the day modal after a delay
+    setTimeout(() => {
+      setShowDayModal(true);
+    }, 300);
+  };
+
+  const getProgressPercentage = (goal: Goal) => {
+    if (!goal.target_value || goal.target_value === 0) return 0;
+    return Math.min(((goal.current_value || 0) / goal.target_value) * 100, 100);
   };
 
   return (
@@ -773,14 +853,14 @@ export default function CalendarScreen() {
           <TouchableOpacity
             style={[
               styles.filterButton,
-              showWorkouts && styles.filterButtonActive,
+              showWorkouts ? styles.filterButtonActive : null,
             ]}
             onPress={() => setShowWorkouts(!showWorkouts)}
           >
             <Text
               style={[
                 styles.filterText,
-                showWorkouts && styles.filterTextActive,
+                showWorkouts ? styles.filterTextActive : null,
               ]}
             >
               Workouts
@@ -789,14 +869,14 @@ export default function CalendarScreen() {
           <TouchableOpacity
             style={[
               styles.filterButton,
-              showCycles && styles.filterButtonActive,
+              showCycles ? styles.filterButtonActive : null,
             ]}
             onPress={() => setShowCycles(!showCycles)}
           >
             <Text
               style={[
                 styles.filterText,
-                showCycles && styles.filterTextActive,
+                showCycles ? styles.filterTextActive : null,
               ]}
             >
               Cycles
@@ -805,14 +885,14 @@ export default function CalendarScreen() {
           <TouchableOpacity
             style={[
               styles.filterButton,
-              showGoals && styles.filterButtonActive,
+              showGoals ? styles.filterButtonActive : null,
             ]}
             onPress={() => setShowGoals(!showGoals)}
           >
             <Text
               style={[
                 styles.filterText,
-                showGoals && styles.filterTextActive,
+                showGoals ? styles.filterTextActive : null,
               ]}
             >
               Goals
@@ -821,14 +901,14 @@ export default function CalendarScreen() {
           <TouchableOpacity
             style={[
               styles.filterButton,
-              showStrengthTests && styles.filterButtonActive,
+              showStrengthTests ? styles.filterButtonActive : null,
             ]}
             onPress={() => setShowStrengthTests(!showStrengthTests)}
           >
             <Text
               style={[
                 styles.filterText,
-                showStrengthTests && styles.filterTextActive,
+                showStrengthTests ? styles.filterTextActive : null,
               ]}
             >
               PR's
@@ -929,6 +1009,13 @@ export default function CalendarScreen() {
                           if (isFuture) {
                             setShowScheduleModal(true);
                           } else {
+                            // Auto-select cycle if there's exactly one active on this date
+                            const cycleInfo = isDateInCycle(selectedDate);
+                            if (cycleInfo.allCycles && cycleInfo.allCycles.length === 1) {
+                              setAddWorkoutCycleId(cycleInfo.allCycles[0].id);
+                            } else {
+                              setAddWorkoutCycleId(null);
+                            }
                             setShowAddWorkoutModal(true);
                           }
                         }}
@@ -980,7 +1067,12 @@ export default function CalendarScreen() {
                         const displayValue = convertWeight(test.result_value, storedUnit, userUnit);
                         
                         return (
-                          <View key={test.id} style={[styles.strengthTestCard, { backgroundColor: colors.surface }]}>
+                          <TouchableOpacity
+                            key={test.id}
+                            style={[styles.strengthTestCard, { backgroundColor: colors.surface }]}
+                            onPress={() => handleViewPR(test)}
+                            activeOpacity={0.7}
+                          >
                             <View style={styles.strengthTestHeader}>
                               <TrendingUp size={20} color="#10B981" />
                               <Text style={[styles.strengthTestType, { color: colors.text }]}>
@@ -1001,7 +1093,7 @@ export default function CalendarScreen() {
                                 minute: '2-digit'
                               })}
                             </Text>
-                          </View>
+                          </TouchableOpacity>
                         );
                       })}
                     </>
@@ -1011,7 +1103,12 @@ export default function CalendarScreen() {
                     Workouts ({getWorkoutsForDate(selectedDate).length})
                   </Text>
                   {getWorkoutsForDate(selectedDate).map((workout) => (
-                    <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
+                    <TouchableOpacity
+                      key={workout.id}
+                      style={[styles.workoutCard, { backgroundColor: colors.surface }]}
+                      onPress={() => handleViewWorkout(workout)}
+                      activeOpacity={0.7}
+                    >
                       <View style={styles.workoutCardHeader}>
                         <Text style={[styles.workoutType, { color: colors.primary }]}>
                           {workout.workout_type?.replace(/_/g, ' ').toUpperCase() || 'WORKOUT'}
@@ -1019,13 +1116,19 @@ export default function CalendarScreen() {
                         <View style={styles.workoutActions}>
                           <TouchableOpacity
                             style={styles.workoutActionButton}
-                            onPress={() => handleEditWorkout(workout)}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleEditWorkout(workout);
+                            }}
                           >
                             <Pencil size={18} color={colors.primary} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.workoutActionButton}
-                            onPress={() => handleDeleteWorkout(workout)}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDeleteWorkout(workout);
+                            }}
                           >
                             <Trash2 size={18} color={colors.error} />
                           </TouchableOpacity>
@@ -1053,7 +1156,7 @@ export default function CalendarScreen() {
                       {workout.notes && (
                         <Text style={[styles.workoutNotes, { color: colors.textSecondary }]}>{workout.notes}</Text>
                       )}
-                    </View>
+                    </TouchableOpacity>
                   ))}
 
                   <Text style={[styles.modalSectionTitle, { color: colors.text }]}>
@@ -1061,19 +1164,24 @@ export default function CalendarScreen() {
                   </Text>
                   {getGoalsForDate(selectedDate).length > 0 ? (
                     getGoalsForDate(selectedDate).map((goal) => (
-                      <View key={goal.id} style={[styles.goalCard, { backgroundColor: colors.surface }]}>
+                      <TouchableOpacity
+                        key={goal.id}
+                        style={[styles.goalCard, { backgroundColor: colors.surface }]}
+                        onPress={() => handleViewGoal(goal)}
+                        activeOpacity={0.7}
+                      >
                         <View style={styles.goalContent}>
                           <Text style={styles.goalEmoji}>🎯</Text>
                           <View style={styles.goalInfo}>
-                            <Text style={[styles.goalTitle, { color: colors.primary }, goal.is_completed && styles.goalCompleted]}>
+                            <Text style={[styles.goalTitle, { color: colors.primary }, goal.is_completed ? styles.goalCompleted : null]}>
                               {goal.goal_type}
                             </Text>
-                            {goal.is_completed && (
+                            {goal.is_completed ? (
                               <Text style={[styles.goalStatus, { color: '#10B981' }]}>✓ Completed</Text>
-                            )}
+                            ) : null}
                           </View>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     ))
                   ) : (
                     <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No goals for this date</Text>
@@ -1248,11 +1356,22 @@ export default function CalendarScreen() {
                       <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
                       <TextInput
                         style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        value={String(Math.round(convertWeight(
+                          exercise.weight_lbs,
+                          exercise.weight_unit || 'lbs',  // Convert from stored unit
+                          profile?.weight_unit || 'lbs'   // To display unit
+                        )))}
                         onChangeText={(val) => {
-                          const inputValue = parseInt(val) || 0;
-                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
-                          handleUpdateExercise(index, 'weight_lbs', lbsValue);
+                          // Allow empty string for clearing
+                          if (val === '') {
+                            handleUpdateExercise(index, 'weight_lbs', 0, { weight_unit: profile?.weight_unit || 'lbs' });
+                            return;
+                          }
+                          const inputValue = parseInt(val);
+                          if (!isNaN(inputValue)) {
+                            // Store in user's current preferred unit
+                            handleUpdateExercise(index, 'weight_lbs', inputValue, { weight_unit: profile?.weight_unit || 'lbs' });
+                          }
                         }}
                         keyboardType="number-pad"
                       />
@@ -1263,7 +1382,7 @@ export default function CalendarScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              style={[styles.saveButton, saving ? styles.saveButtonDisabled : null]}
               onPress={handleSaveWorkout}
               disabled={saving}
             >
@@ -1333,6 +1452,53 @@ export default function CalendarScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {selectedDate && isDateInCycle(selectedDate).isInCycle && (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Training Cycle (Optional)</Text>
+                <View style={styles.typeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border },
+                      addWorkoutCycleId === null && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                    ]}
+                    onPress={() => setAddWorkoutCycleId(null)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        { color: colors.textSecondary },
+                        addWorkoutCycleId === null && [styles.typeButtonTextActive, { color: '#FFF' }],
+                      ]}
+                    >
+                      None
+                    </Text>
+                  </TouchableOpacity>
+                  {isDateInCycle(selectedDate).allCycles?.map((cycle) => (
+                    <TouchableOpacity
+                      key={cycle.id}
+                      style={[
+                        styles.typeButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        addWorkoutCycleId === cycle.id && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                      ]}
+                      onPress={() => setAddWorkoutCycleId(cycle.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeButtonText,
+                          { color: colors.textSecondary },
+                          addWorkoutCycleId === cycle.id && [styles.typeButtonTextActive, { color: '#FFF' }],
+                        ]}
+                      >
+                        {cycle.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
 
             <Text style={[styles.label, { color: colors.text }]}>Duration (minutes)</Text>
             <TextInput
@@ -1425,11 +1591,22 @@ export default function CalendarScreen() {
                       <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Weight ({profile?.weight_unit || 'lbs'})</Text>
                       <TextInput
                         style={[styles.smallInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
-                        value={String(Math.round(convertFromLbs(exercise.weight_lbs, profile?.weight_unit || 'lbs')))}
+                        value={String(Math.round(convertWeight(
+                          exercise.weight_lbs,
+                          exercise.weight_unit || 'lbs',  // Convert from stored unit
+                          profile?.weight_unit || 'lbs'   // To display unit
+                        )))}
                         onChangeText={(val) => {
-                          const inputValue = parseInt(val) || 0;
-                          const lbsValue = convertToLbs(inputValue, profile?.weight_unit || 'lbs');
-                          handleUpdateExerciseInNew(index, 'weight_lbs', lbsValue);
+                          // Allow empty string for clearing
+                          if (val === '') {
+                            handleUpdateExerciseInNew(index, 'weight_lbs', 0, { weight_unit: profile?.weight_unit || 'lbs' });
+                            return;
+                          }
+                          const inputValue = parseInt(val);
+                          if (!isNaN(inputValue)) {
+                            // Store in user's current preferred unit
+                            handleUpdateExerciseInNew(index, 'weight_lbs', inputValue, { weight_unit: profile?.weight_unit || 'lbs' });
+                          }
                         }}
                         keyboardType="number-pad"
                       />
@@ -1440,7 +1617,7 @@ export default function CalendarScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              style={[styles.saveButton, saving ? styles.saveButtonDisabled : null]}
               onPress={handleAddWorkout}
               disabled={saving}
             >
@@ -1516,7 +1693,7 @@ export default function CalendarScreen() {
             />
 
             <TouchableOpacity
-              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              style={[styles.saveButton, saving ? styles.saveButtonDisabled : null]}
               onPress={handleAddSchedule}
               disabled={saving}
             >
@@ -1530,6 +1707,382 @@ export default function CalendarScreen() {
           </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* View Detail Modals */}
+      {/* Workout Detail Modal */}
+      <Modal
+        visible={showWorkoutViewModal}
+        animationType="slide"
+        onRequestClose={() => handleCloseViewModal('workout')}
+      >
+        <View style={[styles.viewModalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TrendingUp size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => handleCloseViewModal('workout')}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            {viewingWorkout && (
+              <View style={{ gap: 16 }}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>
+                    {viewingWorkout.workout_type.replace(/_/g, ' ').toUpperCase()}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Date</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {new Date(viewingWorkout.created_at).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Duration</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingWorkout.duration_minutes} minutes
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Intensity</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingWorkout.intensity} / 10
+                  </Text>
+                </View>
+
+                {viewingWorkout.notes && (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic' }]}>
+                      {viewingWorkout.notes}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Exercises Section */}
+                {loadingViewExercises ? (
+                  <View style={styles.exercisesSectionView}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>Exercises</Text>
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+                  </View>
+                ) : viewModalExercises.length > 0 ? (
+                  <View style={styles.exercisesSectionView}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>
+                      Exercises ({viewModalExercises.length})
+                    </Text>
+                    {viewModalExercises.map((exercise, index) => {
+                      const userUnit = profile?.weight_unit || 'lbs';
+                      const storedUnit = exercise.weight_unit || 'lbs';
+                      const displayWeight = exercise.weight_lbs && exercise.weight_lbs > 0
+                        ? convertWeight(exercise.weight_lbs, storedUnit as 'lbs' | 'kg', userUnit as 'lbs' | 'kg')
+                        : null;
+
+                      return (
+                        <View
+                          key={exercise.id}
+                          style={[styles.exerciseCardView, { backgroundColor: colors.background }]}
+                        >
+                          <View style={styles.exerciseHeaderView}>
+                            <Text style={[styles.exerciseNameView, { color: colors.text }]}>
+                              {index + 1}. {exercise.exercise_name}
+                            </Text>
+                          </View>
+                          <View style={styles.exerciseDetailsView}>
+                            {exercise.sets > 0 && (
+                              <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                {exercise.sets} sets
+                              </Text>
+                            )}
+                            {exercise.reps > 0 && (
+                              <>
+                                <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                                <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                  {exercise.reps} reps
+                                </Text>
+                              </>
+                            )}
+                            {displayWeight && (
+                              <>
+                                <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                                <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                  {displayWeight} {userUnit}
+                                </Text>
+                              </>
+                            )}
+                          </View>
+                          {exercise.notes && (
+                            <Text style={[styles.exerciseNotesView, { color: colors.textTertiary }]}>
+                              {exercise.notes}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                <View style={styles.modalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.modalButtonSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                    onPress={() => handleEditFromViewModal(viewingWorkout)}
+                  >
+                    <Pencil size={18} color={colors.primary} />
+                    <Text style={[styles.modalButtonSecondaryText, { color: colors.primary }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => handleCloseViewModal('workout')}
+                  >
+                    <Text style={styles.modalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Goal Detail Modal */}
+      <Modal
+        visible={showGoalViewModal}
+        animationType="slide"
+        onRequestClose={() => handleCloseViewModal('goal')}
+      >
+        <View style={[styles.viewModalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Target size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Goal Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => handleCloseViewModal('goal')}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            {viewingGoal && (
+              <View style={{ gap: 16 }}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Description</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingGoal.goal_type || 'No description'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Progress</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingGoal.current_value || 0} / {viewingGoal.target_value || 0}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Completion</Text>
+                  <Text style={[styles.detailValue, { color: colors.secondary }]}>
+                    {Math.round(getProgressPercentage(viewingGoal))}%
+                  </Text>
+                </View>
+
+                {viewingGoal.deadline ? (
+                  <View style={styles.detailRow}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Deadline</Text>
+                    <Text style={[styles.detailValue, { color: colors.text }]}>
+                      {new Date(viewingGoal.deadline).toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {viewingGoal.notes && viewingGoal.notes.trim() ? (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic', textAlign: 'left' }]}>
+                      {viewingGoal.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={[styles.progressBarContainer, { backgroundColor: colors.background, marginTop: 20 }]}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      { width: `${getProgressPercentage(viewingGoal)}%`, backgroundColor: viewingGoal.is_completed ? '#FFD700' : colors.secondary }
+                    ]}
+                  />
+                </View>
+
+                {viewingGoal.is_completed ? (
+                  <View style={styles.completedBadge}>
+                    <Trophy size={20} color="#FFD700" style={{ marginRight: 8 }} />
+                    <Text style={styles.completedText}>Completed! 🎉</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.viewModalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => handleCloseViewModal('goal')}
+                  >
+                    <Text style={styles.viewModalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* PR Detail Modal */}
+      <Modal
+        visible={showPRViewModal}
+        animationType="slide"
+        onRequestClose={() => handleCloseViewModal('pr')}
+      >
+        <View style={[styles.viewModalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TrendingUp size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>PR Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => handleCloseViewModal('pr')}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.modalContent}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            {viewingPR && (
+              <View style={{ gap: 16 }}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>
+                    {(viewingPR.test_type || '').replace(/_/g, ' ').toUpperCase() || 'Unknown'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Current PR</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {formatWeight(
+                      convertWeight(
+                        viewingPR.result_value || 0,
+                        viewingPR.result_unit || 'lbs',
+                        profile?.weight_unit || 'lbs'
+                      ),
+                      profile?.weight_unit || 'lbs'
+                    )}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Latest Date</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {new Date(viewingPR.created_at).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </View>
+
+                {viewingPR.notes && viewingPR.notes.trim() ? (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic', textAlign: 'left' }]}>
+                      {viewingPR.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {/* History Section */}
+                {(() => {
+                  const prHistory = strengthTests
+                    .filter(t => t.test_type === viewingPR.test_type)
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+                  return prHistory.length > 1 ? (
+                    <View style={styles.prHistorySection}>
+                      <Text style={[styles.prHistorySectionTitle, { color: colors.text }]}>
+                        History ({prHistory.length} entries)
+                      </Text>
+                      {prHistory.map((entry, index) => {
+                        const displayValue = convertWeight(
+                          entry.result_value || 0,
+                          entry.result_unit || 'lbs',
+                          profile?.weight_unit || 'lbs'
+                        );
+                        return (
+                          <View
+                            key={entry.id || index}
+                            style={[styles.prHistoryCard, { backgroundColor: colors.background }]}
+                          >
+                            <View style={styles.prHistoryHeader}>
+                              <Text style={[styles.prHistoryIndex, { color: colors.textSecondary }]}>
+                                #{index + 1}
+                              </Text>
+                              <Text style={[styles.prHistoryDate, { color: colors.textSecondary }]}>
+                                {new Date(entry.created_at || new Date()).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </Text>
+                            </View>
+                            <Text style={[styles.prHistoryValue, { color: colors.primary }]}>
+                              {formatWeight(displayValue, profile?.weight_unit || 'lbs')}
+                            </Text>
+                            {entry.notes && entry.notes.trim() ? (
+                              <Text style={[styles.prHistoryNotes, { color: colors.textTertiary }]}>
+                                {entry.notes}
+                              </Text>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null;
+                })()}
+
+                <View style={styles.viewModalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.viewModalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => handleCloseViewModal('pr')}
+                  >
+                    <Text style={styles.viewModalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </ScrollView>
+        </View>
       </Modal>
     </View>
   );
@@ -2045,5 +2598,194 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // View Modal Styles
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalButtonSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 2,
+  },
+  modalButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exercisesSectionView: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  exercisesSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  exerciseCardView: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  exerciseHeaderView: {
+    marginBottom: 6,
+  },
+  exerciseNameView: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exerciseDetailsView: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  exerciseDetailText: {
+    fontSize: 14,
+  },
+  exerciseDivider: {
+    fontSize: 14,
+    marginHorizontal: 6,
+  },
+  exerciseNotesView: {
+    fontSize: 13,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  viewModalButtonsRow: {
+    flexDirection: 'row',
+    marginTop: 24,
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  viewModalButtonPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewModalButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  viewModalButtonSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 2,
+  },
+  viewModalButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  progressBarContainer: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginVertical: 8,
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    marginTop: 12,
+  },
+  completedText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFD700',
+  },
+  prHistorySection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  prHistorySectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  prHistoryCard: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  prHistoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  prHistoryIndex: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  prHistoryDate: {
+    fontSize: 12,
+  },
+  prHistoryValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  prHistoryNotes: {
+    fontSize: 13,
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
+  viewModalContainer: {
+    flex: 1,
   },
 });

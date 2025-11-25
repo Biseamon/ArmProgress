@@ -12,70 +12,67 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { supabase, Workout, Cycle } from '@/lib/supabase';
-import { queryKeys, invalidateQueries } from '@/lib/react-query';
-import { useWorkoutsInfinite } from '@/hooks/useWorkouts';
+import { Workout, Cycle, Exercise as ExerciseType } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { AdMediumRectangle } from '@/components/AdMediumRectangle';
 import { PaywallModal } from '@/components/PaywallModal';
-import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock } from 'lucide-react-native';
+import { Plus, X, Save, Pencil, Trash2, Calendar as CalendarIcon, Clock, TrendingUp } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { convertFromLbs, convertToLbs, convertWeight } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { validateWorkout, validateExercise, validateCycle, getFirstError } from '@/lib/validation';
 import { handleError } from '@/lib/errorHandling';
+import {
+  useWorkouts,
+  useCycles,
+  useCreateWorkout,
+  useUpdateWorkout,
+  useDeleteWorkout,
+  useCreateCycle,
+  useUpdateCycle,
+  useDeleteCycle,
+  useSetActiveCycle,
+  useCreateExercises,
+} from '@/lib/react-query-sqlite-complete';
+import { getExercises, deleteExercisesByWorkout } from '@/lib/db/queries/exercises';
 
 type Exercise = {
   exercise_name: string;
   sets: number;
   reps: number;
   weight_lbs: number;
+  weight_unit?: 'lbs' | 'kg';
   notes: string;
 };
 
 export default function Training() {
   const { profile, isPremium } = useAuth();
-  const { colors, theme } = useTheme(); // <-- get theme from ThemeContext
+  const { colors, theme } = useTheme();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   
-  // Use React Query hooks for data fetching with pagination
-  const {
-    data: workoutsData,
-    isLoading: workoutsLoading,
-    isFetching: workoutsFetching,
-    hasNextPage,
-    fetchNextPage,
-    refetch: refetchWorkouts,
-  } = useWorkoutsInfinite(profile?.id);
+  // Use SQLite hooks for offline-first data
+  const { data: allWorkouts = [], isLoading: workoutsLoading } = useWorkouts();
+  const { data: cycles = [], isLoading: cyclesLoading } = useCycles();
   
-  const {
-    data: cyclesData,
-    isLoading: cyclesLoading,
-    refetch: refetchCycles,
-  } = useQuery({
-    queryKey: queryKeys.cycles.all(profile?.id || ''),
-    queryFn: async () => {
-      if (!profile?.id) return [];
-      const { data, error } = await supabase
-        .from('cycles')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('start_date', { ascending: false });
-      
-      if (error) throw error;
-      return data || [];
-    },
-    enabled: !!profile?.id,
-    staleTime: 5 * 60 * 1000,
-  });
+  // Pagination state
+  const [displayedWorkoutsCount, setDisplayedWorkoutsCount] = useState(10);
   
-  // Ensure data is always an array (never undefined)
-  const workouts = workoutsData || [];
-  const cycles = cyclesData || [];
+  // Get paginated workouts
+  const workouts = allWorkouts.slice(0, displayedWorkoutsCount);
+  const hasMoreWorkouts = displayedWorkoutsCount < allWorkouts.length;
+  
+  // Mutations
+  const createWorkoutMutation = useCreateWorkout();
+  const updateWorkoutMutation = useUpdateWorkout();
+  const deleteWorkoutMutation = useDeleteWorkout();
+  const createCycleMutation = useCreateCycle();
+  const updateCycleMutation = useUpdateCycle();
+  const deleteCycleMutation = useDeleteCycle();
+  const setActiveCycleMutation = useSetActiveCycle();
+  const createExercisesMutation = useCreateExercises();
   
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCycleModal, setShowCycleModal] = useState(false);
@@ -83,6 +80,8 @@ export default function Training() {
   const [saving, setSaving] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [editingCycle, setEditingCycle] = useState<Cycle | null>(null);
+  const [viewingWorkout, setViewingWorkout] = useState<Workout | null>(null);
+  const [showViewModal, setShowViewModal] = useState(false);
 
   const [workoutType, setWorkoutType] = useState('table_practice');
   const [duration, setDuration] = useState('30');
@@ -131,32 +130,21 @@ export default function Training() {
     setNotes(workout.notes || '');
     setSelectedCycleId(workout.cycle_id);
     
-    // Load exercises for this workout
-    const { data: exercisesData, error } = await supabase
-      .from('exercises')
-      .select('*')
-      .eq('workout_id', workout.id);
+    // Load exercises from SQLite
+    const exercisesData = await getExercises(workout.id);
     
-    if (error) {
-      console.error('Error loading exercises:', error);
-    } else if (exercisesData) {
-      const userUnit = profile?.weight_unit || 'lbs';
-      
-      // Convert exercise weights to user's current unit preference
-      const convertedExercises = exercisesData.map(exercise => {
-        const storedUnit = exercise.weight_unit || 'lbs';
-        const convertedWeight = convertWeight(exercise.weight_lbs, storedUnit, userUnit);
-        
-        return {
-          exercise_name: exercise.exercise_name,
-          sets: exercise.sets,
-          reps: exercise.reps,
-          weight_lbs: convertedWeight,
-          notes: exercise.notes || '',
-        };
-      });
-      
-      setExercises(convertedExercises);
+    if (exercisesData) {
+      // Preserve original weight_unit for proper conversion on display
+      const mappedExercises = exercisesData.map(exercise => ({
+        exercise_name: exercise.exercise_name,
+        sets: exercise.sets,
+        reps: exercise.reps,
+        weight_lbs: exercise.weight_lbs,
+        weight_unit: (exercise.weight_unit as 'lbs' | 'kg') || 'lbs',
+        notes: exercise.notes || '',
+      }));
+
+      setExercises(mappedExercises);
     }
     
     setShowWorkoutModal(true);
@@ -173,19 +161,8 @@ export default function Training() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Delete from database
-              const { error } = await supabase.from('workouts').delete().eq('id', workout.id);
-              
-              if (error) {
-                console.error('Error deleting workout:', error);
-                Alert.alert('Error', 'Failed to delete workout');
-                return;
-              }
-              
-              // Invalidate cache to trigger refetch
-              if (profile?.id) {
-                invalidateQueries.workouts(profile.id);
-              }
+              await deleteWorkoutMutation.mutateAsync(workout.id);
+              // Data refreshes automatically via React Query
             } catch (error) {
               const errorMessage = handleError(error);
               Alert.alert('Error', errorMessage);
@@ -199,7 +176,7 @@ export default function Training() {
   const handleAddExercise = () => {
     setExercises([
       ...exercises,
-      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, notes: '' },
+      { exercise_name: '', sets: 3, reps: 10, weight_lbs: 0, weight_unit: profile?.weight_unit || 'lbs', notes: '' },
     ]);
   };
 
@@ -207,10 +184,12 @@ export default function Training() {
     setExercises(exercises.filter((_, i) => i !== index));
   };
 
-  const handleUpdateExercise = (index: number, field: keyof Exercise, value: any) => {
-    const updated = [...exercises];
-    updated[index] = { ...updated[index], [field]: value };
-    setExercises(updated);
+  const handleUpdateExercise = (index: number, field: keyof Exercise, value: any, additionalUpdates?: Partial<Exercise>) => {
+    setExercises(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value, ...additionalUpdates };
+      return updated;
+    });
   };
 
   const handleSaveWorkout = async () => {
@@ -253,7 +232,6 @@ export default function Training() {
     }
 
     setSaving(true);
-    console.log('Starting save workout...');
 
     try {
       let workoutId: string;
@@ -261,46 +239,34 @@ export default function Training() {
 
       if (editingWorkout) {
         // Update existing workout
-        const { error: workoutError } = await supabase
-          .from('workouts')
-          .update({
+        await updateWorkoutMutation.mutateAsync({
+          id: editingWorkout.id,
+          updates: {
             workout_type: workoutType,
             duration_minutes: parseInt(duration),
             intensity: parseInt(intensity),
             notes,
             cycle_id: selectedCycleId,
-          })
-          .eq('id', editingWorkout.id);
-        
-        if (workoutError) throw workoutError;
+          },
+        });
         workoutId = editingWorkout.id;
   
         // Delete existing exercises for this workout
-        await supabase
-          .from('exercises')
-          .delete()
-          .eq('workout_id', workoutId);
+        await deleteExercisesByWorkout(workoutId);
         
       } else {
         // Create new workout
-        const { data: workoutData, error: workoutError } = await supabase
-          .from('workouts')
-          .insert({
-            user_id: profile.id,
-            workout_type: workoutType,
-            duration_minutes: parseInt(duration),
-            intensity: parseInt(intensity),
-            notes,
-            cycle_id: selectedCycleId,
-          })
-          .select()
-          .single();
-        
-        if (workoutError) throw workoutError;
-        workoutId = workoutData.id;
+        workoutId = await createWorkoutMutation.mutateAsync({
+          user_id: profile.id,
+          workout_type: workoutType,
+          duration_minutes: parseInt(duration),
+          intensity: parseInt(intensity),
+          notes,
+          cycle_id: selectedCycleId,
+        });
       }
   
-      // Insert exercises if any exist - WITH UNIT TRACKING
+      // Insert exercises if any exist
       if (exercises.length > 0) {
         const exercisesToInsert = exercises.map(exercise => ({
           workout_id: workoutId,
@@ -308,23 +274,16 @@ export default function Training() {
           sets: exercise.sets,
           reps: exercise.reps,
           weight_lbs: exercise.weight_lbs,
-          weight_unit: userUnit,
+          weight_unit: exercise.weight_unit || userUnit || 'lbs',
           notes: exercise.notes || '',
         }));
-  
-        const { error: exercisesError } = await supabase
-          .from('exercises')
-          .insert(exercisesToInsert);
-        
-        if (exercisesError) throw exercisesError;
+
+        await createExercisesMutation.mutateAsync(exercisesToInsert);
       }
       
       setShowWorkoutModal(false);
       resetForm();
-      // Invalidate cache to refetch workouts
-      if (profile?.id) {
-        invalidateQueries.workouts(profile.id);
-      }
+      // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -379,41 +338,48 @@ export default function Training() {
       return;
     }
 
-    if (editingCycle) {
-      await supabase.from('cycles').update({
-        name: cycleName,
-        description: cycleDescription,
-        cycle_type: cycleType,
-        start_date: formatDate(cycleStartDate),
-        end_date: formatDate(cycleEndDate),
-      }).eq('id', editingCycle.id);
-    } else {
-      await supabase.from('cycles').insert({
-        user_id: profile.id,
-        name: cycleName,
-        description: cycleDescription,
-        cycle_type: cycleType,
-        start_date: formatDate(cycleStartDate),
-        end_date: formatDate(cycleEndDate),
-        is_active: false,
-      });
-    }
+    try {
+      if (editingCycle) {
+        await updateCycleMutation.mutateAsync({
+          id: editingCycle.id,
+          updates: {
+            name: cycleName,
+            description: cycleDescription,
+            cycle_type: cycleType,
+            start_date: formatDate(cycleStartDate),
+            end_date: formatDate(cycleEndDate),
+          },
+        });
+      } else {
+        await createCycleMutation.mutateAsync({
+          user_id: profile.id,
+          name: cycleName,
+          description: cycleDescription,
+          cycle_type: cycleType,
+          start_date: formatDate(cycleStartDate),
+          end_date: formatDate(cycleEndDate),
+          is_active: false,
+        });
+      }
 
-    setShowCycleModal(false);
-    resetCycleForm();
-    setEditingCycle(null);
-    // Invalidate cache to refetch cycles
-    if (profile?.id) {
-      invalidateQueries.cycles(profile.id);
+      setShowCycleModal(false);
+      resetCycleForm();
+      setEditingCycle(null);
+      // Data refreshes automatically via React Query
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
   };
 
   const handleDeleteCycle = async (cycle: Cycle) => {
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to delete this cycle?')) {
-        await supabase.from('cycles').delete().eq('id', cycle.id);
-        if (profile?.id) {
-          invalidateQueries.cycles(profile.id);
+        try {
+          await deleteCycleMutation.mutateAsync(cycle.id);
+        } catch (error) {
+          const errorMessage = handleError(error);
+          Alert.alert('Error', errorMessage);
         }
       }
     } else {
@@ -423,9 +389,11 @@ export default function Training() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await supabase.from('cycles').delete().eq('id', cycle.id);
-            if (profile?.id) {
-              invalidateQueries.cycles(profile.id);
+            try {
+              await deleteCycleMutation.mutateAsync(cycle.id);
+            } catch (error) {
+              const errorMessage = handleError(error);
+              Alert.alert('Error', errorMessage);
             }
           },
         },
@@ -434,17 +402,18 @@ export default function Training() {
   };
 
   const handleToggleActiveCycle = async (cycle: Cycle) => {
-    await supabase.from('cycles').update({ is_active: false }).eq('user_id', profile!.id);
-
-    await supabase
-      .from('cycles')
-      .update({ is_active: !cycle.is_active })
-      .eq('id', cycle.id);
-
-    // Invalidate cache to refetch cycles
-    if (profile?.id) {
-      invalidateQueries.cycles(profile.id);
+    if (!profile) return;
+    
+    try {
+      await setActiveCycleMutation.mutateAsync(cycle.id);
+    } catch (error) {
+      const errorMessage = handleError(error);
+      Alert.alert('Error', errorMessage);
     }
+  };
+
+  const handleLoadMore = () => {
+    setDisplayedWorkoutsCount(prev => prev + 10);
   };
 
   const resetForm = () => {
@@ -488,6 +457,207 @@ export default function Training() {
       day: 'numeric',
       year: 'numeric',
     });
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  // Workout Detail Modal Component
+  const WorkoutDetailModal = () => {
+    const [exercises, setExercises] = useState<ExerciseType[]>([]);
+    const [loadingExercises, setLoadingExercises] = useState(false);
+
+    // Fetch exercises when workout is selected
+    useFocusEffect(
+      useCallback(() => {
+        if (viewingWorkout && showViewModal) {
+          setLoadingExercises(true);
+          getExercises(viewingWorkout.id)
+            .then((data) => {
+              setExercises(data || []);
+            })
+            .catch((error) => {
+              console.error('[WorkoutModal] Error fetching exercises:', error);
+              setExercises([]);
+            })
+            .finally(() => {
+              setLoadingExercises(false);
+            });
+        } else {
+          setExercises([]);
+        }
+      }, [viewingWorkout, showViewModal])
+    );
+
+    // Helper function to convert exercise weight to user's preferred unit
+    const getDisplayWeight = (exercise: ExerciseType) => {
+      if (!exercise.weight_lbs || exercise.weight_lbs === 0) return null;
+      
+      const userPreferredUnit = profile?.weight_unit || 'lbs';
+      const storedUnit = exercise.weight_unit || 'lbs';
+      
+      // Convert from stored unit to user's preferred unit
+      const convertedWeight = convertWeight(
+        exercise.weight_lbs,
+        storedUnit as 'lbs' | 'kg',
+        userPreferredUnit as 'lbs' | 'kg'
+      );
+      
+      return {
+        value: convertedWeight,
+        unit: userPreferredUnit,
+      };
+    };
+
+    if (!viewingWorkout) return null;
+
+    return (
+      <Modal
+        visible={showViewModal}
+        animationType="slide"
+        onRequestClose={() => setShowViewModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <TrendingUp size={24} color={colors.primary} />
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Details</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowViewModal(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={{ gap: 16 }}>
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Type</Text>
+                  <Text style={[styles.detailValue, { color: colors.primary }]}>
+                    {viewingWorkout.workout_type.replace(/_/g, ' ').toUpperCase()}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Date</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {formatDateTime(viewingWorkout.created_at)}
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Duration</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingWorkout.duration_minutes} minutes
+                  </Text>
+                </View>
+
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Intensity</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {viewingWorkout.intensity} / 10
+                  </Text>
+                </View>
+
+                {viewingWorkout.notes && (
+                  <View style={[styles.detailRow, { flexDirection: 'column', alignItems: 'flex-start' }]}>
+                    <Text style={[styles.detailLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Notes</Text>
+                    <Text style={[styles.detailValue, { color: colors.textSecondary, fontStyle: 'italic' }]}>
+                      {viewingWorkout.notes}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Exercises Section */}
+                {loadingExercises ? (
+                  <View style={styles.exercisesSectionView}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>Exercises</Text>
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+                  </View>
+                ) : exercises.length > 0 ? (
+                  <View style={styles.exercisesSectionView}>
+                    <Text style={[styles.exercisesSectionTitle, { color: colors.text }]}>
+                      Exercises ({exercises.length})
+                    </Text>
+                    {exercises.map((exercise, index) => (
+                      <View 
+                        key={exercise.id} 
+                        style={[styles.exerciseCardView, { backgroundColor: colors.background }]}
+                      >
+                        <View style={styles.exerciseHeaderView}>
+                          <Text style={[styles.exerciseNameView, { color: colors.text }]}>
+                            {index + 1}. {exercise.exercise_name}
+                          </Text>
+                        </View>
+                        <View style={styles.exerciseDetailsView}>
+                          {exercise.sets > 0 && (
+                            <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                              {exercise.sets} sets
+                            </Text>
+                          )}
+                          {exercise.reps > 0 && (
+                            <>
+                              <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                              <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                {exercise.reps} reps
+                              </Text>
+                            </>
+                          )}
+                          {(() => {
+                            const displayWeight = getDisplayWeight(exercise);
+                            return displayWeight ? (
+                              <>
+                                <Text style={[styles.exerciseDivider, { color: colors.border }]}>•</Text>
+                                <Text style={[styles.exerciseDetailText, { color: colors.textSecondary }]}>
+                                  {displayWeight.value} {displayWeight.unit}
+                                </Text>
+                              </>
+                            ) : null;
+                          })()}
+                        </View>
+                        {exercise.notes && (
+                          <Text style={[styles.exerciseNotesView, { color: colors.textTertiary }]}>
+                            {exercise.notes}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                <View style={styles.modalButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.modalButtonSecondary, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                    onPress={() => {
+                      setShowViewModal(false);
+                      setTimeout(() => handleEditWorkout(viewingWorkout), 300);
+                    }}
+                  >
+                    <Pencil size={18} color={colors.primary} />
+                    <Text style={[styles.modalButtonSecondaryText, { color: colors.primary }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButtonPrimary, { backgroundColor: colors.primary }]}
+                    onPress={() => setShowViewModal(false)}
+                  >
+                    <Text style={styles.modalButtonPrimaryText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+      </Modal>
+    );
   };
 
   return (
@@ -569,16 +739,16 @@ export default function Training() {
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Workouts</Text>
             <Text style={[styles.workoutCount, { color: colors.textSecondary }]}>
-              {workouts?.length || 0} loaded
+              {Math.min(displayedWorkoutsCount, allWorkouts?.length || 0)} of {allWorkouts?.length || 0}
             </Text>
           </View>
           
-          {workoutsLoading && workouts.length === 0 ? (
+          {workoutsLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
               <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading workouts...</Text>
             </View>
-          ) : workouts.length === 0 ? (
+          ) : allWorkouts.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workouts yet</Text>
               <Text style={[styles.emptySubtext, { color: colors.textTertiary }]}>Start tracking your training!</Text>
@@ -586,7 +756,15 @@ export default function Training() {
           ) : (
             <>
               {workouts.map((workout) => (
-                <View key={workout.id} style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}>
+                <TouchableOpacity 
+                  key={workout.id} 
+                  style={[styles.workoutCard, { backgroundColor: colors.cardBackground }]}
+                  onPress={() => {
+                    setViewingWorkout(workout);
+                    setShowViewModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.workoutHeader}>
                     <View style={styles.workoutInfo}>
                       <Text style={[styles.workoutType, { color: colors.primary }]}>
@@ -599,13 +777,19 @@ export default function Training() {
                     <View style={styles.workoutActions}>
                       <TouchableOpacity
                         style={styles.iconButton}
-                        onPress={() => handleEditWorkout(workout)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleEditWorkout(workout);
+                        }}
                       >
                         <Pencil size={18} color="#E63946" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.iconButton}
-                        onPress={() => handleDeleteWorkout(workout)}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteWorkout(workout);
+                        }}
                       >
                         <Trash2 size={18} color="#FF6B6B" />
                       </TouchableOpacity>
@@ -625,26 +809,21 @@ export default function Training() {
                       {workout.notes}
                     </Text>
                   )}
-                </View>
+                </TouchableOpacity>
               ))}
               
-              {/* Load More Button */}
-              {hasNextPage && (
+              {hasMoreWorkouts && (
                 <TouchableOpacity
-                  style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={fetchNextPage}
-                  disabled={workoutsFetching}
+                  style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+                  onPress={handleLoadMore}
+                  activeOpacity={0.7}
                 >
-                  {workoutsFetching ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <>
-                      <Text style={[styles.loadMoreText, { color: colors.primary }]}>Load More Workouts</Text>
-                      <Text style={[styles.loadMoreSubtext, { color: colors.textSecondary }]}>
-                        Tap to load 20 more
-                      </Text>
-                    </>
-                  )}
+                  <Text style={[styles.loadMoreText, { color: colors.primary }]}>
+                    Load More Workouts
+                  </Text>
+                  <Text style={[styles.loadMoreSubtext, { color: colors.textSecondary }]}>
+                    {allWorkouts.length - displayedWorkoutsCount} remaining
+                  </Text>
                 </TouchableOpacity>
               )}
             </>
@@ -836,10 +1015,22 @@ export default function Training() {
                       </Text>
                       <TextInput
                         style={[styles.smallInput, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-                        value={String(Math.round(exercise.weight_lbs))}
+                        value={String(Math.round(convertWeight(
+                          exercise.weight_lbs,
+                          exercise.weight_unit || 'lbs',  // Convert from stored unit
+                          profile?.weight_unit || 'lbs'   // To display unit
+                        )))}
                         onChangeText={(val) => {
-                          const inputValue = parseInt(val) || 0;
-                          handleUpdateExercise(index, 'weight_lbs', inputValue);
+                          // Allow empty string for clearing
+                          if (val === '') {
+                            handleUpdateExercise(index, 'weight_lbs', 0, { weight_unit: profile?.weight_unit || 'lbs' });
+                            return;
+                          }
+                          const inputValue = parseInt(val);
+                          if (!isNaN(inputValue)) {
+                            // Store value in user's current preferred unit
+                            handleUpdateExercise(index, 'weight_lbs', inputValue, { weight_unit: profile?.weight_unit || 'lbs' });
+                          }
                         }}
                         keyboardType="number-pad"
                       />
@@ -1066,6 +1257,9 @@ export default function Training() {
         onUpgrade={() => setShowPaywall(false)}
         feature="Unlimited workout tracking"
       />
+
+      {/* Workout Detail View Modal */}
+      <WorkoutDetailModal />
     </View>
   );
 }
@@ -1463,5 +1657,138 @@ const styles = StyleSheet.create({
   },
   dateButtonText: {
     fontSize: 16,
+  },
+  // View Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContentView: {
+    width: '100%',
+    maxWidth: 500,
+    height: '80%',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  modalHeaderView: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalTitleView: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  closeButtonView: {
+    padding: 4,
+  },
+  modalBodyView: {
+    gap: 16,
+    paddingTop: 16,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  detailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  modalButtonPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 2,
+  },
+  modalButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exercisesSectionView: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  exercisesSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  exerciseCardView: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  exerciseHeaderView: {
+    marginBottom: 6,
+  },
+  exerciseNameView: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exerciseDetailsView: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  exerciseDetailText: {
+    fontSize: 14,
+  },
+  exerciseDivider: {
+    fontSize: 14,
+    marginHorizontal: 6,
+  },
+  exerciseNotesView: {
+    fontSize: 13,
+    marginTop: 6,
+    fontStyle: 'italic',
   },
 });
