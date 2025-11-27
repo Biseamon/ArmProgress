@@ -54,6 +54,7 @@ import {
   useCreateMeasurement,
   useUpdateMeasurement,
   useDeleteMeasurement,
+  useCreateFeedPost,
 } from '@/lib/react-query-sqlite-complete';
 import { handleError } from '@/lib/errorHandling';
 
@@ -107,6 +108,7 @@ export default function Progress() {
   const createMeasurementMutation = useCreateMeasurement();
   const updateMeasurementMutation = useUpdateMeasurement();
   const deleteMeasurementMutation = useDeleteMeasurement();
+  const createFeedPost = useCreateFeedPost();
   
   const loading = goalsLoading || testsLoading || workoutsLoading;
   
@@ -327,6 +329,22 @@ export default function Progress() {
       if (newValue >= goal.target_value) {
         setShowConfetti(true);
         setTimeout(() => setShowConfetti(false), 5000);
+        Alert.alert(
+          'Share to Activity?',
+          'Congrats on finishing your goal! Want to share this to your Activity feed?',
+          [
+            { text: 'Not now', style: 'cancel' },
+            {
+              text: 'Share',
+              onPress: () =>
+                createFeedPost.mutate({
+                  type: 'goal',
+                  title: `Goal completed: ${goal.goal_type}`,
+                  body: `Hit ${goal.target_value} ${goal.goal_type ? '' : 'target'}`,
+                }),
+            },
+          ]
+        );
       }
       // Data refreshes automatically via React Query
     } catch (error) {
@@ -436,6 +454,22 @@ export default function Progress() {
       setEditingTest(null);
       setShowTestModal(false);
       Alert.alert('Success', 'PR saved successfully!');
+      Alert.alert(
+        'Share to Activity?',
+        'Share this PR to your Activity feed?',
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Share',
+            onPress: () =>
+              createFeedPost.mutate({
+                type: 'pr',
+                title: `New PR: ${finalTestType.replace(/_/g, ' ')}`,
+                body: `${formatWeight(resultValue, userUnit)} ${userUnit.toUpperCase()}`,
+              }),
+          },
+        ]
+      );
       // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);

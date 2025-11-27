@@ -189,12 +189,12 @@ export const upsertCycle = async (cycle: Cycle): Promise<void> => {
       cycle.id,
       cycle.user_id,
       cycle.name,
-      cycle.description,
+      cycle.description ?? '',
       cycle.cycle_type,
-      cycle.start_date,
-      cycle.end_date,
+      cycle.start_date ?? null,
+      cycle.end_date ?? null,
       cycle.is_active ? 1 : 0,
-      cycle.created_at,
+      cycle.created_at ?? now,
       now,
       now,
     ]
@@ -208,4 +208,3 @@ function generateUUID(): string {
     return v.toString(16);
   });
 }
-

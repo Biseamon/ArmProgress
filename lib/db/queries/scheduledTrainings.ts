@@ -99,6 +99,7 @@ export const createScheduledTraining = async (training: Omit<ScheduledTraining, 
   
   const id = generateUUID();
   const now = new Date().toISOString();
+  const completedAt = (training as any).completed_at ?? null;
   
   await db.runAsync(
     `INSERT INTO scheduled_trainings (
@@ -117,7 +118,7 @@ export const createScheduledTraining = async (training: Omit<ScheduledTraining, 
       training.notification_minutes_before || 30,
       training.notification_id || null,
       training.completed ? 1 : 0,
-      training.completed_at || null,
+      completedAt,
       now,
       now,
       now
@@ -231,6 +232,7 @@ export const markScheduledTrainingSynced = async (id: string): Promise<void> => 
 export const upsertScheduledTraining = async (training: ScheduledTraining): Promise<void> => {
   const db = await getDatabase();
   const now = new Date().toISOString();
+  const completedAt = (training as any).completed_at ?? null;
   
   await db.runAsync(
     `INSERT OR REPLACE INTO scheduled_trainings (
@@ -249,8 +251,8 @@ export const upsertScheduledTraining = async (training: ScheduledTraining): Prom
       training.notification_minutes_before,
       training.notification_id,
       training.completed ? 1 : 0,
-      training.completed_at,
-      training.created_at,
+      completedAt,
+      (training as any).created_at ?? now,
       now,
       now,
     ]
@@ -264,4 +266,3 @@ function generateUUID(): string {
     return v.toString(16);
   });
 }
-

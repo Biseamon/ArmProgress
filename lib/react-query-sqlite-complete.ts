@@ -16,6 +16,7 @@ import { InteractionManager } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { Workout, Cycle, Goal, StrengthTest, BodyMeasurement, ScheduledTraining, Profile } from './supabase';
 import { triggerSync } from './sync/syncEngine';
+import { getDatabase } from './db/database';
 
 // Default stale time (5 minutes) to prevent excessive refetches
 const DEFAULT_STALE_TIME = 5 * 60 * 1000;
@@ -104,6 +105,29 @@ import {
   updateWeightUnit,
 } from './db/queries/profile';
 
+// Activity (friends, groups, feed)
+import {
+  getFriends,
+  getFriendInvites,
+  getGroups as getGroupsLocal,
+  getFeedPosts,
+  upsertFriend,
+  upsertFriendInvite,
+  upsertGroup as upsertGroupLocal,
+  updateGroupSettings,
+  markGroupDeleted,
+  upsertFeedPost,
+  updateFriendStatus,
+  upsertGroupMember,
+  upsertGroupInvite,
+  upsertFeedReaction,
+  getGroupMembers,
+  updateGroupMemberStatus,
+  getGroupInvitesForUser,
+  getProfilesByIds,
+  getIncomingFriendInvites,
+} from './db/queries/activity';
+
 /**
  * QUERY KEYS
  */
@@ -146,6 +170,15 @@ export const queryKeys = {
   
   // Profile
   profile: (userId: string) => ['profile', userId] as const,
+
+  // Activity
+  friends: (userId: string) => ['friends', userId] as const,
+  friendInvites: (userId: string) => ['friendInvites', userId] as const,
+  groups: (userId: string) => ['groups', userId] as const,
+  feed: (userId: string) => ['feed', userId] as const,
+  groupMembers: (groupId: string) => ['groupMembers', groupId] as const,
+  groupInvites: (userId: string) => ['groupInvites', userId] as const,
+  profilesByIds: (ids: string[]) => ['profilesByIds', ...ids] as const,
 };
 
 // ==========================================
@@ -158,7 +191,7 @@ export const useWorkouts = () => {
     queryKey: queryKeys.workouts(profile?.id || ''),
     queryFn: async () => {
       // Defer until after animations/interactions complete
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getWorkouts(profile!.id);
     },
     enabled: !!profile?.id,
@@ -171,7 +204,7 @@ export const useRecentWorkouts = (limit: number = 10) => {
   return useQuery({
     queryKey: queryKeys.recentWorkouts(profile?.id || '', limit),
     queryFn: async () => {
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getRecentWorkouts(profile!.id, limit);
     },
     enabled: !!profile?.id,
@@ -193,11 +226,513 @@ export const useWorkoutStats = () => {
   return useQuery({
     queryKey: queryKeys.workoutStats(profile?.id || ''),
     queryFn: async () => {
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getWorkoutStats(profile!.id);
     },
     enabled: !!profile?.id,
     staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+// ==========================================
+// ACTIVITY (friends, invites, groups, feed)
+// ==========================================
+
+export const useFriends = () => {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.friends(profile?.id || ''),
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getFriends(profile!.id);
+    },
+    enabled: !!profile?.id,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useFriendInvites = () => {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.friendInvites(profile?.id || ''),
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getFriendInvites(profile!.id);
+    },
+    enabled: !!profile?.id,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useIncomingFriendInvites = () => {
+  const { profile } = useAuth();
+  const email = profile?.email?.toLowerCase() || '';
+  return useQuery({
+    queryKey: ['friendInvites', 'incoming', email],
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getIncomingFriendInvites(email);
+    },
+    enabled: !!email,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useGroups = () => {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.groups(profile?.id || ''),
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getGroupsLocal(profile!.id);
+    },
+    enabled: !!profile?.id,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useFeed = () => {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.feed(profile?.id || ''),
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getFeedPosts(profile!.id);
+    },
+    enabled: !!profile?.id,
+    staleTime: DEFAULT_STALE_TIME / 2,
+  });
+};
+
+export const useGroupMembers = (groupId?: string | null) => {
+  const enabled = !!groupId;
+  return useQuery({
+    queryKey: queryKeys.groupMembers(groupId || ''),
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getGroupMembers(groupId!);
+    },
+    enabled,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useGroupInvites = (userId?: string | null, email?: string | null) => {
+  const enabled = !!userId;
+  return useQuery({
+    queryKey: queryKeys.groupInvites(userId || ''),
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getGroupInvitesForUser(userId!, email || null);
+    },
+    enabled,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useProfilesByIds = (ids: string[]) => {
+  return useQuery({
+    queryKey: queryKeys.profilesByIds(ids),
+    queryFn: async () => getProfilesByIds(ids),
+    enabled: ids.length > 0,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+// Mutations (local upsert + trigger sync)
+export const useCreateFriendRequest = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ friendUserId, status }: { friendUserId: string; status?: 'pending' | 'accepted' | 'rejected' }) => {
+      if (!profile) throw new Error('No profile');
+      const id = `friend-${Date.now()}`;
+      await upsertFriend({
+        id,
+        user_id: profile.id,
+        friend_user_id: friendUserId,
+        status: status || 'pending',
+        pending_sync: 1,
+      });
+      return id;
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.friends(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useCreateFriendInvite = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ email, token }: { email: string; token?: string }) => {
+      if (!profile) throw new Error('No profile');
+      const id = `finv-${Date.now()}`;
+      await upsertFriendInvite({
+        id,
+        inviter_id: profile.id,
+        invitee_email: email.trim().toLowerCase(),
+        token: token || `tok-${Date.now()}`,
+        status: 'pending',
+        pending_sync: 1,
+      });
+      return id;
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.friendInvites(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useRespondToFriendInvite = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ invite, accept }: { invite: any; accept: boolean }) => {
+      if (!profile) throw new Error('No profile');
+      if (accept) {
+        const friendIdA = `friend-${Date.now()}`;
+        const friendIdB = `friend-${Date.now() + 1}`;
+        await upsertFriend({
+          id: friendIdA,
+          user_id: invite.inviter_id,
+          friend_user_id: profile.id,
+          status: 'accepted',
+          pending_sync: 1,
+        });
+        await upsertFriend({
+          id: friendIdB,
+          user_id: profile.id,
+          friend_user_id: invite.inviter_id,
+          status: 'accepted',
+          pending_sync: 1,
+        });
+        await upsertFriendInvite({
+          id: invite.id,
+          inviter_id: invite.inviter_id,
+          invitee_email: invite.invitee_email,
+          token: invite.token,
+          status: 'accepted',
+          pending_sync: 1,
+        });
+      } else {
+        // Decline: remove the invite locally so it doesn't keep showing
+        await upsertFriendInvite({
+          id: invite.id,
+          inviter_id: invite.inviter_id,
+          invitee_email: invite.invitee_email,
+          token: invite.token,
+          status: 'pending',
+          pending_sync: 1,
+        });
+        const db = await getDatabase();
+        await db.runAsync('UPDATE friend_invites SET deleted = 1, modified_at = datetime(\'now\'), pending_sync = 1 WHERE id = ?', [invite.id]);
+      }
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.friends(profile.id) });
+        queryClient.invalidateQueries({ queryKey: ['friendInvites', 'incoming'] });
+        queryClient.invalidateQueries({ queryKey: queryKeys.friendInvites(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useRespondToFriendRequest = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, requesterId, accept }: { id: string; requesterId: string; accept: boolean }) => {
+      if (!profile) throw new Error('No profile');
+      // Update incoming row
+      await updateFriendStatus(id, accept ? 'accepted' : 'rejected');
+      // If accepted, create reciprocal accepted row
+      if (accept) {
+        const reciprocalId = `friend-${profile.id}-${requesterId}`;
+        const originalId = `friend-${requesterId}-${profile.id}`;
+        await upsertFriend({
+          id: reciprocalId,
+          user_id: profile.id,
+          friend_user_id: requesterId,
+          status: 'accepted',
+          pending_sync: 1,
+        });
+        // Also ensure requester's row is accepted (id may be time-based; use upsert with deterministic id)
+        await upsertFriend({
+          id: originalId,
+          user_id: requesterId,
+          friend_user_id: profile.id,
+          status: 'accepted',
+          pending_sync: 1,
+        });
+      }
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.friends(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useCreateGroup = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ name, description, visibility }: { name: string; description?: string; visibility: 'public' | 'private' }) => {
+      if (!profile) throw new Error('No profile');
+      const id = `grp-${Date.now()}`;
+      await upsertGroupLocal({
+        id,
+        owner_id: profile.id,
+        name,
+        description: description || null,
+        visibility,
+        pending_sync: 1,
+      });
+      // Add owner membership row
+      const memberId = `gmem-${Date.now()}`;
+      await upsertGroupMember({
+        id: memberId,
+        group_id: id,
+        user_id: profile.id,
+        role: 'owner',
+        status: 'active',
+        pending_sync: 1,
+      });
+      return id;
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useUpdateGroup = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId, description, visibility }: { groupId: string; description?: string | null; visibility?: 'public' | 'private' }) => {
+      if (!profile) throw new Error('No profile');
+      await updateGroupSettings(groupId, { description, visibility });
+    },
+    onSuccess: (_, variables) => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.groupMembers(variables.groupId) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useDeleteGroup = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId }: { groupId: string }) => {
+      if (!profile) throw new Error('No profile');
+      await markGroupDeleted(groupId);
+    },
+    onSuccess: (_, variables) => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.groupMembers(variables.groupId) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useRequestJoinGroup = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId, status }: { groupId: string; status?: 'pending' | 'active' }) => {
+      if (!profile) throw new Error('No profile');
+      const id = `gm-${Date.now()}`;
+      await upsertGroupMember({
+        id,
+        group_id: groupId,
+        user_id: profile.id,
+        role: 'member',
+        status: status || 'pending',
+        pending_sync: 1,
+      });
+      return id;
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useCreateFeedPost = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ type, title, body, groupId, metadata }: { type: 'goal' | 'pr' | 'summary'; title: string; body?: string; groupId?: string | null; metadata?: any }) => {
+      if (!profile) throw new Error('No profile');
+      const id = `post-${Date.now()}`;
+      await upsertFeedPost({
+        id,
+        user_id: profile.id,
+        group_id: groupId ?? null,
+        type,
+        title,
+        body: body || null,
+        metadata: metadata || null,
+        pending_sync: 1,
+      });
+      return id;
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.feed(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useUpdateGroupMemberStatus = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: 'active' | 'pending' | 'rejected' }) => {
+      await updateGroupMemberStatus(id, status);
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
+        // Refresh members for any group
+        queryClient.invalidateQueries({ queryKey: ['groupMembers'] as any });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useRespondGroupInvite = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      invite,
+      accept,
+    }: {
+      invite: {
+        id: string;
+        group_id: string;
+        inviter_id?: string | null;
+        invitee_user_id?: string | null;
+        invitee_email?: string | null;
+        token?: string | null;
+      };
+      accept: boolean;
+    }) => {
+      if (!profile) throw new Error('No profile');
+      // Update invite status locally
+      await upsertGroupInvite({
+        id: invite.id,
+        group_id: invite.group_id,
+        inviter_id: invite.inviter_id || null,
+        invitee_user_id: profile.id,
+        invitee_email: invite.invitee_email || null,
+        token: invite.token || null,
+        status: accept ? 'accepted' : 'rejected',
+        pending_sync: 1,
+      });
+      // If accepted, ensure membership row is active
+      if (accept) {
+        const memberId = `gmem-${Date.now()}`;
+        await upsertGroupMember({
+          id: memberId,
+          group_id: invite.group_id,
+          user_id: profile.id,
+          role: 'member',
+          status: 'active',
+          pending_sync: 1,
+        });
+      }
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.groupInvites(profile.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useCreateGroupInvite = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ groupId, email, inviteeUserId }: { groupId: string; email?: string; inviteeUserId?: string }) => {
+      if (!profile) throw new Error('No profile');
+      const id = `ginv-${Date.now()}`;
+      await upsertGroupInvite({
+        id,
+        group_id: groupId,
+        inviter_id: profile.id,
+        invitee_user_id: inviteeUserId || null,
+        invitee_email: email?.trim().toLowerCase() || null,
+        token: `gtok-${Date.now()}`,
+        status: 'pending',
+        pending_sync: 1,
+      });
+      return id;
+    },
+    onSuccess: (_, variables) => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.groupInvites(profile.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useReactToFeed = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ postId, reaction }: { postId: string; reaction: 'arm' | 'fire' | 'like' }) => {
+      if (!profile) throw new Error('No profile');
+      const id = `react-${postId}-${reaction}-${profile.id}`;
+      await upsertFeedReaction({
+        id,
+        post_id: postId,
+        user_id: profile.id,
+        reaction,
+        pending_sync: 1,
+      });
+      return id;
+    },
+    onSuccess: (_, variables) => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.feed(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
   });
 };
 
@@ -207,7 +742,10 @@ export const useCreateWorkout = () => {
 
   return useMutation({
     mutationFn: async (workout: Omit<Workout, 'id' | 'updated_at' | 'created_at'> & { created_at?: string }) => {
-      const id = await createWorkout(workout);
+      const id = await createWorkout({
+        ...workout,
+        created_at: workout.created_at || new Date().toISOString(),
+      });
       return id;
     },
     onSuccess: () => {
@@ -294,7 +832,7 @@ export const useCycles = () => {
   return useQuery({
     queryKey: queryKeys.cycles(profile?.id || ''),
     queryFn: async () => {
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getCycles(profile!.id);
     },
     enabled: !!profile?.id,
@@ -396,7 +934,7 @@ export const useGoals = () => {
   return useQuery({
     queryKey: queryKeys.goals(profile?.id || ''),
     queryFn: async () => {
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getGoals(profile!.id);
     },
     enabled: !!profile?.id,
@@ -519,7 +1057,7 @@ export const useStrengthTests = () => {
   return useQuery({
     queryKey: queryKeys.strengthTests(profile?.id || ''),
     queryFn: async () => {
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getStrengthTests(profile!.id);
     },
     enabled: !!profile?.id,
@@ -602,7 +1140,7 @@ export const useMeasurements = () => {
   return useQuery({
     queryKey: queryKeys.measurements(profile?.id || ''),
     queryFn: async () => {
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getMeasurements(profile!.id);
     },
     enabled: !!profile?.id,
@@ -685,7 +1223,7 @@ export const useScheduledTrainings = () => {
   return useQuery({
     queryKey: queryKeys.scheduledTrainings(profile?.id || ''),
     queryFn: async () => {
-      await new Promise(resolve => InteractionManager.runAfterInteractions(resolve));
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
       return getScheduledTrainings(profile!.id);
     },
     enabled: !!profile?.id,
@@ -850,4 +1388,3 @@ export const useSyncTrigger = () => {
     },
   });
 };
-

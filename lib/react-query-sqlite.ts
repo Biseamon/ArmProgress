@@ -5,7 +5,7 @@
  * All mutations write to SQLite first, then mark for sync.
  */
 
-import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Workout } from './supabase';
 import {
@@ -95,8 +95,11 @@ export const useCreateWorkout = () => {
   const { profile } = useAuth();
   
   return useMutation({
-    mutationFn: async (workout: Omit<Workout, 'id' | 'created_at' | 'updated_at'>) => {
-      const id = await createWorkout(workout);
+    mutationFn: async (workout: Omit<Workout, 'id' | 'updated_at' | 'created_at'> & { created_at?: string }) => {
+      const id = await createWorkout({
+        ...workout,
+        created_at: workout.created_at || new Date().toISOString(),
+      });
       return id;
     },
     onSuccess: () => {
@@ -195,4 +198,3 @@ export const useSyncTrigger = () => {
     },
   });
 };
-

@@ -1,5 +1,5 @@
 import { Tabs, Redirect } from 'expo-router';
-import { Home, Dumbbell, TrendingUp, User, Calendar } from 'lucide-react-native';
+import { Home, Dumbbell, TrendingUp, User, Calendar, Activity } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useResponsive } from '@/lib/useResponsive';
@@ -93,6 +93,13 @@ export default function TabLayout() {
           options={{
             title: 'Progress',
             tabBarIcon: ({ color }) => <TrendingUp size={iconSize} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="activity"
+          options={{
+            title: 'Activity',
+            tabBarIcon: ({ color }) => <Activity size={iconSize} color={color} />,
           }}
         />
         <Tabs.Screen

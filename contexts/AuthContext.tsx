@@ -48,6 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // State: User profile from database (contains full_name, is_premium, weight_unit, etc.)
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // State: Loading indicator for initial authentication check
   const [loading, setLoading] = useState(true);
@@ -122,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (session?.user && !error) {
               console.log('[AuthContext] Cached session found for user:', session.user.email);
               setSession(session);
+              setCurrentUserId(session.user.id);
               // Load profile from SQLite cache (forceOffline = true)
               await fetchProfile(session.user.id, true);
             } else {
@@ -137,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('[AuthContext] Online mode - validating session with Supabase...');
           const { data: { session } } = await supabase.auth.getSession();
           setSession(session);
+          setCurrentUserId(session?.user?.id ?? null);
           if (session?.user) {
             await fetchProfile(session.user.id);
           }
@@ -154,12 +157,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for authentication state changes
     // This fires when user logs in, logs out, or token is refreshed
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUserId = session?.user?.id ?? null;
+
       setSession(session);
+      setCurrentUserId(nextUserId);
+
       if (session?.user) {
-        // User logged in - fetch their profile
+        // User logged in - fetch their profile (fire and forget to avoid blocking UI)
         fetchProfile(session.user.id);
       } else {
-        // User logged out - clear profile
         setProfile(null);
       }
       setLoading(false);

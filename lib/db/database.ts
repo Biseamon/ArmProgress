@@ -245,6 +245,138 @@ const createTables = async (database: SQLite.SQLiteDatabase) => {
     CREATE INDEX IF NOT EXISTS idx_scheduled_trainings_user_id ON scheduled_trainings(user_id);
     CREATE INDEX IF NOT EXISTS idx_scheduled_trainings_date ON scheduled_trainings(scheduled_date);
   `);
+
+  // Friends table (symmetric accepted stored as two rows)
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS friends (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      friend_user_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending','accepted','rejected')),
+      created_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_friends_pair ON friends(user_id, friend_user_id);
+    CREATE INDEX IF NOT EXISTS idx_friends_status ON friends(status);
+    CREATE INDEX IF NOT EXISTS idx_friends_pending_sync ON friends(pending_sync);
+  `);
+
+  // Friend invites (for non-users, auto-accept on signup)
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS friend_invites (
+      id TEXT PRIMARY KEY,
+      inviter_id TEXT NOT NULL,
+      invitee_email TEXT NOT NULL,
+      token TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted')),
+      created_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_friend_invites_email ON friend_invites(invitee_email);
+    CREATE INDEX IF NOT EXISTS idx_friend_invites_inviter ON friend_invites(inviter_id);
+    CREATE INDEX IF NOT EXISTS idx_friend_invites_pending_sync ON friend_invites(pending_sync);
+  `);
+
+  // Groups
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','private')),
+      created_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_groups_owner ON groups(owner_id);
+    CREATE INDEX IF NOT EXISTS idx_groups_visibility ON groups(visibility);
+    CREATE INDEX IF NOT EXISTS idx_groups_pending_sync ON groups(pending_sync);
+  `);
+
+  // Group members
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS group_members (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner','admin','member')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('active','pending','rejected')),
+      created_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, user_id);
+    CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
+    CREATE INDEX IF NOT EXISTS idx_group_members_pending_sync ON group_members(pending_sync);
+  `);
+
+  // Group invites
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS group_invites (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL,
+      inviter_id TEXT NOT NULL,
+      invitee_user_id TEXT,
+      invitee_email TEXT,
+      token TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','rejected')),
+      created_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_invites_group ON group_invites(group_id);
+    CREATE INDEX IF NOT EXISTS idx_group_invites_inviter ON group_invites(inviter_id);
+    CREATE INDEX IF NOT EXISTS idx_group_invites_invitee_user ON group_invites(invitee_user_id);
+    CREATE INDEX IF NOT EXISTS idx_group_invites_pending_sync ON group_invites(pending_sync);
+  `);
+
+  // Feed posts
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS feed_posts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      group_id TEXT,
+      type TEXT NOT NULL CHECK (type IN ('goal','pr','summary')),
+      title TEXT NOT NULL,
+      body TEXT,
+      metadata TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_user ON feed_posts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_group ON feed_posts(group_id);
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_pending_sync ON feed_posts(pending_sync);
+    CREATE INDEX IF NOT EXISTS idx_feed_posts_created ON feed_posts(created_at);
+  `);
+
+  // Feed reactions
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS feed_reactions (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      reaction TEXT NOT NULL CHECK (reaction IN ('arm','fire','like')),
+      created_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_reactions_unique ON feed_reactions(post_id, user_id, reaction);
+    CREATE INDEX IF NOT EXISTS idx_feed_reactions_user ON feed_reactions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_feed_reactions_post ON feed_reactions(post_id);
+    CREATE INDEX IF NOT EXISTS idx_feed_reactions_pending_sync ON feed_reactions(pending_sync);
+  `);
 };
 
 /**
@@ -297,3 +429,21 @@ export const updateSyncMetadata = async (userId: string) => {
   );
 };
 
+/**
+ * Clear social data when switching accounts to avoid cross-user leakage.
+ * Leaves workouts/goals intact; only social tables are wiped.
+ */
+export const clearSocialData = async () => {
+  const database = await getDatabase();
+  await database.execAsync(`
+    DELETE FROM feed_reactions;
+    DELETE FROM feed_posts;
+    DELETE FROM group_invites;
+    DELETE FROM group_members;
+    DELETE FROM groups;
+    DELETE FROM friend_invites;
+    DELETE FROM friends;
+  `);
+  await database.runAsync('UPDATE sync_metadata SET last_sync_at = NULL, user_id = NULL WHERE id = 1');
+  console.log('[Database] Social tables cleared for user switch');
+};

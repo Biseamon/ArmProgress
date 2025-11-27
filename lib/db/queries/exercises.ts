@@ -203,7 +203,7 @@ export const upsertExercise = async (exercise: Exercise): Promise<void> => {
       exercise.weight_lbs,
       exercise.weight_unit,
       exercise.notes,
-      exercise.created_at,
+      (exercise as any).created_at ?? now,
       now,
     ]
   );
@@ -234,4 +234,3 @@ function generateUUID(): string {
     return v.toString(16);
   });
 }
-

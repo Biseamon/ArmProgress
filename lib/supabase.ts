@@ -17,8 +17,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Load Supabase credentials from environment variables
 // Supports both Expo config (app.json) and .env file
-const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl =
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_URL ||
+  Constants.expoConfig?.extra?.supabaseUrl ||
+  process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey =
+  Constants.expoConfig?.extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  Constants.expoConfig?.extra?.supabaseAnonKey ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+if (__DEV__) {
+  console.log('[Supabase] URL configured:', supabaseUrl ? `${supabaseUrl.slice(0, 25)}...` : 'undefined');
+}
 
 // Ensure required environment variables are present
 if (!supabaseUrl || !supabaseAnonKey) {
