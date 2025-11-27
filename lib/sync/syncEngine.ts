@@ -43,6 +43,15 @@ import {
   markFeedReactionSynced,
   upsertFeedReaction,
 } from '@/lib/db/queries/activitySync';
+import {
+  upsertFriend as upsertFriendLocal,
+  upsertFriendInvite as upsertFriendInviteLocal,
+  upsertGroup as upsertGroupLocal,
+  upsertGroupMember as upsertGroupMemberLocal,
+  upsertGroupInvite as upsertGroupInviteLocal,
+  upsertFeedPost as upsertFeedPostLocal,
+  upsertFeedReaction as upsertFeedReactionLocal,
+} from '@/lib/db/queries/activity';
 
 let isSyncing = false;
 let syncQueue: string[] = [];
@@ -196,44 +205,56 @@ const pushLocalChanges = async (userId: string) => {
   }
 
   // STEP X: Push social data (friends, invites, groups, feed)
-  const pendingFriends: any[] = await getPendingFriends();
+  const pendingFriends: any[] = await getPendingFriends(userId);
   for (const row of pendingFriends) {
     hasChanges = true;
     try {
-      const { error } = await supabase.from('friends').upsert({
-        id: row.id,
-        user_id: row.user_id,
-        friend_user_id: row.friend_user_id,
-        status: row.status,
-        created_at: row.created_at,
-      });
-      if (error) throw error;
+      if ((row as any).deleted) {
+        const { error } = await supabase.from('friends').delete().eq('id', row.id);
+        if (error) throw error;
+        await db.runAsync('DELETE FROM friends WHERE id = ?', [row.id]);
+      } else {
+        const { error } = await supabase.from('friends').upsert({
+          id: row.id,
+          user_id: row.user_id,
+          friend_user_id: row.friend_user_id,
+          status: row.status,
+          created_at: row.created_at,
+        });
+        if (error) throw error;
+      }
       await markFriendSynced(row.id);
     } catch (error) {
       console.error('[Sync] Failed to push friend', row.id, error);
     }
   }
 
-  const pendingFriendInvites: any[] = await getPendingFriendInvites();
+  const pendingFriendInvites: any[] = await getPendingFriendInvites(userId);
   for (const row of pendingFriendInvites) {
     hasChanges = true;
     try {
-      const { error } = await supabase.from('friend_invites').upsert({
-        id: row.id,
-        inviter_id: row.inviter_id,
-        invitee_email: row.invitee_email,
-        token: row.token,
-        status: row.status,
-        created_at: row.created_at,
-      });
-      if (error) throw error;
+      if ((row as any).deleted) {
+        const { error } = await supabase.from('friend_invites').delete().eq('id', row.id);
+        if (error) throw error;
+        await db.runAsync('DELETE FROM friend_invites WHERE id = ?', [row.id]);
+      } else {
+        const { error } = await supabase.from('friend_invites').upsert({
+          id: row.id,
+          inviter_id: row.inviter_id,
+          invitee_email: row.invitee_email,
+          token: row.token,
+          status: row.status,
+          created_at: row.created_at,
+        });
+        if (error) throw error;
+      }
       await markFriendInviteSynced(row.id);
     } catch (error) {
       console.error('[Sync] Failed to push friend invite', row.id, error);
     }
   }
 
-  const pendingGroups: any[] = await getPendingGroups();
+  const pendingGroups: any[] = await getPendingGroups(userId);
   for (const row of pendingGroups) {
     hasChanges = true;
     try {
@@ -254,86 +275,179 @@ const pushLocalChanges = async (userId: string) => {
           created_at: row.created_at,
         });
         if (error) throw error;
-        await markGroupSynced(row.id);
       }
+      await markGroupSynced(row.id);
     } catch (error) {
       console.error('[Sync] Failed to push group', row.id, error);
     }
   }
 
-  const pendingGroupMembers: any[] = await getPendingGroupMembers();
+  const pendingGroupMembers: any[] = await getPendingGroupMembers(userId);
   for (const row of pendingGroupMembers) {
     hasChanges = true;
     try {
-      const { error } = await supabase.from('group_members').upsert({
-        id: row.id,
-        group_id: row.group_id,
-        user_id: row.user_id,
-        role: row.role,
-        status: row.status,
-        created_at: row.created_at,
-      });
-      if (error) throw error;
+      if ((row as any).deleted) {
+        const { error } = await supabase.from('group_members').delete().eq('id', row.id);
+        if (error) throw error;
+        await db.runAsync('DELETE FROM group_members WHERE id = ?', [row.id]);
+      } else {
+        // Check if group exists locally first (to detect orphaned members)
+        const localGroup = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM groups WHERE id = ?',
+          [row.group_id]
+        );
+
+        if (!localGroup) {
+          // Group doesn't exist locally - this is an orphaned member, clean it up
+          console.log(`[Sync] Cleaning up orphaned group_member ${row.id} - group ${row.group_id} doesn't exist locally`);
+          await db.runAsync('DELETE FROM group_members WHERE id = ?', [row.id]);
+          continue;
+        }
+
+        // Check if group exists in Supabase before trying to add member
+        const { data: groupExists } = await supabase
+          .from('groups')
+          .select('id')
+          .eq('id', row.group_id)
+          .single();
+
+        if (!groupExists) {
+          console.log(`[Sync] Skipping group_member ${row.id} - group ${row.group_id} not in Supabase yet`);
+          continue; // Skip this member, will retry on next sync after group is pushed
+        }
+
+        const { error } = await supabase.from('group_members').upsert({
+          id: row.id,
+          group_id: row.group_id,
+          user_id: row.user_id,
+          role: row.role,
+          status: row.status,
+          created_at: row.created_at,
+        });
+        if (error) throw error;
+      }
       await markGroupMemberSynced(row.id);
     } catch (error) {
       console.error('[Sync] Failed to push group member', row.id, error);
     }
   }
 
-  const pendingGroupInvites: any[] = await getPendingGroupInvites();
+  const pendingGroupInvites: any[] = await getPendingGroupInvites(userId);
   for (const row of pendingGroupInvites) {
     hasChanges = true;
     try {
-      const { error } = await supabase.from('group_invites').upsert({
-        id: row.id,
-        group_id: row.group_id,
-        inviter_id: row.inviter_id,
-        invitee_user_id: row.invitee_user_id,
-        invitee_email: row.invitee_email,
-        token: row.token,
-        status: row.status,
-        created_at: row.created_at,
-      });
-      if (error) throw error;
+      if ((row as any).deleted) {
+        const { error } = await supabase.from('group_invites').delete().eq('id', row.id);
+        if (error) throw error;
+        await db.runAsync('DELETE FROM group_invites WHERE id = ?', [row.id]);
+      } else {
+        // Check if group exists locally first (to detect orphaned invites)
+        const localGroup = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM groups WHERE id = ?',
+          [row.group_id]
+        );
+
+        if (!localGroup) {
+          // Group doesn't exist locally - this is an orphaned invite, clean it up
+          console.log(`[Sync] Cleaning up orphaned group_invite ${row.id} - group ${row.group_id} doesn't exist locally`);
+          await db.runAsync('DELETE FROM group_invites WHERE id = ?', [row.id]);
+          continue;
+        }
+
+        const { error } = await supabase.from('group_invites').upsert({
+          id: row.id,
+          group_id: row.group_id,
+          inviter_id: row.inviter_id,
+          invitee_user_id: row.invitee_user_id,
+          invitee_email: row.invitee_email,
+          token: row.token,
+          status: row.status,
+          created_at: row.created_at,
+        });
+        if (error) throw error;
+      }
       await markGroupInviteSynced(row.id);
     } catch (error) {
       console.error('[Sync] Failed to push group invite', row.id, error);
     }
   }
 
-  const pendingFeedPosts: any[] = await getPendingFeedPosts();
+  const pendingFeedPosts: any[] = await getPendingFeedPosts(userId);
   for (const row of pendingFeedPosts) {
     hasChanges = true;
     try {
-      const { error } = await supabase.from('feed_posts').upsert({
-        id: row.id,
-        user_id: row.user_id,
-        group_id: row.group_id,
-        type: row.type,
-        title: row.title,
-        body: row.body,
-        metadata: row.metadata ? JSON.parse(row.metadata) : null,
-        created_at: row.created_at,
-      });
-      if (error) throw error;
+      if ((row as any).deleted) {
+        const { error } = await supabase.from('feed_posts').delete().eq('id', row.id);
+        if (error) throw error;
+        await db.runAsync('DELETE FROM feed_posts WHERE id = ?', [row.id]);
+      } else {
+        const { error } = await supabase.from('feed_posts').upsert({
+          id: row.id,
+          user_id: row.user_id,
+          group_id: row.group_id,
+          type: row.type,
+          title: row.title,
+          body: row.body,
+          metadata: row.metadata ? JSON.parse(row.metadata) : null,
+          created_at: row.created_at,
+        });
+        if (error) throw error;
+      }
       await markFeedPostSynced(row.id);
     } catch (error) {
       console.error('[Sync] Failed to push feed post', row.id, error);
     }
   }
 
-  const pendingFeedReactions: any[] = await getPendingFeedReactions();
+  const pendingFeedReactions: any[] = await getPendingFeedReactions(userId);
   for (const row of pendingFeedReactions) {
     hasChanges = true;
     try {
-      const { error } = await supabase.from('feed_reactions').upsert({
-        id: row.id,
-        post_id: row.post_id,
-        user_id: row.user_id,
-        reaction: row.reaction,
-        created_at: row.created_at,
-      });
-      if (error) throw error;
+      if ((row as any).deleted) {
+        const { error } = await supabase.from('feed_reactions').delete().eq('id', row.id);
+        if (error) throw error;
+        await db.runAsync('DELETE FROM feed_reactions WHERE id = ?', [row.id]);
+      } else {
+        // Check if post exists locally first (to detect orphaned reactions)
+        const localPost = await db.getFirstAsync<{ id: string }>(
+          'SELECT id FROM feed_posts WHERE id = ?',
+          [row.post_id]
+        );
+
+        if (!localPost) {
+          // Post doesn't exist locally - this is an orphaned reaction, clean it up
+          console.log(`[Sync] Cleaning up orphaned feed_reaction ${row.id} - post ${row.post_id} doesn't exist locally`);
+          await db.runAsync('DELETE FROM feed_reactions WHERE id = ?', [row.id]);
+          continue;
+        }
+
+        // Check if post exists in Supabase before trying to add reaction
+        const { data: postExists } = await supabase
+          .from('feed_posts')
+          .select('id')
+          .eq('id', row.post_id)
+          .single();
+
+        if (!postExists) {
+          console.log(`[Sync] Skipping feed_reaction ${row.id} - post ${row.post_id} not in Supabase yet`);
+          continue; // Skip this reaction, will retry on next sync after post is pushed
+        }
+
+        const { error } = await supabase.from('feed_reactions').upsert(
+          {
+            id: row.id,
+            post_id: row.post_id,
+            user_id: row.user_id,
+            reaction: row.reaction,
+            created_at: row.created_at,
+          },
+          {
+            onConflict: 'post_id,user_id,reaction',
+            ignoreDuplicates: false,
+          }
+        );
+        if (error) throw error;
+      }
       await markFeedReactionSynced(row.id);
     } catch (error) {
       console.error('[Sync] Failed to push feed reaction', row.id, error);
@@ -531,84 +645,6 @@ const pullRemoteChanges = async (userId: string) => {
   } catch (error) {
     console.error('[Sync] Profile sync error:', error);
   }
-  
-  // STEP 1.5: Sync social data
-  // STEP 1.5: Pull social data (rely on RLS for visibility)
-  try {
-    // Friends
-    const { data: remoteFriends } = await supabase.from('friends').select('*');
-    if (remoteFriends) {
-      for (const row of remoteFriends) {
-        await upsertFriend(row);
-      }
-    }
-
-    // Friend invites
-    const { data: remoteFriendInv } = await supabase.from('friend_invites').select('*');
-    if (remoteFriendInv) {
-      for (const row of remoteFriendInv) {
-        await upsertFriendInvite(row);
-      }
-    }
-
-    // Groups
-    const { data: remoteGroups } = await supabase.from('groups').select('*');
-    if (remoteGroups) {
-      for (const row of remoteGroups) {
-        await upsertGroup(row);
-      }
-      // Clean up groups removed remotely (owner deleted)
-      const remoteIds = new Set(remoteGroups.map((r: any) => r.id));
-      const localGroups = await db.getAllAsync<{ id: string }>(
-        'SELECT id FROM groups WHERE pending_sync = 0'
-      );
-      for (const lg of localGroups) {
-        if (!remoteIds.has(lg.id)) {
-          await db.runAsync('DELETE FROM groups WHERE id = ?', [lg.id]);
-          await db.runAsync('DELETE FROM group_members WHERE group_id = ?', [lg.id]);
-          await db.runAsync('DELETE FROM group_invites WHERE group_id = ?', [lg.id]);
-        }
-      }
-    }
-
-    // Group members
-    const { data: remoteMembers } = await supabase.from('group_members').select('*');
-    if (remoteMembers) {
-      for (const row of remoteMembers) {
-        await upsertGroupMember(row);
-      }
-    }
-
-    // Group invites
-    const { data: remoteGInv } = await supabase.from('group_invites').select('*');
-    if (remoteGInv) {
-      for (const row of remoteGInv) {
-        await upsertGroupInvite(row);
-      }
-    }
-
-    // Feed posts (RLS will filter)
-    const { data: remotePosts } = await supabase
-      .from('feed_posts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (remotePosts) {
-      for (const row of remotePosts) {
-        await upsertFeedPost(row);
-      }
-    }
-
-    // Feed reactions by user
-    const { data: remoteReactions } = await supabase.from('feed_reactions').select('*').eq('user_id', userId);
-    if (remoteReactions) {
-      for (const row of remoteReactions) {
-        await upsertFeedReaction(row);
-      }
-    }
-  } catch (error) {
-    console.error('[Sync] Social pull failed:', error);
-  }
 
   // STEP 2: Sync cycles (needed before workouts since workouts reference cycles)
   console.log('[Sync] Pulling cycles...');
@@ -660,25 +696,33 @@ const pullRemoteChanges = async (userId: string) => {
   
     // STEP X: Pull social data
   try {
+    // Declare variables at higher scope for use in profile sync later
+    let remoteFriends: any[] | null = null;
+    let remoteFriendInv: any[] | null = null;
+    let remoteMembers: any[] | null = null;
+    let remotePosts: any[] | null = null;
+
     // Friends: only rows where current user is involved
-    const { data: remoteFriends } = await supabase
+    const friendsResult = await supabase
       .from('friends')
       .select('*')
       .or(`user_id.eq.${userId},friend_user_id.eq.${userId}`);
+    remoteFriends = friendsResult.data;
     if (remoteFriends) {
       for (const row of remoteFriends) {
-        await upsertFriend(row);
+        await upsertFriendLocal({ ...row, pending_sync: 0, deleted: 0 });
       }
     }
 
     // Friend invites: sent by user or (if needed) pending to user's email handled via invites table separately
-    const { data: remoteFriendInv } = await supabase
+    const friendInvResult = await supabase
       .from('friend_invites')
       .select('*')
       .eq('inviter_id', userId);
+    remoteFriendInv = friendInvResult.data;
     if (remoteFriendInv) {
       for (const row of remoteFriendInv) {
-        await upsertFriendInvite(row);
+        await upsertFriendInviteLocal({ ...row, pending_sync: 0, deleted: 0 });
       }
     }
 
@@ -686,7 +730,7 @@ const pullRemoteChanges = async (userId: string) => {
     const { data: ownedGroups } = await supabase.from('groups').select('*').eq('owner_id', userId);
     if (ownedGroups) {
       for (const row of ownedGroups) {
-        await upsertGroup(row);
+        await upsertGroupLocal({ ...row, pending_sync: 0, deleted: 0 });
       }
     }
 
@@ -701,7 +745,7 @@ const pullRemoteChanges = async (userId: string) => {
       const { data: remoteMemberGroups } = await supabase.from('groups').select('*').in('id', memberGroupIds);
       if (remoteMemberGroups) {
         for (const row of remoteMemberGroups) {
-          await upsertGroup(row);
+          await upsertGroupLocal({ ...row, pending_sync: 0, deleted: 0 });
         }
       }
     }
@@ -709,13 +753,14 @@ const pullRemoteChanges = async (userId: string) => {
     // Group members for groups the user owns or belongs to
     const groupIdsForMembers = Array.from(new Set([...(ownedGroups || []).map(g => g.id), ...memberGroupIds]));
     if (groupIdsForMembers.length > 0) {
-      const { data: remoteMembers } = await supabase
+      const membersResult = await supabase
         .from('group_members')
         .select('*')
         .in('group_id', groupIdsForMembers);
+      remoteMembers = membersResult.data;
       if (remoteMembers) {
         for (const row of remoteMembers) {
-          await upsertGroupMember(row);
+          await upsertGroupMemberLocal({ ...row, pending_sync: 0, deleted: 0 });
         }
       }
     }
@@ -727,7 +772,7 @@ const pullRemoteChanges = async (userId: string) => {
       .or(`invitee_user_id.eq.${userId},inviter_id.eq.${userId}`);
     if (remoteGInv) {
       for (const row of remoteGInv) {
-        await upsertGroupInvite(row);
+        await upsertGroupInviteLocal({ ...row, pending_sync: 0, deleted: 0 });
       }
     }
 
@@ -749,18 +794,95 @@ const pullRemoteChanges = async (userId: string) => {
     if (postFilters.length > 0) {
       postQuery.or(postFilters.join(','));
     }
-    const { data: remotePosts } = await postQuery;
+    const postsResult = await postQuery;
+    remotePosts = postsResult.data;
     if (remotePosts) {
       for (const row of remotePosts) {
-        await upsertFeedPost(row);
+        await upsertFeedPostLocal({ ...row, pending_sync: 0, deleted: 0 });
       }
     }
 
-    // Feed reactions by current user (to keep user’s reaction state)
+    // Feed reactions by current user (to keep user's reaction state)
     const { data: remoteReactions } = await supabase.from('feed_reactions').select('*').eq('user_id', userId);
     if (remoteReactions) {
       for (const row of remoteReactions) {
-        await upsertFeedReaction(row);
+        await upsertFeedReactionLocal({ ...row, pending_sync: 0, deleted: 0 });
+      }
+    }
+
+    // Pull profiles for all users involved in social features (for avatars and names)
+    console.log('[Sync] Pulling social user profiles...');
+    const socialUserIds = new Set<string>();
+
+    // Collect user IDs from friends
+    if (remoteFriends) {
+      remoteFriends.forEach((f: any) => {
+        if (f.user_id !== userId) socialUserIds.add(f.user_id);
+        if (f.friend_user_id !== userId) socialUserIds.add(f.friend_user_id);
+      });
+    }
+
+    // Collect user IDs from group members
+    if (remoteMembers) {
+      remoteMembers.forEach((m: any) => {
+        if (m.user_id !== userId) socialUserIds.add(m.user_id);
+      });
+    }
+
+    // Collect user IDs from feed posts
+    if (remotePosts) {
+      remotePosts.forEach((p: any) => {
+        if (p.user_id !== userId) socialUserIds.add(p.user_id);
+      });
+    }
+
+    // Collect user IDs from friend invites (inviter)
+    if (remoteFriendInv) {
+      remoteFriendInv.forEach((inv: any) => {
+        if (inv.inviter_id && inv.inviter_id !== userId) socialUserIds.add(inv.inviter_id);
+      });
+    }
+
+    // Fetch profiles for all social users
+    if (socialUserIds.size > 0) {
+      const userIdsArray = Array.from(socialUserIds);
+      console.log(`[Sync] Fetching ${userIdsArray.length} social user profiles...`);
+
+      // Fetch in batches of 100 to avoid query limits
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < userIdsArray.length; i += BATCH_SIZE) {
+        const batch = userIdsArray.slice(i, i + BATCH_SIZE);
+        const { data: socialProfiles } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, avatar_url, is_premium, is_test_user, weight_unit, created_at, updated_at')
+          .in('id', batch);
+
+        if (socialProfiles) {
+          for (const profile of socialProfiles) {
+            await db.runAsync(
+              `INSERT OR REPLACE INTO profiles (
+                id, email, full_name, is_premium, is_test_user,
+                weight_unit, avatar_url, avatar_local_path, avatar_cached_at,
+                created_at, updated_at, modified_at, pending_sync, deleted
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)`,
+              [
+                profile.id,
+                profile.email,
+                profile.full_name || '',
+                profile.is_premium ? 1 : 0,
+                profile.is_test_user ? 1 : 0,
+                profile.weight_unit || 'lbs',
+                profile.avatar_url || null,
+                null, // avatar_local_path
+                null, // avatar_cached_at
+                profile.created_at || new Date().toISOString(),
+                profile.updated_at || new Date().toISOString(),
+                new Date().toISOString(),
+              ]
+            );
+          }
+          console.log(`[Sync] Synced ${socialProfiles.length} social profiles (batch ${i / BATCH_SIZE + 1})`);
+        }
       }
     }
   } catch (error) {

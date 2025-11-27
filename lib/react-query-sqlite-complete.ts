@@ -18,6 +18,14 @@ import { Workout, Cycle, Goal, StrengthTest, BodyMeasurement, ScheduledTraining,
 import { triggerSync } from './sync/syncEngine';
 import { getDatabase } from './db/database';
 
+// Lightweight UUID generator (non-crypto) for Supabase UUID columns
+const generateUuid = () =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+
 // Default stale time (5 minutes) to prevent excessive refetches
 const DEFAULT_STALE_TIME = 5 * 60 * 1000;
 
@@ -116,11 +124,17 @@ import {
   upsertGroup as upsertGroupLocal,
   updateGroupSettings,
   markGroupDeleted,
+  markFeedPostDeleted,
+  markFriendDeleted,
   upsertFeedPost,
   updateFriendStatus,
   upsertGroupMember,
   upsertGroupInvite,
   upsertFeedReaction,
+  getUserReactionForPost,
+  deleteFeedReaction,
+  getAllReactionsForFeed,
+  updateFeedPost,
   getGroupMembers,
   updateGroupMemberStatus,
   getGroupInvitesForUser,
@@ -346,7 +360,7 @@ export const useCreateFriendRequest = () => {
   return useMutation({
     mutationFn: async ({ friendUserId, status }: { friendUserId: string; status?: 'pending' | 'accepted' | 'rejected' }) => {
       if (!profile) throw new Error('No profile');
-      const id = `friend-${Date.now()}`;
+      const id = generateUuid();
       await upsertFriend({
         id,
         user_id: profile.id,
@@ -371,7 +385,7 @@ export const useCreateFriendInvite = () => {
   return useMutation({
     mutationFn: async ({ email, token }: { email: string; token?: string }) => {
       if (!profile) throw new Error('No profile');
-      const id = `finv-${Date.now()}`;
+      const id = generateUuid();
       await upsertFriendInvite({
         id,
         inviter_id: profile.id,
@@ -398,8 +412,8 @@ export const useRespondToFriendInvite = () => {
     mutationFn: async ({ invite, accept }: { invite: any; accept: boolean }) => {
       if (!profile) throw new Error('No profile');
       if (accept) {
-        const friendIdA = `friend-${Date.now()}`;
-        const friendIdB = `friend-${Date.now() + 1}`;
+        const friendIdA = generateUuid();
+        const friendIdB = generateUuid();
         await upsertFriend({
           id: friendIdA,
           user_id: invite.inviter_id,
@@ -457,8 +471,8 @@ export const useRespondToFriendRequest = () => {
       await updateFriendStatus(id, accept ? 'accepted' : 'rejected');
       // If accepted, create reciprocal accepted row
       if (accept) {
-        const reciprocalId = `friend-${profile.id}-${requesterId}`;
-        const originalId = `friend-${requesterId}-${profile.id}`;
+        const reciprocalId = generateUuid();
+        const originalId = id;
         await upsertFriend({
           id: reciprocalId,
           user_id: profile.id,
@@ -491,7 +505,7 @@ export const useCreateGroup = () => {
   return useMutation({
     mutationFn: async ({ name, description, visibility }: { name: string; description?: string; visibility: 'public' | 'private' }) => {
       if (!profile) throw new Error('No profile');
-      const id = `grp-${Date.now()}`;
+      const id = generateUuid();
       await upsertGroupLocal({
         id,
         owner_id: profile.id,
@@ -501,7 +515,7 @@ export const useCreateGroup = () => {
         pending_sync: 1,
       });
       // Add owner membership row
-      const memberId = `gmem-${Date.now()}`;
+      const memberId = generateUuid();
       await upsertGroupMember({
         id: memberId,
         group_id: id,
@@ -525,9 +539,9 @@ export const useUpdateGroup = () => {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ groupId, description, visibility }: { groupId: string; description?: string | null; visibility?: 'public' | 'private' }) => {
+    mutationFn: async ({ groupId, description, visibility, avatarUrl }: { groupId: string; description?: string | null; visibility?: 'public' | 'private'; avatarUrl?: string | null }) => {
       if (!profile) throw new Error('No profile');
-      await updateGroupSettings(groupId, { description, visibility });
+      await updateGroupSettings(groupId, { description, visibility, avatarUrl });
     },
     onSuccess: (_, variables) => {
       if (profile?.id) {
@@ -557,13 +571,64 @@ export const useDeleteGroup = () => {
   });
 };
 
+export const useDeleteFeedPost = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ postId }: { postId: string }) => {
+      if (!profile) throw new Error('No profile');
+      await markFeedPostDeleted(postId);
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.feed(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useUpdateFeedPost = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ postId, title, body }: { postId: string; title?: string; body?: string }) => {
+      if (!profile) throw new Error('No profile');
+      await updateFeedPost(postId, { title, body });
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.feed(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useUnfriend = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ friendId }: { friendId: string }) => {
+      if (!profile) throw new Error('No profile');
+      await markFriendDeleted(friendId);
+    },
+    onSuccess: () => {
+      if (profile?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.friends(profile.id) });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
 export const useRequestJoinGroup = () => {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ groupId, status }: { groupId: string; status?: 'pending' | 'active' }) => {
       if (!profile) throw new Error('No profile');
-      const id = `gm-${Date.now()}`;
+      const id = generateUuid();
       await upsertGroupMember({
         id,
         group_id: groupId,
@@ -589,7 +654,7 @@ export const useCreateFeedPost = () => {
   return useMutation({
     mutationFn: async ({ type, title, body, groupId, metadata }: { type: 'goal' | 'pr' | 'summary'; title: string; body?: string; groupId?: string | null; metadata?: any }) => {
       if (!profile) throw new Error('No profile');
-      const id = `post-${Date.now()}`;
+      const id = generateUuid();
       await upsertFeedPost({
         id,
         user_id: profile.id,
@@ -661,7 +726,7 @@ export const useRespondGroupInvite = () => {
       });
       // If accepted, ensure membership row is active
       if (accept) {
-        const memberId = `gmem-${Date.now()}`;
+        const memberId = generateUuid();
         await upsertGroupMember({
           id: memberId,
           group_id: invite.group_id,
@@ -688,7 +753,7 @@ export const useCreateGroupInvite = () => {
   return useMutation({
     mutationFn: async ({ groupId, email, inviteeUserId }: { groupId: string; email?: string; inviteeUserId?: string }) => {
       if (!profile) throw new Error('No profile');
-      const id = `ginv-${Date.now()}`;
+      const id = generateUuid();
       await upsertGroupInvite({
         id,
         group_id: groupId,
@@ -717,15 +782,26 @@ export const useReactToFeed = () => {
   return useMutation({
     mutationFn: async ({ postId, reaction }: { postId: string; reaction: 'arm' | 'fire' | 'like' }) => {
       if (!profile) throw new Error('No profile');
-      const id = `react-${postId}-${reaction}-${profile.id}`;
-      await upsertFeedReaction({
-        id,
-        post_id: postId,
-        user_id: profile.id,
-        reaction,
-        pending_sync: 1,
-      });
-      return id;
+
+      // Check if user already reacted with this reaction type
+      const existingReaction = await getUserReactionForPost(postId, profile.id, reaction);
+
+      if (existingReaction) {
+        // Remove the reaction (toggle off)
+        await deleteFeedReaction(existingReaction.id);
+        return { action: 'removed', id: existingReaction.id };
+      } else {
+        // Add the reaction (toggle on)
+        const id = generateUuid();
+        await upsertFeedReaction({
+          id,
+          post_id: postId,
+          user_id: profile.id,
+          reaction,
+          pending_sync: 1,
+        });
+        return { action: 'added', id };
+      }
     },
     onSuccess: (_, variables) => {
       if (profile?.id) {

@@ -299,6 +299,16 @@ const createTables = async (database: SQLite.SQLiteDatabase) => {
     CREATE INDEX IF NOT EXISTS idx_groups_pending_sync ON groups(pending_sync);
   `);
 
+  // Add avatar_url column to groups (migration-safe)
+  try {
+    await database.execAsync('ALTER TABLE groups ADD COLUMN avatar_url TEXT;');
+  } catch (error: any) {
+    // Column already exists, ignore error
+    if (!error.message?.includes('duplicate column')) {
+      console.warn('[Database] Error adding avatar_url to groups:', error);
+    }
+  }
+
   // Group members
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS group_members (

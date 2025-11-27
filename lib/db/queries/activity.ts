@@ -106,16 +106,17 @@ export const getGroups = async (userId: string) => {
   );
 };
 
-export const updateGroupSettings = async (groupId: string, updates: { description?: string | null; visibility?: 'public' | 'private' }) => {
+export const updateGroupSettings = async (groupId: string, updates: { description?: string | null; visibility?: 'public' | 'private'; avatarUrl?: string | null }) => {
   const db = await getDatabase();
   await db.runAsync(
     `UPDATE groups
      SET description = COALESCE(?, description),
          visibility = COALESCE(?, visibility),
+         avatar_url = COALESCE(?, avatar_url),
          pending_sync = 1,
          modified_at = datetime('now')
      WHERE id = ?`,
-    [updates.description ?? null, updates.visibility ?? null, groupId]
+    [updates.description ?? null, updates.visibility ?? null, updates.avatarUrl ?? null, groupId]
   );
 };
 
@@ -140,6 +141,33 @@ export const markGroupDeleted = async (groupId: string) => {
     await db.execAsync('ROLLBACK');
     throw err;
   }
+};
+
+export const markFeedPostDeleted = async (postId: string) => {
+  const db = await getDatabase();
+  await db.execAsync('BEGIN');
+  try {
+    await db.runAsync(
+      `UPDATE feed_posts SET deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
+      [postId]
+    );
+    await db.runAsync(
+      `UPDATE feed_reactions SET deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE post_id = ?`,
+      [postId]
+    );
+    await db.execAsync('COMMIT');
+  } catch (err) {
+    await db.execAsync('ROLLBACK');
+    throw err;
+  }
+};
+
+export const markFriendDeleted = async (friendId: string) => {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE friends SET deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
+    [friendId]
+  );
 };
 
 // Group members
@@ -222,7 +250,7 @@ export const getProfilesByIds = async (ids: string[]) => {
   const db = await getDatabase();
   const placeholders = ids.map(() => '?').join(',');
   return db.getAllAsync(
-    `SELECT id, full_name, email FROM profiles WHERE id IN (${placeholders})`,
+    `SELECT id, full_name, email, avatar_url FROM profiles WHERE id IN (${placeholders})`,
     ids
   );
 };
@@ -300,5 +328,42 @@ export const getReactionsForPost = async (postId: string) => {
   return db.getAllAsync(
     'SELECT * FROM feed_reactions WHERE post_id = ? AND deleted = 0',
     [postId]
+  );
+};
+
+export const getAllReactionsForFeed = async () => {
+  const db = await getDatabase();
+  return db.getAllAsync(
+    'SELECT post_id, reaction, COUNT(*) as count FROM feed_reactions WHERE deleted = 0 GROUP BY post_id, reaction'
+  );
+};
+
+export const getUserReactionForPost = async (postId: string, userId: string, reaction: 'arm' | 'fire' | 'like') => {
+  const db = await getDatabase();
+  const result = await db.getFirstAsync<{ id: string }>(
+    'SELECT id FROM feed_reactions WHERE post_id = ? AND user_id = ? AND reaction = ? AND deleted = 0',
+    [postId, userId, reaction]
+  );
+  return result;
+};
+
+export const deleteFeedReaction = async (reactionId: string) => {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE feed_reactions SET deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
+    [reactionId]
+  );
+};
+
+export const updateFeedPost = async (postId: string, updates: { title?: string; body?: string }) => {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE feed_posts
+     SET title = COALESCE(?, title),
+         body = COALESCE(?, body),
+         pending_sync = 1,
+         modified_at = datetime('now')
+     WHERE id = ?`,
+    [updates.title ?? null, updates.body ?? null, postId]
   );
 };

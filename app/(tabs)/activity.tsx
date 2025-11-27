@@ -11,22 +11,31 @@ import {
   Platform,
   Modal,
   KeyboardAvoidingView,
+  Alert,
+  Image,
 } from 'react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { runFullDiagnostic, cleanupInvalidIds, forceSyncNow } from '@/lib/utils/debugSync';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
+import { supabase } from '@/lib/supabase';
 import {
   Users,
   Plus,
   Send,
   Flame,
-  Armchair,
+  BicepsFlexed,
   ThumbsUp,
   Shield,
   Search,
   Link2,
   PenSquare,
   X,
+  Trash2,
+  Camera,
 } from 'lucide-react-native';
 import {
   useFeed,
@@ -49,8 +58,12 @@ import {
   useProfilesByIds,
   useUpdateGroup,
   useDeleteGroup,
+  useDeleteFeedPost,
+  useUpdateFeedPost,
+  useUnfriend,
 } from '@/lib/react-query-sqlite-complete';
 import { triggerSync } from '@/lib/sync/syncEngine';
+import { getAllReactionsForFeed } from '@/lib/db/queries/activity';
 
 type FeedType = 'goal' | 'pr' | 'summary';
 type Reaction = 'arm' | 'fire' | 'like';
@@ -67,6 +80,7 @@ type FeedItem = {
   user: {
     id: string;
     name: string;
+    avatar_url?: string;
   };
 };
 
@@ -110,6 +124,9 @@ export default function ActivityScreen() {
   const createPost = useCreateFeedPost();
   const updateGroup = useUpdateGroup();
   const deleteGroup = useDeleteGroup();
+  const deletePost = useDeleteFeedPost();
+  const updatePost = useUpdateFeedPost();
+  const unfriend = useUnfriend();
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const isGroupOwner = selectedGroup?.owner_id === profile?.id;
 
@@ -120,6 +137,7 @@ export default function ActivityScreen() {
   const [newGroupVisibility, setNewGroupVisibility] = useState<GroupVisibility>('public');
   const [groupDescriptionDraft, setGroupDescriptionDraft] = useState('');
   const [groupVisibilityDraft, setGroupVisibilityDraft] = useState<GroupVisibility>('public');
+  const [uploadingGroupAvatar, setUploadingGroupAvatar] = useState(false);
 
   useEffect(() => {
     if (selectedGroup) {
@@ -143,17 +161,46 @@ export default function ActivityScreen() {
   const [composeTitle, setComposeTitle] = useState('');
   const [composeBody, setComposeBody] = useState('');
   const [composeGroupId, setComposeGroupId] = useState<string | null>(null);
+  const [showDebugTools, setShowDebugTools] = useState(false);
+  const [editingPost, setEditingPost] = useState<{ id: string; title: string; body: string } | null>(null);
+  const [reactionCounts, setReactionCounts] = useState<Map<string, { arm: number; fire: number; like: number }>>(new Map());
+
+  // Fetch reaction counts when feed data changes
+  useEffect(() => {
+    const fetchReactions = async () => {
+      const reactions = await getAllReactionsForFeed();
+      const counts = new Map<string, { arm: number; fire: number; like: number }>();
+
+      // Initialize all posts with 0 counts
+      feedData.forEach((post: any) => {
+        counts.set(post.id, { arm: 0, fire: 0, like: 0 });
+      });
+
+      // Aggregate reaction counts by post and type
+      reactions.forEach((r: any) => {
+        const current = counts.get(r.post_id) || { arm: 0, fire: 0, like: 0 };
+        current[r.reaction as Reaction] = r.count;
+        counts.set(r.post_id, current);
+      });
+
+      setReactionCounts(counts);
+    };
+
+    fetchReactions();
+  }, [feedData]);
+
   const membersQuery = useGroupMembers(selectedGroup?.id || null);
   const profileIds = Array.from(new Set(
     feedData.map((f: any) => f.user_id)
       .concat(membersQuery.data?.map((m:any)=>m.user_id)||[])
       .concat(friendsData.flatMap((f:any)=>[f.user_id, f.friend_user_id])||[])
+      .concat(incomingFriendInvites.map((invite:any)=>invite.inviter_id)||[])
   ));
   const profilesQuery = useProfilesByIds(profileIds.filter(Boolean));
   const profileMap = useMemo(() => {
-    const map = new Map<string, { name: string; email: string }>();
+    const map = new Map<string, { name: string; email: string; avatar_url?: string }>();
     profilesQuery.data?.forEach((p: any) => {
-      map.set(p.id, { name: p.full_name || p.email || 'User', email: p.email });
+      map.set(p.id, { name: p.full_name || p.email || 'User', email: p.email, avatar_url: p.avatar_url });
     });
     return map;
   }, [profilesQuery.data]);
@@ -161,7 +208,15 @@ export default function ActivityScreen() {
   const filteredGroups = useMemo(() => {
     const term = groupSearch.trim().toLowerCase();
     if (!term) return groupsData;
-    return groupsData.filter((g: any) => (g.name || '').toLowerCase().includes(term));
+    return groupsData.filter((g: any) => {
+      const matchesSearch = (g.name || '').toLowerCase().includes(term);
+      // Private groups only visible if user is already a member
+      if (g.visibility === 'private') {
+        return matchesSearch && g.membership_status === 'active';
+      }
+      // Public groups always searchable
+      return matchesSearch;
+    });
   }, [groupSearch, groupsData]);
 
   const handleShareInvite = async () => {
@@ -221,6 +276,239 @@ export default function ActivityScreen() {
     joinGroup.mutate({ groupId, status: isPublic ? 'active' : 'pending' });
   };
 
+  // Debug tools for sync cleanup
+  const handleRunDiagnostic = async () => {
+    if (!profile?.id) return;
+    const report = await runFullDiagnostic(profile.id);
+    Alert.alert(
+      'Sync Diagnostic',
+      `Invalid IDs: ${report.invalidIds.totalInvalid}\nPending Sync: ${report.pendingSync.totalPending}\n\n${report.recommendations.join('\n')}`,
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleCleanup = async () => {
+    Alert.alert(
+      'Clean Invalid IDs',
+      'This will permanently delete local records with invalid UUIDs that cannot sync to Supabase. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clean',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await cleanupInvalidIds();
+            Alert.alert('Cleanup Complete', `Removed ${result.totalCleaned} invalid records`);
+            if (profile?.id) {
+              await forceSyncNow(profile.id);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleForceSync = async () => {
+    if (!profile?.id) return;
+    Alert.alert('Force Sync', 'Starting manual sync...', [{ text: 'OK' }]);
+    const result = await forceSyncNow(profile.id);
+    if (result.success) {
+      Alert.alert('Sync Complete', 'All pending records have been synced to Supabase');
+    } else {
+      Alert.alert('Sync Failed', `Error: ${result.error}`);
+    }
+  };
+
+  const handleDeletePost = (postId: string) => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deletePost.mutate({ postId }),
+        },
+      ]
+    );
+  };
+
+  const handleEditPost = (post: { id: string; title: string; body: string }) => {
+    setEditingPost(post);
+  };
+
+  const handleSaveEditPost = () => {
+    if (!editingPost || !editingPost.title.trim() || updatePost.isPending) return;
+    updatePost.mutate(
+      {
+        postId: editingPost.id,
+        title: editingPost.title.trim(),
+        body: editingPost.body.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setEditingPost(null);
+        },
+      }
+    );
+  };
+
+  const handleUnfriend = (friendId: string, friendName: string) => {
+    Alert.alert(
+      'Unfriend',
+      `Remove ${friendName} from your friends?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unfriend',
+          style: 'destructive',
+          onPress: () => unfriend.mutate({ friendId }),
+        },
+      ]
+    );
+  };
+
+  const handleDeleteGroup = (groupId: string, groupName: string) => {
+    Alert.alert(
+      'Delete Group',
+      `Are you sure you want to delete "${groupName}"? This will remove all members and cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteGroup.mutate({ groupId });
+            setSelectedGroup(null);
+          },
+        },
+      ]
+    );
+  };
+
+  const pickGroupImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Camera roll permissions are required!');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled && result.assets[0] && selectedGroup) {
+        await uploadGroupAvatar(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const uploadGroupAvatar = async (asset: ImagePicker.ImagePickerAsset) => {
+    try {
+      setUploadingGroupAvatar(true);
+
+      if (!selectedGroup || !profile) {
+        Alert.alert('Error', 'No group selected');
+        return;
+      }
+
+      // Ensure group exists in Supabase (RLS policy checks groups table)
+      const { data: groupExists, error: checkError } = await supabase
+        .from('groups')
+        .select('id')
+        .eq('id', selectedGroup.id)
+        .single();
+
+      if (checkError || !groupExists) {
+        Alert.alert(
+          'Sync Required',
+          'Please wait for the group to sync before uploading an avatar. Try force syncing first.'
+        );
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024;
+      if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+        Alert.alert(
+          'File Too Large',
+          `Image must be under 5MB. Your file is ${(asset.fileSize / 1024 / 1024).toFixed(2)}MB`
+        );
+        return;
+      }
+
+      // Get file extension
+      let fileExt = 'jpg';
+      if (asset.mimeType) {
+        const mimeExt = asset.mimeType.split('/')[1]?.toLowerCase();
+        const validExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        if (mimeExt && validExtensions.includes(mimeExt)) {
+          fileExt = (mimeExt === 'jpeg' || mimeExt === 'jpg') ? 'jpg' : mimeExt;
+        }
+      }
+
+      // Delete old group avatar if exists
+      if (selectedGroup.avatar_url) {
+        // Extract path from URL (e.g., "group-id/avatar.jpg")
+        const urlParts = selectedGroup.avatar_url.split('/group-avatars/');
+        if (urlParts[1]) {
+          const oldPath = decodeURIComponent(urlParts[1].split('?')[0]);
+          await supabase.storage.from('group-avatars').remove([oldPath]);
+        }
+      }
+
+      // Read file and convert to base64
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const arrayBuffer = decode(base64);
+
+      // Upload to Supabase Storage with folder structure
+      const filePath = `${selectedGroup.id}/avatar.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('group-avatars')
+        .upload(filePath, arrayBuffer, {
+          contentType: asset.mimeType || 'image/jpeg',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('group-avatars')
+        .getPublicUrl(filePath);
+
+      // Update group with new avatar URL
+      updateGroup.mutate(
+        {
+          groupId: selectedGroup.id,
+          description: selectedGroup.description,
+          visibility: selectedGroup.visibility,
+          avatarUrl: publicUrl,
+        },
+        {
+          onSuccess: () => {
+            setSelectedGroup({ ...selectedGroup, avatar_url: publicUrl });
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Error uploading group avatar:', error);
+      Alert.alert('Error', 'Failed to upload image');
+    } finally {
+      setUploadingGroupAvatar(false);
+    }
+  };
+
   const renderTabSwitcher = () => (
     <View style={[styles.tabSwitcher, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       {[
@@ -271,10 +559,14 @@ export default function ActivityScreen() {
       details: item.metadata?.details || '',
       groupName: item.group_id ? groupNameMap.get(item.group_id) : undefined,
       createdAt: item.created_at || '',
-      reactions: { arm: 0, fire: 0, like: 0 },
-      user: { id: item.user_id, name: profileMap.get(item.user_id)?.name || item.user_id?.slice(0, 6) || 'User' },
+      reactions: reactionCounts.get(item.id) || { arm: 0, fire: 0, like: 0 },
+      user: {
+        id: item.user_id,
+        name: profileMap.get(item.user_id)?.name || item.user_id?.slice(0, 6) || 'User',
+        avatar_url: profileMap.get(item.user_id)?.avatar_url,
+      },
     }));
-  }, [feedData, groupNameMap, profileMap]);
+  }, [feedData, groupNameMap, profileMap, reactionCounts]);
 
   const filteredFeed = useMemo(() => {
     if (feedScope === 'all') return feedItems;
@@ -328,6 +620,13 @@ export default function ActivityScreen() {
       {filteredFeed.map((item) => (
         <View key={item.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.cardHeader}>
+            {item.user.avatar_url ? (
+              <Image source={{ uri: item.user.avatar_url }} style={styles.feedUserAvatar} />
+            ) : (
+              <View style={styles.feedUserAvatarPlaceholder}>
+                <Users size={14} color={colors.textSecondary} />
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text style={[styles.cardTitle, { color: colors.text }]}>{item.title}</Text>
               <Text style={[styles.cardSubtitle, { color: colors.textSecondary }]}>
@@ -335,16 +634,31 @@ export default function ActivityScreen() {
                 {item.subtitle || item.createdAt}
               </Text>
             </View>
-            <Text style={[styles.tag, { color: colors.secondary }]}>
-              {item.type === 'goal' ? 'Goal' : item.type === 'pr' ? 'PR' : 'Summary'}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={[styles.tag, { color: colors.secondary }]}>
+                {item.type === 'goal' ? 'Goal' : item.type === 'pr' ? 'PR' : 'Summary'}
+              </Text>
+              {item.user.id === profile?.id && (
+                <>
+                  <TouchableOpacity
+                    onPress={() => handleEditPost({ id: item.id, title: item.title, body: item.subtitle })}
+                    style={{ padding: 4 }}
+                  >
+                    <PenSquare size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDeletePost(item.id)} style={{ padding: 4 }}>
+                    <Trash2 size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
           </View>
           {item.details ? (
             <Text style={[styles.cardDetails, { color: colors.textSecondary }]}>{item.details}</Text>
           ) : null}
           <View style={styles.reactionsRow}>
             <TouchableOpacity style={styles.reactionButton} onPress={() => toggleReaction(item.id, 'arm')}>
-              <Armchair size={18} color={colors.primary} />
+              <BicepsFlexed size={18} color={colors.primary} />
               <Text style={[styles.reactionText, { color: colors.text }]}>{item.reactions.arm}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.reactionButton} onPress={() => toggleReaction(item.id, 'fire')}>
@@ -367,12 +681,12 @@ export default function ActivityScreen() {
   const incomingPending = friendsData.filter((f: any) => f.status === 'pending' && f.direction === 'incoming');
   const acceptedFriends = friendsData.filter((f: any) => f.status === 'accepted');
   const uniqueAccepted = Array.from(
-    acceptedFriends.reduce((map: Map<string,string>, f:any) => {
+    acceptedFriends.reduce((map: Map<string,any>, f:any) => {
       const id = otherId(f);
-      if (!map.has(id)) map.set(id, id);
+      if (!map.has(id)) map.set(id, f);
       return map;
     }, new Map())
-  ).map(([id]) => id);
+  ).map(([, friend]) => friend);
   const pendingFriendCount = (incomingFriendInvites?.length || 0) + (incomingPending?.length || 0);
   const pendingGroupCount =
     (groupInvites.data?.length || 0) +
@@ -426,67 +740,102 @@ export default function ActivityScreen() {
         {incomingFriendInvites.length > 0 && (
           <View style={{ marginTop: 12 }}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>Invites for you</Text>
-            {incomingFriendInvites.map((invite: any) => (
-              <View key={invite.id} style={styles.pendingRow}>
-                <Users size={16} color={colors.textSecondary} />
-                <Text style={{ color: colors.text }}>
-                  {profileMap.get(invite.inviter_id)?.name || invite.inviter_id}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
-                  <TouchableOpacity
-                    style={[styles.secondaryButton, { borderColor: colors.primary }]}
-                    onPress={() => respondFriendInvite.mutate({ invite, accept: true })}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Accept</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.secondaryButton, { borderColor: colors.border }]}
-                    onPress={() => respondFriendInvite.mutate({ invite, accept: false })}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Decline</Text>
-                  </TouchableOpacity>
+            {incomingFriendInvites.map((invite: any) => {
+              const inviterAvatar = profileMap.get(invite.inviter_id)?.avatar_url;
+              return (
+                <View key={invite.id} style={styles.pendingRow}>
+                  {inviterAvatar ? (
+                    <Image source={{ uri: inviterAvatar }} style={styles.memberAvatar} />
+                  ) : (
+                    <View style={styles.memberAvatarPlaceholder}>
+                      <Users size={16} color={colors.textSecondary} />
+                    </View>
+                  )}
+                  <Text style={{ color: colors.text }}>
+                    {profileMap.get(invite.inviter_id)?.name || profileMap.get(invite.inviter_id)?.email || 'Unknown User'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
+                    <TouchableOpacity
+                      style={[styles.secondaryButton, { borderColor: colors.primary }]}
+                      onPress={() => respondFriendInvite.mutate({ invite, accept: true })}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.secondaryButton, { borderColor: colors.border }]}
+                      onPress={() => respondFriendInvite.mutate({ invite, accept: false })}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Decline</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
         {incomingPending.length > 0 && (
           <View style={{ marginTop: 12 }}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>Incoming requests</Text>
-            {incomingPending.map((req: any) => (
-              <View key={req.id} style={styles.pendingRow}>
-                <Users size={16} color={colors.textSecondary} />
-                <Text style={{ color: colors.text }}>{profileMap.get(otherId(req))?.name || otherId(req)}</Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
-                  <TouchableOpacity
-                    style={[styles.secondaryButton, { borderColor: colors.primary }]}
-                    onPress={() => respondFriend.mutate({ id: req.id, requesterId: req.user_id, accept: true })}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Accept</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.secondaryButton, { borderColor: colors.border }]}
-                    onPress={() => respondFriend.mutate({ id: req.id, requesterId: req.user_id, accept: false })}
-                  >
-                    <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Decline</Text>
-                  </TouchableOpacity>
+            {incomingPending.map((req: any) => {
+              const requesterId = otherId(req);
+              const requesterAvatar = profileMap.get(requesterId)?.avatar_url;
+              return (
+                <View key={req.id} style={styles.pendingRow}>
+                  {requesterAvatar ? (
+                    <Image source={{ uri: requesterAvatar }} style={styles.memberAvatar} />
+                  ) : (
+                    <View style={styles.memberAvatarPlaceholder}>
+                      <Users size={16} color={colors.textSecondary} />
+                    </View>
+                  )}
+                  <Text style={{ color: colors.text }}>{profileMap.get(requesterId)?.name || requesterId}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginLeft: 'auto' }}>
+                    <TouchableOpacity
+                      style={[styles.secondaryButton, { borderColor: colors.primary }]}
+                      onPress={() => respondFriend.mutate({ id: req.id, requesterId: req.user_id, accept: true })}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.secondaryButton, { borderColor: colors.border }]}
+                      onPress={() => respondFriend.mutate({ id: req.id, requesterId: req.user_id, accept: false })}
+                    >
+                      <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Decline</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
         {uniqueAccepted.length > 0 && (
           <View style={{ marginTop: 12 }}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>Friends</Text>
-            {uniqueAccepted.map((id: string) => (
-              <View key={id} style={styles.pendingRow}>
-                <Users size={16} color={colors.textSecondary} />
-                <Text style={{ color: colors.text }}>{profileMap.get(id)?.name || id}</Text>
-                <Text style={{ color: colors.textTertiary, marginLeft: 'auto' }}>Accepted</Text>
-              </View>
-            ))}
+            {uniqueAccepted.map((friend: any) => {
+              const friendUserId = otherId(friend);
+              const friendName = profileMap.get(friendUserId)?.name || friendUserId;
+              const friendAvatar = profileMap.get(friendUserId)?.avatar_url;
+              return (
+                <View key={friend.id} style={styles.pendingRow}>
+                  {friendAvatar ? (
+                    <Image source={{ uri: friendAvatar }} style={styles.memberAvatar} />
+                  ) : (
+                    <View style={styles.memberAvatarPlaceholder}>
+                      <Users size={16} color={colors.textSecondary} />
+                    </View>
+                  )}
+                  <Text style={{ color: colors.text, flex: 1 }}>{friendName}</Text>
+                  <TouchableOpacity
+                    onPress={() => handleUnfriend(friend.id, friendName)}
+                    style={{ padding: 4 }}
+                  >
+                    <Trash2 size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
           </View>
         )}
       </View>
@@ -561,6 +910,13 @@ export default function ActivityScreen() {
               style={[styles.groupRow, { borderColor: colors.border }]}
               onPress={() => setSelectedGroup(group)}
             >
+              {group.avatar_url ? (
+                <Image source={{ uri: group.avatar_url }} style={styles.groupAvatar} />
+              ) : (
+                <View style={styles.groupAvatarPlaceholder}>
+                  <Users size={24} color={colors.textSecondary} />
+                </View>
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={[styles.groupName, { color: colors.text }]}>{group.name}</Text>
                 <Text style={[styles.groupMeta, { color: colors.textSecondary }]}>
@@ -601,9 +957,43 @@ export default function ActivityScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Activity</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Feed • Friends • Groups</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.title, { color: colors.text }]}>Activity</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Feed • Friends • Groups</Text>
+          </View>
+          <TouchableOpacity onPress={() => setShowDebugTools(!showDebugTools)} style={{ padding: 8 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 20 }}>🔧</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {showDebugTools && (
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginHorizontal: 16, marginBottom: 12 }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>🔧 Debug Tools</Text>
+          <Text style={[styles.cardSubtitle, { color: colors.textSecondary, marginBottom: 12 }]}>
+            Use these tools to fix sync issues after applying the migration
+          </Text>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: colors.primary, marginBottom: 8 }]}
+            onPress={handleRunDiagnostic}
+          >
+            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Run Diagnostic</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: '#d00', marginBottom: 8 }]}
+            onPress={handleCleanup}
+          >
+            <Text style={[styles.secondaryButtonText, { color: '#d00' }]}>Clean Invalid IDs</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: colors.primary }]}
+            onPress={handleForceSync}
+          >
+            <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>Force Sync Now</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {renderTabSwitcher()}
 
@@ -639,7 +1029,30 @@ export default function ActivityScreen() {
                   {isGroupOwner ? (
                     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <Text style={[styles.sectionTitle, { color: colors.text }]}>Manage group</Text>
-                      <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>Update description or toggle visibility.</Text>
+                      <Text style={{ color: colors.textSecondary, marginBottom: 12 }}>Update group avatar, description, or visibility.</Text>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                        <TouchableOpacity onPress={pickGroupImage} disabled={uploadingGroupAvatar}>
+                          {selectedGroup.avatar_url ? (
+                            <Image source={{ uri: selectedGroup.avatar_url }} style={styles.groupAvatar} />
+                          ) : (
+                            <View style={styles.groupAvatarPlaceholder}>
+                              <Users size={24} color={colors.textSecondary} />
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.secondaryButton, { borderColor: colors.primary, opacity: uploadingGroupAvatar ? 0.6 : 1 }]}
+                          onPress={pickGroupImage}
+                          disabled={uploadingGroupAvatar}
+                        >
+                          <Camera size={16} color={colors.primary} />
+                          <Text style={[styles.secondaryButtonText, { color: colors.primary }]}>
+                            {uploadingGroupAvatar ? 'Uploading...' : 'Change Avatar'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
                       <View style={[styles.inputRow, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                         <TextInput
                           style={[styles.input, { color: colors.text }]}
@@ -678,10 +1091,7 @@ export default function ActivityScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.secondaryButton, { borderColor: '#d00', marginTop: 10 }]}
-                        onPress={() => {
-                          deleteGroup.mutate({ groupId: selectedGroup.id });
-                          setSelectedGroup(null);
-                        }}
+                        onPress={() => handleDeleteGroup(selectedGroup.id, selectedGroup.name)}
                       >
                         <Text style={[styles.secondaryButtonText, { color: '#d00' }]}>Delete group</Text>
                       </TouchableOpacity>
@@ -719,14 +1129,28 @@ export default function ActivityScreen() {
                     {membersQuery.data && membersQuery.data.length > 0 ? (
                       membersQuery.data.map((m: any) => {
                         const pending = m.status === 'pending';
+                        const isOwner = m.user_id === selectedGroup?.owner_id;
                         const displayName = profileMap.get(m.user_id)?.name || m.user_id;
+                        const avatarUrl = profileMap.get(m.user_id)?.avatar_url;
                         return (
                           <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
-                            <Users size={16} color={colors.textSecondary} />
-                            <Text style={{ color: colors.text }}>{displayName}</Text>
-                            <Text style={{ color: pending ? colors.warning : colors.textTertiary, marginLeft: 'auto', marginRight: 8 }}>
-                              {m.status}
-                            </Text>
+                            {avatarUrl ? (
+                              <Image source={{ uri: avatarUrl }} style={styles.memberAvatar} />
+                            ) : (
+                              <View style={styles.memberAvatarPlaceholder}>
+                                <Users size={16} color={colors.textSecondary} />
+                              </View>
+                            )}
+                            <Text style={{ color: colors.text, flex: 1 }}>{displayName}</Text>
+                            {isOwner ? (
+                              <View style={styles.ownerBadge}>
+                                <Text style={styles.ownerBadgeText}>Owner</Text>
+                              </View>
+                            ) : (
+                              <Text style={{ color: pending ? colors.warning : colors.textTertiary, marginRight: 8 }}>
+                                {m.status}
+                              </Text>
+                            )}
                             {isGroupOwner && pending ? (
                               <View style={{ flexDirection: 'row', gap: 6 }}>
                                 <TouchableOpacity
@@ -775,34 +1199,36 @@ export default function ActivityScreen() {
                       ))}
                     </View>
                   )}
-                  <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Invite</Text>
-                    <View style={[styles.inputRow, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-                      <TextInput
-                        style={[styles.input, { color: colors.text }]}
-                        value={inviteModalEmail}
-                        onChangeText={setInviteModalEmail}
-                        placeholder="friend@email.com"
-                        placeholderTextColor={colors.textTertiary}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                      />
-                      <TouchableOpacity
-                        style={[styles.iconButton, { opacity: createGroupInvite.isPending ? 0.6 : 1 }]}
-                        onPress={() => {
-                          if (!inviteModalEmail.trim()) return;
-                          createGroupInvite.mutate({ groupId: selectedGroup.id, email: inviteModalEmail.trim() });
-                          setInviteModalEmail('');
-                        }}
-                        disabled={createGroupInvite.isPending}
-                      >
-                        <Send size={18} color={colors.primary} />
-                      </TouchableOpacity>
+                  {isGroupOwner && (
+                    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <Text style={[styles.sectionTitle, { color: colors.text }]}>Invite</Text>
+                      <View style={[styles.inputRow, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+                        <TextInput
+                          style={[styles.input, { color: colors.text }]}
+                          value={inviteModalEmail}
+                          onChangeText={setInviteModalEmail}
+                          placeholder="friend@email.com"
+                          placeholderTextColor={colors.textTertiary}
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                        />
+                        <TouchableOpacity
+                          style={[styles.iconButton, { opacity: createGroupInvite.isPending ? 0.6 : 1 }]}
+                          onPress={() => {
+                            if (!inviteModalEmail.trim()) return;
+                            createGroupInvite.mutate({ groupId: selectedGroup.id, email: inviteModalEmail.trim() });
+                            setInviteModalEmail('');
+                          }}
+                          disabled={createGroupInvite.isPending}
+                        >
+                          <Send size={18} color={colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={{ color: colors.textTertiary, marginTop: 6 }}>
+                        Owners can invite by email. Invites remain pending until accepted.
+                      </Text>
                     </View>
-                    <Text style={{ color: colors.textTertiary, marginTop: 6 }}>
-                      Owners can invite by email. Invites remain pending until accepted.
-                    </Text>
-                  </View>
+                  )}
                   <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <Text style={[styles.sectionTitle, { color: colors.text }]}>Visibility</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
@@ -823,91 +1249,154 @@ export default function ActivityScreen() {
         ) : null}
       </Modal>
       <Modal visible={showComposer} animationType="slide" transparent onRequestClose={() => setShowComposer(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Share to Activity</Text>
-              <TouchableOpacity onPress={() => setShowComposer(false)}>
-                <X size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Type</Text>
-              <View style={styles.visibilityRow}>
-                {(['goal', 'pr', 'summary'] as FeedType[]).map((t) => {
-                  const active = composeType === t;
-                  return (
-                    <TouchableOpacity
-                      key={t}
-                      style={[
-                        styles.chip,
-                        { borderColor: colors.border, backgroundColor: active ? colors.primary : 'transparent' },
-                      ]}
-                      onPress={() => setComposeType(t)}
-                    >
-                      <Text style={[styles.chipText, { color: active ? '#FFF' : colors.text }]}>{t.toUpperCase()}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlayBottom}>
+            <View style={[styles.bottomSheetFull, { backgroundColor: colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Share to Activity</Text>
+                <TouchableOpacity onPress={() => setShowComposer(false)}>
+                  <X size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                <View style={{ padding: 20 }}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Type</Text>
+                    <View style={styles.visibilityRow}>
+                      {(['goal', 'pr', 'summary'] as FeedType[]).map((t) => {
+                        const active = composeType === t;
+                        return (
+                          <TouchableOpacity
+                            key={t}
+                            style={[
+                              styles.chip,
+                              { borderColor: colors.border, backgroundColor: active ? colors.primary : 'transparent' },
+                            ]}
+                            onPress={() => setComposeType(t)}
+                          >
+                            <Text style={[styles.chipText, { color: active ? '#FFF' : colors.text }]}>{t.toUpperCase()}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Title</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, borderWidth: 1, padding: 12 }]}
+                      value={composeTitle}
+                      onChangeText={setComposeTitle}
+                      placeholder="e.g., New PR: Wrist curl 85kg"
+                      placeholderTextColor={colors.textTertiary}
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Details (optional)</Text>
+                    <TextInput
+                      style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, borderWidth: 1, padding: 12 }]}
+                      value={composeBody}
+                      onChangeText={setComposeBody}
+                      multiline
+                      numberOfLines={3}
+                      placeholder="Add context or notes..."
+                      placeholderTextColor={colors.textTertiary}
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Share to group (optional)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.chip,
+                          { borderColor: colors.border, backgroundColor: composeGroupId === null ? colors.primary : 'transparent', marginRight: 8 },
+                        ]}
+                        onPress={() => setComposeGroupId(null)}
+                      >
+                        <Text style={[styles.chipText, { color: composeGroupId === null ? '#FFF' : colors.text }]}>None</Text>
+                      </TouchableOpacity>
+                      {groupsData.map((g: any) => (
+                        <TouchableOpacity
+                          key={g.id}
+                          style={[
+                            styles.chip,
+                            { borderColor: colors.border, backgroundColor: composeGroupId === g.id ? colors.primary : 'transparent', marginRight: 8 },
+                          ]}
+                          onPress={() => setComposeGroupId(g.id)}
+                        >
+                          <Text style={[styles.chipText, { color: composeGroupId === g.id ? '#FFF' : colors.text }]}>{g.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              </ScrollView>
+
+              <View style={{ padding: 20, paddingBottom: 40 }}>
+                <TouchableOpacity
+                  style={[styles.primaryButton, { backgroundColor: colors.primary, opacity: createPost.isPending ? 0.6 : 1 }]}
+                  onPress={handleSharePost}
+                  disabled={createPost.isPending}
+                >
+                  <Text style={styles.primaryButtonText}>{createPost.isPending ? 'Sharing...' : 'Share'}</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Title</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-                value={composeTitle}
-                onChangeText={setComposeTitle}
-                placeholder="e.g., New PR: Wrist curl 85kg"
-                placeholderTextColor={colors.textTertiary}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Details (optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
-                value={composeBody}
-                onChangeText={setComposeBody}
-                multiline
-                numberOfLines={3}
-                placeholder="Add context or notes..."
-                placeholderTextColor={colors.textTertiary}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.text }]}>Share to group (optional)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
-                <TouchableOpacity
-                  style={[
-                    styles.chip,
-                    { borderColor: colors.border, backgroundColor: composeGroupId === null ? colors.primary : 'transparent', marginRight: 8 },
-                  ]}
-                  onPress={() => setComposeGroupId(null)}
-                >
-                  <Text style={[styles.chipText, { color: composeGroupId === null ? '#FFF' : colors.text }]}>None</Text>
-                </TouchableOpacity>
-                {groupsData.map((g: any) => (
-                  <TouchableOpacity
-                    key={g.id}
-                    style={[
-                      styles.chip,
-                      { borderColor: colors.border, backgroundColor: composeGroupId === g.id ? colors.primary : 'transparent', marginRight: 8 },
-                    ]}
-                    onPress={() => setComposeGroupId(g.id)}
-                  >
-                    <Text style={[styles.chipText, { color: composeGroupId === g.id ? '#FFF' : colors.text }]}>{g.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: colors.primary, marginTop: 12, opacity: createPost.isPending ? 0.6 : 1 }]}
-              onPress={handleSharePost}
-              disabled={createPost.isPending}
-            >
-              <Text style={styles.primaryButtonText}>{createPost.isPending ? 'Sharing...' : 'Share'}</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit Post Modal */}
+      <Modal visible={!!editingPost} animationType="slide" transparent onRequestClose={() => setEditingPost(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalOverlayBottom}>
+            <View style={[styles.bottomSheetFull, { backgroundColor: colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Post</Text>
+                <TouchableOpacity onPress={() => setEditingPost(null)}>
+                  <X size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                <View style={{ padding: 20 }}>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Title</Text>
+                    <TextInput
+                      style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, padding: 12 }]}
+                      value={editingPost?.title || ''}
+                      onChangeText={(text) => setEditingPost(editingPost ? { ...editingPost, title: text } : null)}
+                      placeholder="Post title"
+                      placeholderTextColor={colors.textTertiary}
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={[styles.label, { color: colors.text }]}>Body (optional)</Text>
+                    <TextInput
+                      style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, padding: 12 }]}
+                      value={editingPost?.body || ''}
+                      onChangeText={(text) => setEditingPost(editingPost ? { ...editingPost, body: text } : null)}
+                      multiline
+                      numberOfLines={3}
+                      placeholder="Post details..."
+                      placeholderTextColor={colors.textTertiary}
+                    />
+                  </View>
+                </View>
+              </ScrollView>
+
+              <View style={{ padding: 20, paddingBottom: 40 }}>
+                <TouchableOpacity
+                  style={[styles.primaryButton, { backgroundColor: colors.primary, opacity: updatePost.isPending ? 0.6 : 1 }]}
+                  onPress={handleSaveEditPost}
+                  disabled={updatePost.isPending}
+                >
+                  <Text style={styles.primaryButtonText}>{updatePost.isPending ? 'Saving...' : 'Save Changes'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1021,7 +1510,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   inputGroup: { marginTop: 12 },
-  label: { fontSize: 14, fontWeight: '600' },
+  label: { fontSize: 15, fontWeight: '600' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1032,8 +1521,9 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 16,
+    minHeight: 48,
   },
   iconButton: { padding: 6 },
   pendingRow: {
@@ -1058,22 +1548,22 @@ const styles = StyleSheet.create({
   groupRow: {
     borderWidth: 1,
     borderRadius: 10,
-    padding: 12,
+    padding: 16,
     marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
   groupName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
   },
   groupMeta: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 2,
   },
   groupDescription: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 4,
   },
   filterRow: {
@@ -1156,12 +1646,69 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: 6,
+    marginBottom: 12,
   },
   textArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  ownerBadge: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  ownerBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  memberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+  },
+  memberAvatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  feedUserAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#f0f0f0',
+    marginRight: 8,
+  },
+  feedUserAvatarPlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  groupAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f0f0f0',
+    marginRight: 12,
+  },
+  groupAvatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
 });

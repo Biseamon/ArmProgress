@@ -1,8 +1,18 @@
 import { supabase } from '@/lib/supabase';
-import { getPending, markSynced } from './activitySyncHelpers';
+import {
+  getPending,
+  markSynced,
+  getPendingFriends as getPendingFriendsHelper,
+  getPendingFriendInvites as getPendingFriendInvitesHelper,
+  getPendingGroups as getPendingGroupsHelper,
+  getPendingGroupMembers as getPendingGroupMembersHelper,
+  getPendingGroupInvites as getPendingGroupInvitesHelper,
+  getPendingFeedPosts as getPendingFeedPostsHelper,
+  getPendingFeedReactions as getPendingFeedReactionsHelper,
+} from './activitySyncHelpers';
 
 // Friends
-export const getPendingFriends = () => getPending('friends');
+export const getPendingFriends = (userId: string) => getPendingFriendsHelper(userId);
 export const markFriendSynced = (id: string) => markSynced('friends', id);
 export const upsertFriend = async (row: any) => {
   await supabase.from('friends').upsert({
@@ -15,7 +25,7 @@ export const upsertFriend = async (row: any) => {
 };
 
 // Friend invites
-export const getPendingFriendInvites = () => getPending('friend_invites');
+export const getPendingFriendInvites = (userId: string) => getPendingFriendInvitesHelper(userId);
 export const markFriendInviteSynced = (id: string) => markSynced('friend_invites', id);
 export const upsertFriendInvite = async (row: any) => {
   await supabase.from('friend_invites').upsert({
@@ -29,7 +39,7 @@ export const upsertFriendInvite = async (row: any) => {
 };
 
 // Groups
-export const getPendingGroups = () => getPending('groups');
+export const getPendingGroups = (userId: string) => getPendingGroupsHelper(userId);
 export const markGroupSynced = (id: string) => markSynced('groups', id);
 export const upsertGroup = async (row: any) => {
   await supabase.from('groups').upsert({
@@ -38,12 +48,13 @@ export const upsertGroup = async (row: any) => {
     name: row.name,
     description: row.description,
     visibility: row.visibility,
+    avatar_url: row.avatar_url,
     created_at: row.created_at,
   });
 };
 
 // Group members
-export const getPendingGroupMembers = () => getPending('group_members');
+export const getPendingGroupMembers = (userId: string) => getPendingGroupMembersHelper(userId);
 export const markGroupMemberSynced = (id: string) => markSynced('group_members', id);
 export const upsertGroupMember = async (row: any) => {
   await supabase.from('group_members').upsert({
@@ -57,7 +68,7 @@ export const upsertGroupMember = async (row: any) => {
 };
 
 // Group invites
-export const getPendingGroupInvites = () => getPending('group_invites');
+export const getPendingGroupInvites = (userId: string) => getPendingGroupInvitesHelper(userId);
 export const markGroupInviteSynced = (id: string) => markSynced('group_invites', id);
 export const upsertGroupInvite = async (row: any) => {
   await supabase.from('group_invites').upsert({
@@ -73,7 +84,7 @@ export const upsertGroupInvite = async (row: any) => {
 };
 
 // Feed posts
-export const getPendingFeedPosts = () => getPending('feed_posts');
+export const getPendingFeedPosts = (userId: string) => getPendingFeedPostsHelper(userId);
 export const markFeedPostSynced = (id: string) => markSynced('feed_posts', id);
 export const upsertFeedPost = async (row: any) => {
   await supabase.from('feed_posts').upsert({
@@ -89,14 +100,21 @@ export const upsertFeedPost = async (row: any) => {
 };
 
 // Feed reactions
-export const getPendingFeedReactions = () => getPending('feed_reactions');
+export const getPendingFeedReactions = (userId: string) => getPendingFeedReactionsHelper(userId);
 export const markFeedReactionSynced = (id: string) => markSynced('feed_reactions', id);
 export const upsertFeedReaction = async (row: any) => {
-  await supabase.from('feed_reactions').upsert({
-    id: row.id,
-    post_id: row.post_id,
-    user_id: row.user_id,
-    reaction: row.reaction,
-    created_at: row.created_at,
-  });
+  const { error } = await supabase.from('feed_reactions').upsert(
+    {
+      id: row.id,
+      post_id: row.post_id,
+      user_id: row.user_id,
+      reaction: row.reaction,
+      created_at: row.created_at,
+    },
+    {
+      onConflict: 'post_id,user_id,reaction',
+      ignoreDuplicates: false,
+    }
+  );
+  if (error) throw error;
 };

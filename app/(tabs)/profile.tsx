@@ -21,7 +21,7 @@ import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
-import { BookOpen, Camera, ChevronRight, Crown, FileText, Heart, Info, LogOut, Mail, Moon, Shield, Sun, User, Weight } from 'lucide-react-native';
+import { BookOpen, Camera, ChevronRight, Crown, Heart, Info, LogOut, Mail, Moon, Settings, Shield, Sun, User, Weight } from 'lucide-react-native';
 import { GuideModal } from '@/components/GuideModal';
 import { STRIPE_CONFIG, APP_CONFIG } from '@/lib/config';
 import { useUpdateProfile } from '@/lib/react-query-sqlite-complete';
@@ -583,6 +583,15 @@ export default function Profile() {
               <Text style={styles.upgradeText}>Upgrade to Premium</Text>
             </TouchableOpacity>
           )}
+
+          {/* App Guide Button - Moved to top for visibility */}
+          <TouchableOpacity
+            style={[styles.guideButtonTop, { backgroundColor: colors.primary }]}
+            onPress={() => setShowGuide(true)}
+          >
+            <BookOpen size={18} color="#FFF" />
+            <Text style={styles.guideButtonTopText}>App Guide</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -748,27 +757,19 @@ export default function Profile() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Legal</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
 
           <TouchableOpacity
             style={[styles.card, styles.legalCard, { backgroundColor: colors.surface }]}
-            onPress={() => router.push('/legal')}
+            onPress={() => router.push('/account-settings' as any)}
           >
             <View style={styles.settingLeft}>
-              <FileText size={20} color={colors.primary} />
-              <Text style={[styles.settingText, { color: colors.text }]}>Privacy & Terms</Text>
+              <Settings size={20} color={colors.primary} />
+              <Text style={[styles.settingText, { color: colors.text }]}>Account Settings</Text>
             </View>
             <ChevronRight size={20} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity
-          style={[styles.guideButton, { backgroundColor: colors.primary }]}
-          onPress={() => setShowGuide(true)}
-        >
-          <BookOpen size={22} color="#FFF" />
-          <Text style={styles.guideButtonText}>App Guide - Learn How to Use</Text>
-        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.donateButton, { backgroundColor: colors.surface, borderColor: '#FF6B9D' }]}
@@ -972,6 +973,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  guideButtonTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  guideButtonTopText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
   guideButton: {
     flexDirection: 'row',
