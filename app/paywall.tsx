@@ -44,9 +44,16 @@ export default function PaywallScreen() {
 
     try {
       setIsPresenting(true);
-      console.log('Presenting RevenueCat paywall...');
+      console.log('Presenting RevenueCat paywall...', { hasOfferings: !!offerings });
 
-      const paywallResult = await RevenueCatUI.presentPaywall();
+      if (!offerings) {
+        console.warn('No offerings available yet. User may need to wait for app approval.');
+      }
+
+      // Present with the current offering
+      const paywallResult = await RevenueCatUI.presentPaywall({
+        offering: offerings || undefined,
+      });
       console.log('Paywall result:', paywallResult);
 
       // Handle different result types
@@ -106,19 +113,28 @@ export default function PaywallScreen() {
 
   // Load offerings when screen loads
   useEffect(() => {
-    if (offerings || isPremium) {
-      setIsLoading(false);
-    }
+    console.log('[Paywall] Screen loaded - isPremium:', isPremium, 'offerings:', !!offerings, 'showExplanation:', showExplanation);
+    // Always set isLoading to false after mount, regardless of offerings
+    setIsLoading(false);
+    console.log('[Paywall] Set isLoading to false');
   }, [isPremium, offerings]);
 
   // Handle proceeding to subscription plans
-  const handleViewPlans = () => {
+  const handleSelectPlan = (planType: 'monthly' | 'yearly') => {
+    console.log('[Paywall] User selected plan:', planType);
     setShowExplanation(false);
-    presentRevenueCatPaywall();
+    // Small delay to ensure state updates before presenting paywall
+    setTimeout(() => {
+      presentRevenueCatPaywall();
+    }, 100);
   };
+
+  console.log('[Paywall] Render - isPremium:', isPremium, 'isLoading:', isLoading, 'offerings:', !!offerings, 'showExplanation:', showExplanation);
 
   // If user is already premium, show success screen
   if (isPremium) {
+    console.log('[Paywall] Showing premium success screen');
+
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
@@ -145,8 +161,9 @@ export default function PaywallScreen() {
     );
   }
 
-  // Show loading while waiting for offerings or paywall presentation
-  if (isLoading || !offerings) {
+  // Show loading only during initial load
+  if (isLoading) {
+    console.log('[Paywall] Showing loading screen');
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
@@ -166,6 +183,7 @@ export default function PaywallScreen() {
 
   // Show premium explanation screen
   if (showExplanation) {
+    console.log('[Paywall] Showing explanation screen with pricing');
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
@@ -186,15 +204,28 @@ export default function PaywallScreen() {
             Unlock the full potential of your fitness journey
           </Text>
 
-          {/* Pricing Section */}
+          {/* Pricing Section - Tappable Cards */}
           <View style={styles.pricingContainer}>
-            <View style={[styles.priceCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.priceCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}
+              onPress={() => handleSelectPlan('monthly')}
+              disabled={isPresenting}
+              activeOpacity={0.7}
+            >
               <Text style={[styles.planName, { color: colors.text }]}>Monthly</Text>
               <Text style={[styles.price, { color: colors.primary }]}>$4.99</Text>
               <Text style={[styles.priceSubtext, { color: colors.textSecondary }]}>per month</Text>
-            </View>
+              <View style={[styles.selectButton, { backgroundColor: colors.primary }]}>
+                <Text style={styles.selectButtonText}>Select</Text>
+              </View>
+            </TouchableOpacity>
 
-            <View style={[styles.priceCard, styles.bestValue, { backgroundColor: colors.cardBackground, borderColor: colors.premium }]}>
+            <TouchableOpacity
+              style={[styles.priceCard, styles.bestValue, { backgroundColor: colors.cardBackground, borderColor: colors.premium }]}
+              onPress={() => handleSelectPlan('yearly')}
+              disabled={isPresenting}
+              activeOpacity={0.7}
+            >
               <View style={[styles.bestValueBadge, { backgroundColor: colors.premium }]}>
                 <Text style={styles.bestValueText}>BEST VALUE</Text>
               </View>
@@ -202,7 +233,10 @@ export default function PaywallScreen() {
               <Text style={[styles.price, { color: colors.premium }]}>$39.99</Text>
               <Text style={[styles.priceSubtext, { color: colors.textSecondary }]}>per year</Text>
               <Text style={[styles.savings, { color: colors.premium }]}>Save 33%</Text>
-            </View>
+              <View style={[styles.selectButton, { backgroundColor: colors.premium }]}>
+                <Text style={styles.selectButtonText}>Select</Text>
+              </View>
+            </TouchableOpacity>
           </View>
 
           {/* Features Section */}
@@ -220,21 +254,8 @@ export default function PaywallScreen() {
             ))}
           </View>
 
-          {/* CTA Button */}
-          <TouchableOpacity
-            style={[styles.ctaButton, { backgroundColor: colors.primary }]}
-            onPress={handleViewPlans}
-            disabled={isPresenting}
-          >
-            {isPresenting ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.ctaButtonText}>Continue to Subscription</Text>
-            )}
-          </TouchableOpacity>
-
           <Text style={[styles.disclaimer, { color: colors.textSecondary }]}>
-            Cancel anytime. No commitments.
+            Tap a plan above to continue • Cancel anytime
           </Text>
         </ScrollView>
       </View>
@@ -242,6 +263,7 @@ export default function PaywallScreen() {
   }
 
   // Fallback: Show button to manually trigger paywall (after explanation is dismissed)
+  console.log('[Paywall] Showing fallback screen');
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
@@ -307,6 +329,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     alignItems: 'center',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   bestValue: {
     borderWidth: 3,
@@ -341,6 +368,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 8,
+    marginBottom: 12,
+  },
+  selectButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  selectButtonText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: 'bold',
   },
   featuresContainer: {
     marginBottom: 32,

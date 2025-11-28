@@ -21,9 +21,8 @@ import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
-import { BookOpen, Camera, ChevronRight, Crown, Heart, Info, LogOut, Mail, Moon, Settings, Shield, Sun, User, Weight } from 'lucide-react-native';
+import { BookOpen, Camera, ChevronRight, Crown, Info, LogOut, Mail, Moon, Settings, Shield, Sun, User, Weight } from 'lucide-react-native';
 import { GuideModal } from '@/components/GuideModal';
-import { STRIPE_CONFIG, APP_CONFIG } from '@/lib/config';
 import { useUpdateProfile } from '@/lib/react-query-sqlite-complete';
 import { convertAllDataToNewUnit } from '@/lib/db/queries/weightConversion';
 import { triggerSync } from '@/lib/sync/syncEngine';
@@ -55,7 +54,6 @@ export default function Profile() {
   const [showGuide, setShowGuide] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [imageKey, setImageKey] = useState(Date.now());
-  const [showDonationModal, setShowDonationModal] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
@@ -495,28 +493,6 @@ export default function Profile() {
     }
   };
 
-  const handleDonate = () => {
-    // Build return URL based on platform
-    let returnUrl: string;
-    if (Platform.OS === 'web') {
-      returnUrl = window.location.origin;
-    } else if (Platform.OS === 'ios') {
-      returnUrl = `${APP_CONFIG.scheme}://profile`;
-    } else if (Platform.OS === 'android') {
-      returnUrl = `${APP_CONFIG.url}/profile`;
-    } else {
-      returnUrl = `${APP_CONFIG.scheme}://profile`;
-    }
-
-    // Use configured Stripe donation URL
-    const stripeDonationUrl = `${STRIPE_CONFIG.donationUrl}?prefilled_return_url=${encodeURIComponent(returnUrl)}`;
-
-    if (Platform.OS === 'web') {
-      window.open(stripeDonationUrl, '_blank');
-    } else {
-      Linking.openURL(stripeDonationUrl);
-    }
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -583,15 +559,6 @@ export default function Profile() {
               <Text style={styles.upgradeText}>Upgrade to Premium</Text>
             </TouchableOpacity>
           )}
-
-          {/* App Guide Button - Moved to top for visibility */}
-          <TouchableOpacity
-            style={[styles.guideButtonTop, { backgroundColor: colors.primary }]}
-            onPress={() => setShowGuide(true)}
-          >
-            <BookOpen size={18} color="#FFF" />
-            <Text style={styles.guideButtonTopText}>App Guide</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.section}>
@@ -618,6 +585,17 @@ export default function Profile() {
               </Text>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={[styles.card, styles.legalCard, { backgroundColor: colors.surface }]}
+            onPress={() => setShowGuide(true)}
+          >
+            <View style={styles.settingLeft}>
+              <BookOpen size={20} color={colors.primary} />
+              <Text style={[styles.settingText, { color: colors.text }]}>App Guide</Text>
+            </View>
+            <ChevronRight size={20} color={colors.textTertiary} />
+          </TouchableOpacity>
 
           {profile?.is_test_user && (
             <View style={[styles.testUserBanner, { backgroundColor: colors.surface, borderColor: colors.premium }]}>
@@ -770,14 +748,6 @@ export default function Profile() {
             <ChevronRight size={20} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity
-          style={[styles.donateButton, { backgroundColor: colors.surface, borderColor: '#FF6B9D' }]}
-          onPress={handleDonate}
-        >
-          <Heart size={20} color="#FF6B9D" />
-          <Text style={[styles.donateText, { color: '#FF6B9D' }]}>Support Development</Text>
-        </TouchableOpacity>
 
         <TouchableOpacity style={[styles.signOutButton, { backgroundColor: colors.surface, borderColor: colors.error }]} onPress={handleSignOut}>
           <LogOut size={20} color={colors.error} />
@@ -974,21 +944,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  guideButtonTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  guideButtonTopText: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
   guideButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1001,21 +956,6 @@ const styles = StyleSheet.create({
   },
   guideButtonText: {
     color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  donateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 16,
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-  },
-  donateText: {
     fontSize: 16,
     fontWeight: 'bold',
   },

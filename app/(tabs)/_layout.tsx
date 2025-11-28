@@ -32,10 +32,20 @@ export default function TabLayout() {
   // Calculate responsive tab bar dimensions
   const tabBarHeight = isTablet ? 80 : 60;
   const iconSize = isTablet ? 28 : 24;
+  const iconWrapperWidth = isTablet ? 32 : 28;
   const labelFontSize = isTablet ? 14 : 12;
   
   // Account for device navigation bar (safe area)
   const tabBarPaddingBottom = Math.max(insets.bottom, 8);
+
+  const renderIcon =
+    (IconComponent: typeof Home) =>
+    ({ color }: { color: string }) =>
+      (
+        <View style={{ width: iconWrapperWidth, alignItems: 'center', justifyContent: 'center' }}>
+          <IconComponent size={iconSize} color={color} />
+        </View>
+      );
 
   return (
     <>
@@ -56,6 +66,7 @@ export default function TabLayout() {
             height: tabBarHeight + tabBarPaddingBottom,
             paddingBottom: tabBarPaddingBottom,
             paddingTop: isTablet ? 12 : 8,
+            paddingHorizontal: 0,
           },
           tabBarLabelStyle: {
             fontSize: labelFontSize,
@@ -65,48 +76,57 @@ export default function TabLayout() {
           tabBarIconStyle: {
             marginTop: 4,
           },
+          tabBarItemStyle: {
+            flex: 1, // Evenly distribute each tab across the bar
+            flexBasis: 0, // Ignore intrinsic width of icon/label
+            minWidth: 0, // Allow full shrinking so all 6 fit edge-to-edge
+            alignItems: 'center',
+            paddingHorizontal: 0,
+            marginHorizontal: 0,
+            gap: 0,
+          },
         }}
       >
         <Tabs.Screen
           name="index"
           options={{
             title: 'Home',
-            tabBarIcon: ({ color }) => <Home size={iconSize} color={color} />,
+            tabBarIcon: renderIcon(Home),
           }}
         />
         <Tabs.Screen
           name="training"
           options={{
             title: 'Training',
-            tabBarIcon: ({ color }) => <Dumbbell size={iconSize} color={color} />,
+            tabBarIcon: renderIcon(Dumbbell),
           }}
         />
         <Tabs.Screen
           name="calendar"
           options={{
             title: 'Calendar',
-            tabBarIcon: ({ color }) => <Calendar size={iconSize} color={color} />,
+            tabBarIcon: renderIcon(Calendar),
           }}
         />
         <Tabs.Screen
           name="progress"
           options={{
             title: 'Progress',
-            tabBarIcon: ({ color }) => <TrendingUp size={iconSize} color={color} />,
+            tabBarIcon: renderIcon(TrendingUp),
           }}
         />
         <Tabs.Screen
           name="activity"
           options={{
             title: 'Activity',
-            tabBarIcon: ({ color }) => <Activity size={iconSize} color={color} />,
+            tabBarIcon: renderIcon(Activity),
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
             title: 'Profile',
-            tabBarIcon: ({ color }) => <User size={iconSize} color={color} />,
+            tabBarIcon: renderIcon(User),
           }}
         />
       </Tabs>
