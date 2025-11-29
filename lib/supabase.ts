@@ -97,6 +97,7 @@ export type Workout = {
   intensity: number;          // 1-10 intensity rating
   notes: string;              // Optional workout notes
   cycle_id: string | null;    // Associated training cycle (if any)
+  weight_unit: 'kg' | 'lbs';  // Unit for weight in exercises
   created_at: string;         // When workout was logged
   exercises?: { sets: number; reps: number }[]; // Add exercises property
 };

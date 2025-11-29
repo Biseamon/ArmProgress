@@ -185,7 +185,7 @@ const pushLocalChanges = async (userId: string) => {
               duration_minutes: workout.duration_minutes,
               intensity: workout.intensity,
               notes: workout.notes,
-              weight_unit: 'lbs',
+              weight_unit: workout.weight_unit || 'lbs',
               created_at: (workout as any).created_at || new Date().toISOString(),
               updated_at: new Date().toISOString(),
             });
@@ -1201,7 +1201,7 @@ const resolveConflictAndMerge = async (remoteWorkout: any) => {
   
   // Check for conflict
   const localModified = new Date(localWorkout.modified_at);
-  const remoteModified = new Date(remoteWorkout.updated_at);
+  const remoteModified = new Date(remoteWorkout.modified_at);
   
   if (localWorkout.pending_sync === 1) {
     // Local has unsync changes
