@@ -42,10 +42,14 @@ export const getPendingGroups = async (userId: string) => {
 
 export const getPendingGroupMembers = async (userId: string) => {
   const db = await getDatabase();
-  // Only sync group memberships for current user
+  // Sync memberships for the current user OR any group they own (so owners can manage members)
   return db.getAllAsync(
-    `SELECT * FROM group_members WHERE pending_sync = 1 AND user_id = ?`,
-    [userId]
+    `SELECT gm.*
+     FROM group_members gm
+     LEFT JOIN groups g ON gm.group_id = g.id
+     WHERE gm.pending_sync = 1
+       AND (gm.user_id = ? OR g.owner_id = ?)`,
+    [userId, userId]
   );
 };
 

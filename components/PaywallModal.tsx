@@ -83,14 +83,20 @@ export function PaywallModal({ visible, onClose, onUpgrade, feature }: PaywallMo
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          scrollEnabled={false}
+        >
           <View style={styles.modal}>
             <TouchableOpacity style={styles.closeButton} onPress={onClose}>
               <X size={24} color="#999" />
             </TouchableOpacity>
 
             <View style={styles.iconContainer}>
-              <Crown size={60} color="#FFD700" strokeWidth={2} />
+              <Crown size={50} color="#FFD700" strokeWidth={2} />
             </View>
 
             <Text style={styles.title}>Premium Feature</Text>
@@ -166,15 +172,17 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
     padding: 20,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modal: {
     backgroundColor: '#2A2A2A',
     borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 450,
+    padding: 16,
+    width: '90%',
+    maxWidth: 400,
     alignSelf: 'center',
     position: 'relative',
   },
@@ -187,27 +195,27 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     alignItems: 'center',
-    marginBottom: 16,
-    marginTop: 8,
+    marginBottom: 12,
+    marginTop: 4,
   },
   title: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFF',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   description: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#999',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 22,
+    marginBottom: 20,
+    lineHeight: 20,
   },
   pricingContainer: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
+    gap: 10,
+    marginBottom: 18,
   },
   priceCard: {
     flex: 1,
@@ -215,7 +223,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#444',
-    padding: 16,
+    padding: 12,
     alignItems: 'center',
     position: 'relative',
   },
@@ -277,32 +285,32 @@ const styles = StyleSheet.create({
   benefitsContainer: {
     backgroundColor: '#1A1A1A',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    padding: 12,
+    marginBottom: 12,
   },
   benefitsTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#FFF',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   benefitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 10,
+    marginBottom: 5,
+    gap: 8,
   },
   benefit: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#CCC',
     flex: 1,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   disclaimer: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     fontStyle: 'italic',
   },
   cancelButton: {

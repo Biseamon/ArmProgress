@@ -44,6 +44,21 @@ export const updateFriendStatus = async (id: string, status: 'pending' | 'accept
   );
 };
 
+export const updateFriendStatusForPair = async (
+  userId: string,
+  friendUserId: string,
+  status: 'pending' | 'accepted' | 'rejected'
+) => {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE friends
+       SET status = ?, pending_sync = 1, modified_at = datetime('now')
+     WHERE (user_id = ? AND friend_user_id = ?)
+        OR (user_id = ? AND friend_user_id = ?)`,
+    [status, userId, friendUserId, friendUserId, userId]
+  );
+};
+
 // Friend invites
 export const upsertFriendInvite = async (invite: {
   id: string;
@@ -84,14 +99,24 @@ export const upsertGroup = async (group: {
   name: string;
   description?: string | null;
   visibility: 'public' | 'private';
+  avatar_url?: string | null;
   pending_sync?: number;
   deleted?: number;
 }) => {
   const db = await getDatabase();
   await db.runAsync(
-    `INSERT OR REPLACE INTO groups (id, owner_id, name, description, visibility, pending_sync, deleted, modified_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-    [group.id, group.owner_id, group.name, group.description ?? null, group.visibility, group.pending_sync ?? 1, group.deleted ?? 0]
+    `INSERT OR REPLACE INTO groups (id, owner_id, name, description, visibility, avatar_url, pending_sync, deleted, modified_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+    [
+      group.id,
+      group.owner_id,
+      group.name,
+      group.description ?? null,
+      group.visibility,
+      group.avatar_url ?? null,
+      group.pending_sync ?? 1,
+      group.deleted ?? 0,
+    ]
   );
 };
 
@@ -162,12 +187,31 @@ export const markFeedPostDeleted = async (postId: string) => {
   }
 };
 
-export const markFriendDeleted = async (friendId: string) => {
+export const markFriendDeleted = async (friendId: string, currentUserId?: string, otherUserId?: string) => {
   const db = await getDatabase();
-  await db.runAsync(
-    `UPDATE friends SET deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
-    [friendId]
-  );
+  await db.execAsync('BEGIN');
+  try {
+    await db.runAsync(
+      `UPDATE friends SET deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
+      [friendId]
+    );
+
+    // Also mark the reciprocal row (if it exists) so both sides are removed and synced
+    if (currentUserId && otherUserId) {
+      await db.runAsync(
+        `UPDATE friends
+         SET deleted = 1, pending_sync = 1, modified_at = datetime('now')
+         WHERE (user_id = ? AND friend_user_id = ?)
+            OR (user_id = ? AND friend_user_id = ?)`,
+        [currentUserId, otherUserId, otherUserId, currentUserId]
+      );
+    }
+
+    await db.execAsync('COMMIT');
+  } catch (error) {
+    await db.execAsync('ROLLBACK');
+    throw error;
+  }
 };
 
 // Group members
@@ -229,6 +273,14 @@ export const updateGroupMemberStatus = async (id: string, status: 'active' | 'pe
   await db.runAsync(
     `UPDATE group_members SET status = ?, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
     [status, id]
+  );
+};
+
+export const markGroupMemberDeleted = async (memberId: string) => {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE group_members SET deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
+    [memberId]
   );
 };
 
@@ -345,6 +397,42 @@ export const getUserReactionForPost = async (postId: string, userId: string, rea
     [postId, userId, reaction]
   );
   return result;
+};
+
+export const getAnyUserReactionForPost = async (postId: string, userId: string) => {
+  const db = await getDatabase();
+  const result = await db.getFirstAsync<{ id: string; reaction: 'arm' | 'fire' | 'like' }>(
+    'SELECT id, reaction FROM feed_reactions WHERE post_id = ? AND user_id = ? AND deleted = 0',
+    [postId, userId]
+  );
+  return result;
+};
+
+export const getUserReactionsForPost = async (postId: string, userId: string) => {
+  const db = await getDatabase();
+  return db.getAllAsync<{ id: string; reaction: 'arm' | 'fire' | 'like' }>(
+    'SELECT id, reaction FROM feed_reactions WHERE post_id = ? AND user_id = ? AND deleted = 0',
+    [postId, userId]
+  );
+};
+
+export const deleteUserReactionsForPost = async (postId: string, userId: string, keepId?: string) => {
+  const db = await getDatabase();
+  if (keepId) {
+    await db.runAsync(
+      `UPDATE feed_reactions
+       SET deleted = 1, pending_sync = 1, modified_at = datetime('now')
+       WHERE post_id = ? AND user_id = ? AND id != ? AND deleted = 0`,
+      [postId, userId, keepId]
+    );
+  } else {
+    await db.runAsync(
+      `UPDATE feed_reactions
+       SET deleted = 1, pending_sync = 1, modified_at = datetime('now')
+       WHERE post_id = ? AND user_id = ? AND deleted = 0`,
+      [postId, userId]
+    );
+  }
 };
 
 export const deleteFeedReaction = async (reactionId: string) => {

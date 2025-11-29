@@ -150,7 +150,7 @@ export default function Progress() {
 
   // Share to Activity modal state
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareContent, setShareContent] = useState<{ type: 'goal' | 'pr'; title: string; body: string } | null>(null);
+  const [shareContent, setShareContent] = useState<{ type: 'goal' | 'pr' | 'summary'; title: string; body: string } | null>(null);
   const [selectedShareGroup, setSelectedShareGroup] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [viewingGoal, setViewingGoal] = useState<Goal | null>(null);
@@ -237,7 +237,48 @@ export default function Progress() {
       setMeasurementNotes('');
       setEditingMeasurement(null);
       setShowAddMeasurement(false);
-      Alert.alert('Success', `Measurement ${editingMeasurement ? 'updated' : 'saved'} successfully!`);
+
+      // Build measurement summary for sharing
+      const measurementDetails: string[] = [];
+      if (weightValue) measurementDetails.push(`Weight: ${weightValue} ${userUnit}`);
+      if (armCircumference) measurementDetails.push(`Arm: ${armCircumference}${getCircumferenceUnit(userUnit)}`);
+      if (forearmCircumference) measurementDetails.push(`Forearm: ${forearmCircumference}${getCircumferenceUnit(userUnit)}`);
+      if (wristCircumference) measurementDetails.push(`Wrist: ${wristCircumference}${getCircumferenceUnit(userUnit)}`);
+
+      // Show success alert first
+      Alert.alert(
+        'Success',
+        `Measurement ${editingMeasurement ? 'updated' : 'saved'} successfully!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // After success alert is dismissed, offer to share (only for new measurements)
+              if (!editingMeasurement && measurementDetails.length > 0) {
+                Alert.alert(
+                  'Share to Activity?',
+                  'Share this body measurement to your Activity feed?',
+                  [
+                    { text: 'Not now', style: 'cancel' },
+                    {
+                      text: 'Share',
+                      onPress: () => {
+                        setShareContent({
+                          type: 'summary',
+                          title: 'New body measurements',
+                          body: measurementDetails.join(' • '),
+                        });
+                        setSelectedShareGroup(null);
+                        setShowShareModal(true);
+                      },
+                    },
+                  ]
+                );
+              }
+            },
+          },
+        ]
+      );
       // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
@@ -336,21 +377,35 @@ export default function Progress() {
       if (newValue >= goal.target_value) {
         setShowConfetti(true);
         setTimeout(() => setShowConfetti(false), 5000);
+
+        // Show success alert first
         Alert.alert(
-          'Share to Activity?',
-          'Congrats on finishing your goal! Want to share this to your Activity feed?',
+          'Goal Completed!',
+          `Congrats on finishing your goal: ${goal.goal_type}!`,
           [
-            { text: 'Not now', style: 'cancel' },
             {
-              text: 'Share',
+              text: 'OK',
               onPress: () => {
-                setShareContent({
-                  type: 'goal',
-                  title: `Goal completed: ${goal.goal_type}`,
-                  body: `Hit ${goal.target_value} ${goal.goal_type ? '' : 'target'}`,
-                });
-                setSelectedShareGroup(null);
-                setShowShareModal(true);
+                // After success alert is dismissed, offer to share
+                Alert.alert(
+                  'Share to Activity?',
+                  'Want to share this achievement to your Activity feed?',
+                  [
+                    { text: 'Not now', style: 'cancel' },
+                    {
+                      text: 'Share',
+                      onPress: () => {
+                        setShareContent({
+                          type: 'goal',
+                          title: `Goal completed: ${goal.goal_type}`,
+                          body: `Hit ${goal.target_value} ${goal.goal_type ? '' : 'target'}`,
+                        });
+                        setSelectedShareGroup(null);
+                        setShowShareModal(true);
+                      },
+                    },
+                  ]
+                );
               },
             },
           ]
@@ -463,22 +518,35 @@ export default function Progress() {
       setTestNotes('');
       setEditingTest(null);
       setShowTestModal(false);
-      Alert.alert('Success', 'PR saved successfully!');
+
+      // Show success alert first, then offer to share
       Alert.alert(
-        'Share to Activity?',
-        'Share this PR to your Activity feed?',
+        'Success',
+        'PR saved successfully!',
         [
-          { text: 'Not now', style: 'cancel' },
           {
-            text: 'Share',
+            text: 'OK',
             onPress: () => {
-              setShareContent({
-                type: 'pr',
-                title: `New PR: ${finalTestType.replace(/_/g, ' ')}`,
-                body: `${formatWeight(resultValue, userUnit)} ${userUnit.toUpperCase()}`,
-              });
-              setSelectedShareGroup(null);
-              setShowShareModal(true);
+              // After success alert is dismissed, show share prompt
+              Alert.alert(
+                'Share to Activity?',
+                'Share this PR to your Activity feed?',
+                [
+                  { text: 'Not now', style: 'cancel' },
+                  {
+                    text: 'Share',
+                    onPress: () => {
+                      setShareContent({
+                        type: 'pr',
+                        title: `New PR: ${finalTestType.replace(/_/g, ' ')}`,
+                        body: `${formatWeight(resultValue, userUnit)} ${userUnit.toUpperCase()}`,
+                      });
+                      setSelectedShareGroup(null);
+                      setShowShareModal(true);
+                    },
+                  },
+                ]
+              );
             },
           },
         ]
@@ -2391,7 +2459,7 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
               </TouchableOpacity>
             </View>
             <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>
-              Choose where to share this {shareContent?.type === 'goal' ? 'goal' : 'PR'}:
+              Choose where to share this {shareContent?.type === 'goal' ? 'goal' : shareContent?.type === 'pr' ? 'PR' : 'update'}:
             </Text>
             <ScrollView style={{ maxHeight: 300, marginBottom: 16 }}>
               <TouchableOpacity

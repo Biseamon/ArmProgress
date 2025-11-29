@@ -126,14 +126,16 @@ import {
   markGroupDeleted,
   markFeedPostDeleted,
   markFriendDeleted,
+  markGroupMemberDeleted,
   upsertFeedPost,
   updateFriendStatus,
+  updateFriendStatusForPair,
   upsertGroupMember,
   upsertGroupInvite,
   upsertFeedReaction,
-  getUserReactionForPost,
+  getUserReactionsForPost,
+  deleteUserReactionsForPost,
   deleteFeedReaction,
-  getAllReactionsForFeed,
   updateFeedPost,
   getGroupMembers,
   updateGroupMemberStatus,
@@ -386,6 +388,14 @@ export const useCreateFriendInvite = () => {
     mutationFn: async ({ email, token }: { email: string; token?: string }) => {
       if (!profile) throw new Error('No profile');
       const id = generateUuid();
+      // Clear any existing pending invites for this inviter/email to avoid duplicates
+      const db = await getDatabase();
+      await db.runAsync(
+        `UPDATE friend_invites
+         SET deleted = 1, pending_sync = 1, modified_at = datetime('now')
+         WHERE inviter_id = ? AND invitee_email = ? AND deleted = 0`,
+        [profile.id, email.trim().toLowerCase()]
+      );
       await upsertFriendInvite({
         id,
         inviter_id: profile.id,
@@ -428,26 +438,18 @@ export const useRespondToFriendInvite = () => {
           status: 'accepted',
           pending_sync: 1,
         });
-        await upsertFriendInvite({
-          id: invite.id,
-          inviter_id: invite.inviter_id,
-          invitee_email: invite.invitee_email,
-          token: invite.token,
-          status: 'accepted',
-          pending_sync: 1,
-        });
+        const db = await getDatabase();
+        await db.runAsync(
+          `UPDATE friend_invites SET status = 'accepted', deleted = 1, pending_sync = 1, modified_at = datetime('now') WHERE id = ?`,
+          [invite.id]
+        );
       } else {
         // Decline: remove the invite locally so it doesn't keep showing
-        await upsertFriendInvite({
-          id: invite.id,
-          inviter_id: invite.inviter_id,
-          invitee_email: invite.invitee_email,
-          token: invite.token,
-          status: 'pending',
-          pending_sync: 1,
-        });
         const db = await getDatabase();
-        await db.runAsync('UPDATE friend_invites SET deleted = 1, modified_at = datetime(\'now\'), pending_sync = 1 WHERE id = ?', [invite.id]);
+        await db.runAsync(
+          `UPDATE friend_invites SET status = 'rejected', deleted = 1, modified_at = datetime('now'), pending_sync = 1 WHERE id = ?`,
+          [invite.id]
+        );
       }
     },
     onSuccess: () => {
@@ -480,14 +482,8 @@ export const useRespondToFriendRequest = () => {
           status: 'accepted',
           pending_sync: 1,
         });
-        // Also ensure requester's row is accepted (id may be time-based; use upsert with deterministic id)
-        await upsertFriend({
-          id: originalId,
-          user_id: requesterId,
-          friend_user_id: profile.id,
-          status: 'accepted',
-          pending_sync: 1,
-        });
+        // Also ensure requester's original row is marked accepted
+        await updateFriendStatusForPair(requesterId, profile.id, 'accepted');
       }
     },
     onSuccess: () => {
@@ -609,13 +605,18 @@ export const useUnfriend = () => {
   const { profile } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ friendId }: { friendId: string }) => {
+    mutationFn: async ({ friendId, friendUserId }: { friendId: string; friendUserId: string }) => {
       if (!profile) throw new Error('No profile');
-      await markFriendDeleted(friendId);
+      await markFriendDeleted(friendId, profile.id, friendUserId);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       if (profile?.id) {
         queryClient.invalidateQueries({ queryKey: queryKeys.friends(profile.id) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.feed(profile.id) });
+        // Also refresh friend list for the removed user when available (best-effort cache bust)
+        if (variables.friendUserId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.friends(variables.friendUserId) });
+        }
         triggerSync(profile.id);
       }
     },
@@ -688,6 +689,28 @@ export const useUpdateGroupMemberStatus = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
         // Refresh members for any group
         queryClient.invalidateQueries({ queryKey: ['groupMembers'] as any });
+        triggerSync(profile.id);
+      }
+    },
+  });
+};
+
+export const useRemoveGroupMember = () => {
+  const { profile } = useAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ memberId }: { memberId: string; groupId?: string }) => {
+      if (!profile) throw new Error('No profile');
+      await markGroupMemberDeleted(memberId);
+    },
+    onSuccess: (_, variables) => {
+      if (profile?.id) {
+        if (variables.groupId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.groupMembers(variables.groupId) });
+        } else {
+          queryClient.invalidateQueries({ queryKey: ['groupMembers'] as any });
+        }
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups(profile.id) });
         triggerSync(profile.id);
       }
     },
@@ -783,25 +806,43 @@ export const useReactToFeed = () => {
     mutationFn: async ({ postId, reaction }: { postId: string; reaction: 'arm' | 'fire' | 'like' }) => {
       if (!profile) throw new Error('No profile');
 
-      // Check if user already reacted with this reaction type
-      const existingReaction = await getUserReactionForPost(postId, profile.id, reaction);
+      // Fetch all active reactions for this post/user to enforce a single reaction
+      const userReactions = await getUserReactionsForPost(postId, profile.id);
+      const primaryReaction = userReactions.find(r => r.reaction === reaction) || userReactions[0];
 
-      if (existingReaction) {
-        // Remove the reaction (toggle off)
-        await deleteFeedReaction(existingReaction.id);
-        return { action: 'removed', id: existingReaction.id };
-      } else {
-        // Add the reaction (toggle on)
-        const id = generateUuid();
+      // Remove any extra reactions beyond the one we're about to handle
+      if (primaryReaction) {
+        await deleteUserReactionsForPost(postId, profile.id, primaryReaction.id);
+      }
+
+      if (primaryReaction) {
+        // Tapping the same reaction toggles it off
+        if (primaryReaction.reaction === reaction) {
+          await deleteFeedReaction(primaryReaction.id);
+          return { action: 'removed', id: primaryReaction.id };
+        }
+
+        // Switching to a different reaction reuses the same record
         await upsertFeedReaction({
-          id,
+          id: primaryReaction.id,
           post_id: postId,
           user_id: profile.id,
           reaction,
           pending_sync: 1,
         });
-        return { action: 'added', id };
+        return { action: 'updated', id: primaryReaction.id };
       }
+
+      // No prior reaction: add a new one
+      const id = generateUuid();
+      await upsertFeedReaction({
+        id,
+        post_id: postId,
+        user_id: profile.id,
+        reaction,
+        pending_sync: 1,
+      });
+      return { action: 'added', id };
     },
     onSuccess: (_, variables) => {
       if (profile?.id) {

@@ -271,6 +271,7 @@ const pushLocalChanges = async (userId: string) => {
           owner_id: row.owner_id,
           name: row.name,
           description: row.description,
+          avatar_url: row.avatar_url,
           visibility: row.visibility,
           created_at: row.created_at,
         });
@@ -730,6 +731,12 @@ const pullRemoteChanges = async (userId: string) => {
     const { data: ownedGroups } = await supabase.from('groups').select('*').eq('owner_id', userId);
     if (ownedGroups) {
       for (const row of ownedGroups) {
+        const pendingLocal = await db.getFirstAsync<{ pending_sync: number }>(
+          'SELECT pending_sync FROM groups WHERE id = ?',
+          [row.id]
+        );
+        // Preserve local pending changes (e.g., avatar upload) to avoid overwriting before sync
+        if (pendingLocal?.pending_sync === 1) continue;
         await upsertGroupLocal({ ...row, pending_sync: 0, deleted: 0 });
       }
     }
@@ -745,6 +752,11 @@ const pullRemoteChanges = async (userId: string) => {
       const { data: remoteMemberGroups } = await supabase.from('groups').select('*').in('id', memberGroupIds);
       if (remoteMemberGroups) {
         for (const row of remoteMemberGroups) {
+          const pendingLocal = await db.getFirstAsync<{ pending_sync: number }>(
+            'SELECT pending_sync FROM groups WHERE id = ?',
+            [row.id]
+          );
+          if (pendingLocal?.pending_sync === 1) continue;
           await upsertGroupLocal({ ...row, pending_sync: 0, deleted: 0 });
         }
       }

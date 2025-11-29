@@ -23,6 +23,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { BookOpen, Camera, ChevronRight, Crown, Info, LogOut, Mail, Moon, Settings, Shield, Sun, User, Weight } from 'lucide-react-native';
 import { GuideModal } from '@/components/GuideModal';
+import { PaywallModal } from '@/components/PaywallModal';
 import { useUpdateProfile } from '@/lib/react-query-sqlite-complete';
 import { convertAllDataToNewUnit } from '@/lib/db/queries/weightConversion';
 import { triggerSync } from '@/lib/sync/syncEngine';
@@ -52,6 +53,7 @@ export default function Profile() {
   const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [imageKey, setImageKey] = useState(Date.now());
   const [imageError, setImageError] = useState(false);
@@ -461,7 +463,7 @@ export default function Profile() {
   };
 
   const handleUpgrade = () => {
-    router.push('/paywall');
+    setShowPaywall(true);
   };
 
   const handleManageSubscription = async () => {
@@ -758,6 +760,12 @@ export default function Profile() {
       </ScrollView>
 
       <GuideModal visible={showGuide} onClose={() => setShowGuide(false)} />
+      <PaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onUpgrade={() => setShowPaywall(false)}
+        feature="Unlock all premium features"
+      />
     </View>
   );
 }

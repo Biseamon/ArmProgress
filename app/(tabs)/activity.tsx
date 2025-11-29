@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
   View,
@@ -61,6 +61,7 @@ import {
   useDeleteFeedPost,
   useUpdateFeedPost,
   useUnfriend,
+  useRemoveGroupMember,
 } from '@/lib/react-query-sqlite-complete';
 import { triggerSync } from '@/lib/sync/syncEngine';
 import { getAllReactionsForFeed } from '@/lib/db/queries/activity';
@@ -127,6 +128,7 @@ export default function ActivityScreen() {
   const deletePost = useDeleteFeedPost();
   const updatePost = useUpdateFeedPost();
   const unfriend = useUnfriend();
+  const removeGroupMember = useRemoveGroupMember();
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const isGroupOwner = selectedGroup?.owner_id === profile?.id;
 
@@ -165,29 +167,29 @@ export default function ActivityScreen() {
   const [editingPost, setEditingPost] = useState<{ id: string; title: string; body: string } | null>(null);
   const [reactionCounts, setReactionCounts] = useState<Map<string, { arm: number; fire: number; like: number }>>(new Map());
 
-  // Fetch reaction counts when feed data changes
-  useEffect(() => {
-    const fetchReactions = async () => {
-      const reactions = await getAllReactionsForFeed();
-      const counts = new Map<string, { arm: number; fire: number; like: number }>();
+  const refreshReactions = useCallback(async () => {
+    const reactions = await getAllReactionsForFeed();
+    const counts = new Map<string, { arm: number; fire: number; like: number }>();
 
-      // Initialize all posts with 0 counts
-      feedData.forEach((post: any) => {
-        counts.set(post.id, { arm: 0, fire: 0, like: 0 });
-      });
+    // Initialize all posts with 0 counts
+    feedData.forEach((post: any) => {
+      counts.set(post.id, { arm: 0, fire: 0, like: 0 });
+    });
 
-      // Aggregate reaction counts by post and type
-      reactions.forEach((r: any) => {
-        const current = counts.get(r.post_id) || { arm: 0, fire: 0, like: 0 };
-        current[r.reaction as Reaction] = r.count;
-        counts.set(r.post_id, current);
-      });
+    // Aggregate reaction counts by post and type
+    reactions.forEach((r: any) => {
+      const current = counts.get(r.post_id) || { arm: 0, fire: 0, like: 0 };
+      current[r.reaction as Reaction] = Number(r.count) || 0;
+      counts.set(r.post_id, current);
+    });
 
-      setReactionCounts(counts);
-    };
-
-    fetchReactions();
+    setReactionCounts(counts);
   }, [feedData]);
+
+  // Fetch reaction counts when feed data changes or after a toggle
+  useEffect(() => {
+    refreshReactions();
+  }, [refreshReactions]);
 
   const membersQuery = useGroupMembers(selectedGroup?.id || null);
   const profileIds = Array.from(new Set(
@@ -237,7 +239,12 @@ export default function ActivityScreen() {
   };
 
   const toggleReaction = (id: string, reaction: Reaction) => {
-    reactToFeed.mutate({ postId: id, reaction });
+    reactToFeed.mutate(
+      { postId: id, reaction },
+      {
+        onSuccess: refreshReactions,
+      }
+    );
   };
 
   const handleSharePost = () => {
@@ -354,7 +361,9 @@ export default function ActivityScreen() {
     );
   };
 
-  const handleUnfriend = (friendId: string, friendName: string) => {
+  const handleUnfriend = (friend: any) => {
+    const friendUserId = otherId(friend);
+    const friendName = profileMap.get(friendUserId)?.name || friendUserId;
     Alert.alert(
       'Unfriend',
       `Remove ${friendName} from your friends?`,
@@ -363,7 +372,24 @@ export default function ActivityScreen() {
         {
           text: 'Unfriend',
           style: 'destructive',
-          onPress: () => unfriend.mutate({ friendId }),
+          onPress: () => unfriend.mutate({ friendId: friend.id, friendUserId }),
+        },
+      ]
+    );
+  };
+
+  const handleRemoveMember = (member: any) => {
+    if (!selectedGroup) return;
+    const memberName = profileMap.get(member.user_id)?.name || member.user_id;
+    Alert.alert(
+      'Remove member',
+      `Remove ${memberName} from this group?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => removeGroupMember.mutate({ memberId: member.id, groupId: selectedGroup.id }),
         },
       ]
     );
@@ -624,7 +650,7 @@ export default function ActivityScreen() {
               <Image source={{ uri: item.user.avatar_url }} style={styles.feedUserAvatar} />
             ) : (
               <View style={styles.feedUserAvatarPlaceholder}>
-                <Users size={14} color={colors.textSecondary} />
+                <Users size={20} color={colors.textSecondary} />
               </View>
             )}
             <View style={{ flex: 1 }}>
@@ -634,41 +660,52 @@ export default function ActivityScreen() {
                 {item.subtitle || item.createdAt}
               </Text>
             </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={[styles.tag, { color: colors.secondary }]}>
-                {item.type === 'goal' ? 'Goal' : item.type === 'pr' ? 'PR' : 'Summary'}
-              </Text>
-              {item.user.id === profile?.id && (
-                <>
-                  <TouchableOpacity
-                    onPress={() => handleEditPost({ id: item.id, title: item.title, body: item.subtitle })}
-                    style={{ padding: 4 }}
-                  >
-                    <PenSquare size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeletePost(item.id)} style={{ padding: 4 }}>
-                    <Trash2 size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
+            {item.user.id === profile?.id && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => handleEditPost({ id: item.id, title: item.title, body: item.subtitle })}
+                  style={{ padding: 6 }}
+                >
+                  <PenSquare size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeletePost(item.id)} style={{ padding: 6 }}>
+                  <Trash2 size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
           {item.details ? (
             <Text style={[styles.cardDetails, { color: colors.textSecondary }]}>{item.details}</Text>
           ) : null}
           <View style={styles.reactionsRow}>
-            <TouchableOpacity style={styles.reactionButton} onPress={() => toggleReaction(item.id, 'arm')}>
-              <BicepsFlexed size={18} color={colors.primary} />
+            <TouchableOpacity
+              style={[styles.reactionButton, item.user.id === profile?.id && { opacity: 0.5 }]}
+              onPress={() => toggleReaction(item.id, 'arm')}
+              disabled={item.user.id === profile?.id}
+            >
+              <BicepsFlexed size={22} color={colors.primary} />
               <Text style={[styles.reactionText, { color: colors.text }]}>{item.reactions.arm}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reactionButton} onPress={() => toggleReaction(item.id, 'fire')}>
-              <Flame size={18} color="#F97316" />
+            <TouchableOpacity
+              style={[styles.reactionButton, item.user.id === profile?.id && { opacity: 0.5 }]}
+              onPress={() => toggleReaction(item.id, 'fire')}
+              disabled={item.user.id === profile?.id}
+            >
+              <Flame size={22} color="#F97316" />
               <Text style={[styles.reactionText, { color: colors.text }]}>{item.reactions.fire}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reactionButton} onPress={() => toggleReaction(item.id, 'like')}>
-              <ThumbsUp size={18} color={colors.secondary} />
+            <TouchableOpacity
+              style={[styles.reactionButton, item.user.id === profile?.id && { opacity: 0.5 }]}
+              onPress={() => toggleReaction(item.id, 'like')}
+              disabled={item.user.id === profile?.id}
+            >
+              <ThumbsUp size={22} color={colors.secondary} />
               <Text style={[styles.reactionText, { color: colors.text }]}>{item.reactions.like}</Text>
             </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <Text style={[styles.tag, { color: colors.secondary }]}>
+              {item.type === 'goal' ? 'Goal' : item.type === 'pr' ? 'PR' : 'Summary'}
+            </Text>
           </View>
         </View>
       ))}
@@ -827,10 +864,7 @@ export default function ActivityScreen() {
                     </View>
                   )}
                   <Text style={{ color: colors.text, flex: 1 }}>{friendName}</Text>
-                  <TouchableOpacity
-                    onPress={() => handleUnfriend(friend.id, friendName)}
-                    style={{ padding: 4 }}
-                  >
+                  <TouchableOpacity onPress={() => handleUnfriend(friend)} style={{ padding: 4 }}>
                     <Trash2 size={16} color={colors.textSecondary} />
                   </TouchableOpacity>
                 </View>
@@ -1018,10 +1052,21 @@ export default function ActivityScreen() {
                 </View>
                 <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
                   <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={[styles.groupName, { color: colors.text }]}>{selectedGroup.name || 'Group'}</Text>
-                    <Text style={[styles.groupMeta, { color: colors.textSecondary }]}>
-                      {selectedGroup.visibility === 'private' ? 'Private' : 'Public'} • {selectedGroup.members ?? '—'} members
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+                      {selectedGroup.avatar_url ? (
+                        <Image source={{ uri: selectedGroup.avatar_url }} style={styles.groupAvatar} />
+                      ) : (
+                        <View style={styles.groupAvatarPlaceholder}>
+                          <Users size={24} color={colors.textSecondary} />
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.groupName, { color: colors.text }]}>{selectedGroup.name || 'Group'}</Text>
+                        <Text style={[styles.groupMeta, { color: colors.textSecondary }]}>
+                          {selectedGroup.visibility === 'private' ? 'Private' : 'Public'} • {selectedGroup.members ?? '—'} members
+                        </Text>
+                      </View>
+                    </View>
                     {selectedGroup.description ? (
                       <Text style={[styles.groupDescription, { color: colors.textSecondary }]}>{selectedGroup.description}</Text>
                     ) : null}
@@ -1130,6 +1175,7 @@ export default function ActivityScreen() {
                       membersQuery.data.map((m: any) => {
                         const pending = m.status === 'pending';
                         const isOwner = m.user_id === selectedGroup?.owner_id;
+                        const canRemove = isGroupOwner && !isOwner && m.user_id !== profile?.id;
                         const displayName = profileMap.get(m.user_id)?.name || m.user_id;
                         const avatarUrl = profileMap.get(m.user_id)?.avatar_url;
                         return (
@@ -1166,6 +1212,11 @@ export default function ActivityScreen() {
                                   <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Decline</Text>
                                 </TouchableOpacity>
                               </View>
+                            ) : null}
+                            {canRemove ? (
+                              <TouchableOpacity onPress={() => handleRemoveMember(m)} style={{ padding: 4 }}>
+                                <Trash2 size={16} color={colors.textSecondary} />
+                              </TouchableOpacity>
                             ) : null}
                           </View>
                         );
@@ -1453,46 +1504,48 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: 20,
+    marginBottom: 16,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
+    lineHeight: 24,
   },
   cardSubtitle: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  cardDetails: {
-    fontSize: 14,
-    marginTop: 6,
+    fontSize: 15,
+    marginTop: 4,
     lineHeight: 20,
   },
+  cardDetails: {
+    fontSize: 16,
+    marginTop: 8,
+    lineHeight: 24,
+  },
   tag: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
   reactionsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
+    gap: 16,
+    marginTop: 16,
   },
   reactionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   reactionText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
   },
   primaryButton: {
@@ -1680,20 +1733,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   feedUserAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#f0f0f0',
-    marginRight: 8,
+    marginRight: 12,
   },
   feedUserAvatarPlaceholder: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
+    marginRight: 12,
   },
   groupAvatar: {
     width: 48,
