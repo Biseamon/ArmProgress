@@ -193,3 +193,33 @@ export type BodyMeasurement = {
   measured_at: string;
   created_at: string;
 };
+
+/**
+ * Training Template
+ * Reusable workout blueprint with pre-configured exercises
+ */
+export type TrainingTemplate = {
+  id: string;                           // Unique template ID
+  user_id: string;                      // Owner's user ID
+  name: string;                         // Template name (e.g., "Tuesday Strength")
+  description?: string | null;          // Optional template description
+  workout_type: string;                 // Type: table_practice, strength, technique, endurance, sparring
+  suggested_duration_minutes?: number | null;  // Suggested workout duration
+  suggested_intensity?: number | null;  // Suggested intensity (1-10)
+  exercises: TemplateExercise[];        // Pre-configured exercises
+  notes?: string | null;                // Optional template notes
+  created_at: string;                   // When template was created
+};
+
+/**
+ * Exercise within a Template
+ * Pre-configured exercise for reusable workout templates
+ */
+export type TemplateExercise = {
+  exercise_name: string;   // Name of the exercise
+  sets: number;            // Number of sets
+  reps: number;            // Reps per set
+  weight_lbs: number;      // Suggested weight (stored in user's unit)
+  weight_unit: 'lbs' | 'kg';  // Unit for the weight
+  notes?: string;          // Optional exercise notes
+};

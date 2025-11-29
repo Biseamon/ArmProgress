@@ -14,6 +14,7 @@ import { getDatabase, getSyncMetadata, updateSyncMetadata } from '@/lib/db/datab
 import { getPendingWorkouts, markWorkoutSynced, upsertWorkout } from '@/lib/db/queries/workouts';
 import { getPendingExercises, markExerciseSynced, upsertExercise } from '@/lib/db/queries/exercises';
 import { getPendingCycles, markCycleSynced, upsertCycle } from '@/lib/db/queries/cycles';
+import { getPendingTemplates, markTemplateSynced, upsertTrainingTemplate } from '@/lib/db/queries/trainingTemplates';
 import { getPendingGoals, markGoalSynced, upsertGoal } from '@/lib/db/queries/goals';
 import { getPendingMeasurements, markMeasurementSynced, upsertMeasurement } from '@/lib/db/queries/measurements';
 import { getPendingStrengthTests, markStrengthTestSynced, upsertStrengthTest } from '@/lib/db/queries/strengthTests';
@@ -154,7 +155,47 @@ const pushLocalChanges = async (userId: string) => {
       }
     }
   }
-  
+
+  // STEP 1.5: Push Training Templates (independent of cycles and workouts)
+  const pendingTemplates = await getPendingTemplates();
+  if (pendingTemplates.length > 0) {
+    hasChanges = true;
+    console.log(`[Sync] Pushing ${pendingTemplates.length} training templates...`);
+    for (const template of pendingTemplates) {
+      try {
+        if ((template as any).deleted) {
+          const { error } = await supabase.from('training_templates').delete().eq('id', template.id);
+          if (error) throw error;
+          console.log(`[Sync] Deleted template ${template.id} from Supabase`);
+        } else {
+          // Parse exercises if it's a string
+          const exercisesData = typeof template.exercises === 'string'
+            ? JSON.parse(template.exercises)
+            : template.exercises;
+
+          const { error } = await supabase.from('training_templates').upsert({
+            id: template.id,
+            user_id: template.user_id,
+            name: template.name,
+            description: template.description,
+            workout_type: template.workout_type,
+            suggested_duration_minutes: template.suggested_duration_minutes,
+            suggested_intensity: template.suggested_intensity,
+            exercises: exercisesData,
+            notes: template.notes,
+            created_at: (template as any).created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+          if (error) throw error;
+          console.log(`[Sync] Pushed template ${template.id} to Supabase`);
+        }
+        await markTemplateSynced(template.id);
+      } catch (error) {
+        console.error(`[Sync] Failed to push template ${template.id}:`, error);
+      }
+    }
+  }
+
   // STEP 2: Push Workouts (depends on cycles being pushed first)
   const pendingWorkouts = await getPendingWorkouts();
   if (pendingWorkouts.length > 0) {
@@ -694,7 +735,52 @@ const pullRemoteChanges = async (userId: string) => {
   } catch (error) {
     console.error('[Sync] Cycles pull failed:', error);
   }
-  
+
+  // STEP 2.5: Sync training templates (independent of cycles and workouts)
+  console.log('[Sync] Pulling training templates...');
+  try {
+    // Get all remote template IDs to detect deletions
+    const { data: remoteTemplateIds } = await supabase
+      .from('training_templates')
+      .select('id')
+      .eq('user_id', userId);
+
+    // Get all local template IDs
+    const localTemplates = await db.getAllAsync<{ id: string }>(
+      'SELECT id FROM training_templates WHERE user_id = ? AND pending_sync = 0',
+      [userId]
+    );
+
+    // Clean up deleted templates
+    const remoteTIds = new Set((remoteTemplateIds || []).map(t => t.id));
+    const localTIds = new Set(localTemplates.map(t => t.id));
+    const deletedTemplateIds = [...localTIds].filter(id => !remoteTIds.has(id));
+
+    if (deletedTemplateIds.length > 0) {
+      console.log(`[Sync] Cleaning up ${deletedTemplateIds.length} deleted templates...`);
+      for (const id of deletedTemplateIds) {
+        await db.runAsync('DELETE FROM training_templates WHERE id = ?', [id]);
+      }
+    }
+
+    // Pull template details
+    let templatesQuery = supabase.from('training_templates').select('*').eq('user_id', userId);
+    if (lastSyncAt) {
+      templatesQuery = templatesQuery.gt('modified_at', lastSyncAt);
+    }
+    const { data: remoteTemplates, error: templatesError } = await templatesQuery;
+    if (templatesError) throw templatesError;
+
+    if (remoteTemplates && remoteTemplates.length > 0) {
+      console.log(`[Sync] Pulled ${remoteTemplates.length} training templates`);
+      for (const template of remoteTemplates) {
+        await upsertTrainingTemplate(template);
+      }
+    }
+  } catch (error) {
+    console.error('[Sync] Training templates pull failed:', error);
+  }
+
     // STEP X: Pull social data
   try {
     // Declare variables at higher scope for use in profile sync later

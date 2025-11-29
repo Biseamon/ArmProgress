@@ -14,7 +14,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { InteractionManager } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
-import { Workout, Cycle, Goal, StrengthTest, BodyMeasurement, ScheduledTraining, Profile } from './supabase';
+import { Workout, Cycle, Goal, StrengthTest, BodyMeasurement, ScheduledTraining, Profile, TrainingTemplate } from './supabase';
 import { triggerSync } from './sync/syncEngine';
 import { getDatabase } from './db/database';
 
@@ -60,6 +60,16 @@ import {
   deleteCycle,
   setActiveCycle,
 } from './db/queries/cycles';
+
+// Training Templates
+import {
+  getTrainingTemplates,
+  getTrainingTemplateById,
+  getTemplateCount,
+  createTrainingTemplate,
+  updateTrainingTemplate,
+  deleteTrainingTemplate,
+} from './db/queries/trainingTemplates';
 
 // Goals
 import {
@@ -161,7 +171,12 @@ export const queryKeys = {
   cycles: (userId: string) => ['cycles', userId] as const,
   cycle: (id: string) => ['cycle', id] as const,
   activeCycle: (userId: string) => ['cycles', 'active', userId] as const,
-  
+
+  // Training Templates
+  trainingTemplates: (userId: string) => ['trainingTemplates', userId] as const,
+  trainingTemplate: (id: string) => ['trainingTemplate', id] as const,
+  templateCount: (userId: string) => ['templateCount', userId] as const,
+
   // Goals
   goals: (userId: string) => ['goals', userId] as const,
   goal: (id: string) => ['goal', id] as const,
@@ -1029,7 +1044,7 @@ export const useDeleteCycle = () => {
 export const useSetActiveCycle = () => {
   const queryClient = useQueryClient();
   const { profile } = useAuth();
-  
+
   return useMutation({
     mutationFn: async (cycleId: string) => {
       await setActiveCycle(profile!.id, cycleId);
@@ -1037,6 +1052,91 @@ export const useSetActiveCycle = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cycles'] });
       queryClient.invalidateQueries({ queryKey: ['home', profile?.id] });
+      if (profile?.id) triggerSync(profile.id);
+    },
+  });
+};
+
+// ==========================================
+// TRAINING TEMPLATES
+// ==========================================
+
+export const useTrainingTemplates = () => {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.trainingTemplates(profile?.id || ''),
+    queryFn: async () => {
+      await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+      return getTrainingTemplates(profile!.id);
+    },
+    enabled: !!profile?.id,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useTrainingTemplate = (id: string) => {
+  return useQuery({
+    queryKey: queryKeys.trainingTemplate(id),
+    queryFn: () => getTrainingTemplateById(id),
+    enabled: !!id,
+    staleTime: 0,
+  });
+};
+
+export const useTemplateCount = () => {
+  const { profile } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.templateCount(profile?.id || ''),
+    queryFn: () => getTemplateCount(profile!.id),
+    enabled: !!profile?.id,
+    staleTime: DEFAULT_STALE_TIME,
+  });
+};
+
+export const useCreateTrainingTemplate = () => {
+  const queryClient = useQueryClient();
+  const { profile } = useAuth();
+
+  return useMutation({
+    mutationFn: async (template: Omit<TrainingTemplate, 'id' | 'created_at'>) => {
+      const id = await createTrainingTemplate(template);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trainingTemplates'] });
+      queryClient.invalidateQueries({ queryKey: ['templateCount'] });
+      if (profile?.id) triggerSync(profile.id);
+    },
+  });
+};
+
+export const useUpdateTrainingTemplate = () => {
+  const queryClient = useQueryClient();
+  const { profile } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<TrainingTemplate> }) => {
+      await updateTrainingTemplate(id, updates);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.trainingTemplate(variables.id) });
+      queryClient.invalidateQueries({ queryKey: ['trainingTemplates'] });
+      if (profile?.id) triggerSync(profile.id);
+    },
+  });
+};
+
+export const useDeleteTrainingTemplate = () => {
+  const queryClient = useQueryClient();
+  const { profile } = useAuth();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await deleteTrainingTemplate(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trainingTemplates'] });
+      queryClient.invalidateQueries({ queryKey: ['templateCount'] });
       if (profile?.id) triggerSync(profile.id);
     },
   });

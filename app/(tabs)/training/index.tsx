@@ -14,7 +14,7 @@ import {
 import { useFocusEffect, router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { Workout, Cycle, Exercise as ExerciseType } from '@/lib/supabase';
+import { Workout, Cycle, Exercise as ExerciseType, TrainingTemplate } from '@/lib/supabase';
 import { AdBanner } from '@/components/AdBanner';
 import { AdMediumRectangle } from '@/components/AdMediumRectangle';
 import { PaywallModal } from '@/components/PaywallModal';
@@ -35,6 +35,9 @@ import {
   useDeleteCycle,
   useSetActiveCycle,
   useCreateExercises,
+  useTrainingTemplates,
+  useTemplateCount,
+  useDeleteTrainingTemplate,
 } from '@/lib/react-query-sqlite-complete';
 import { getExercises, deleteExercisesByWorkout } from '@/lib/db/queries/exercises';
 
@@ -56,7 +59,9 @@ export default function Training() {
   // Use SQLite hooks for offline-first data
   const { data: allWorkouts = [], isLoading: workoutsLoading } = useWorkouts();
   const { data: cycles = [], isLoading: cyclesLoading } = useCycles();
-  
+  const { data: templates = [], isLoading: templatesLoading } = useTrainingTemplates();
+  const { data: templateCount = 0 } = useTemplateCount();
+
   // Pagination state
   const [displayedWorkoutsCount, setDisplayedWorkoutsCount] = useState(10);
   
@@ -73,6 +78,7 @@ export default function Training() {
   const deleteCycleMutation = useDeleteCycle();
   const setActiveCycleMutation = useSetActiveCycle();
   const createExercisesMutation = useCreateExercises();
+  const deleteTemplateMutation = useDeleteTrainingTemplate();
   
   const [showWorkoutModal, setShowWorkoutModal] = useState(false);
   const [showCycleModal, setShowCycleModal] = useState(false);
@@ -88,6 +94,7 @@ export default function Training() {
   const [intensity, setIntensity] = useState('5');
   const [notes, setNotes] = useState('');
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
 
   const [cycleName, setCycleName] = useState('');
@@ -247,6 +254,7 @@ export default function Training() {
             intensity: parseInt(intensity),
             notes,
             cycle_id: selectedCycleId,
+            weight_unit: userUnit,
           },
         });
         workoutId = editingWorkout.id;
@@ -263,6 +271,7 @@ export default function Training() {
           intensity: parseInt(intensity),
           notes,
           cycle_id: selectedCycleId,
+          weight_unit: userUnit,
         });
       }
   
@@ -403,12 +412,91 @@ export default function Training() {
 
   const handleToggleActiveCycle = async (cycle: Cycle) => {
     if (!profile) return;
-    
+
     try {
       await setActiveCycleMutation.mutateAsync(cycle.id);
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
+    }
+  };
+
+  // Template handlers
+  const handleAddTemplate = () => {
+    // Check premium limit: free users can only create 3 templates
+    if (!isPremium && templateCount >= 3) {
+      setShowPaywall(true);
+      return;
+    }
+
+    // Navigate to template creation modal
+    router.push('/(tabs)/training/template-form' as any);
+  };
+
+  const handleApplyTemplate = (templateId: string) => {
+    const template = templates.find(t => t.id === templateId);
+    if (!template) return;
+
+    // Pre-fill form with template data
+    setWorkoutType(template.workout_type);
+    if (template.suggested_duration_minutes) {
+      setDuration(template.suggested_duration_minutes.toString());
+    }
+    if (template.suggested_intensity) {
+      setIntensity(template.suggested_intensity.toString());
+    }
+    if (template.notes) {
+      setNotes(template.notes);
+    }
+
+    // Pre-fill exercises
+    if (template.exercises && template.exercises.length > 0) {
+      setExercises(template.exercises.map(ex => ({
+        exercise_name: ex.exercise_name,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight_lbs: ex.weight_lbs,
+        weight_unit: ex.weight_unit || profile?.weight_unit || 'lbs',
+        notes: ex.notes || '',
+      })));
+    }
+
+    setSelectedTemplateId(templateId);
+  };
+
+  const handleEditTemplate = (template: TrainingTemplate) => {
+    router.push({
+      pathname: '/(tabs)/training/template-form' as any,
+      params: { templateId: template.id }
+    });
+  };
+
+  const handleDeleteTemplate = async (template: TrainingTemplate) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this template?')) {
+        try {
+          await deleteTemplateMutation.mutateAsync(template.id);
+        } catch (error) {
+          const errorMessage = handleError(error);
+          Alert.alert('Error', errorMessage);
+        }
+      }
+    } else {
+      Alert.alert('Delete Template', 'Are you sure you want to delete this template?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTemplateMutation.mutateAsync(template.id);
+            } catch (error) {
+              const errorMessage = handleError(error);
+              Alert.alert('Error', errorMessage);
+            }
+          },
+        },
+      ]);
     }
   };
 
@@ -422,6 +510,7 @@ export default function Training() {
     setIntensity('5');
     setNotes('');
     setSelectedCycleId(null);
+    setSelectedTemplateId(null);
     setExercises([]);
     setEditingWorkout(null);
   };
@@ -732,6 +821,96 @@ export default function Training() {
           </View>
         )}
 
+        {/* Training Templates Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Training Templates</Text>
+            {!isPremium && (
+              <Text style={[styles.templateLimitText, { color: colors.textSecondary }]}>
+                {templateCount}/3 templates
+              </Text>
+            )}
+          </View>
+
+          {templatesLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : templates.length === 0 ? (
+            <View style={styles.emptyTemplatesState}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                No templates yet. Create reusable workout blueprints to speed up logging!
+              </Text>
+            </View>
+          ) : (
+            templates.map((template) => (
+              <View key={template.id} style={[styles.templateCard, { backgroundColor: colors.cardBackground }]}>
+                <TouchableOpacity
+                  onPress={() => handleEditTemplate(template)}
+                  style={styles.templateMainContent}
+                >
+                  <Text style={[styles.templateName, { color: colors.primary }]}>{template.name}</Text>
+                  <Text style={[styles.templateType, { color: colors.text }]}>
+                    {template.workout_type.replace(/_/g, ' ').toUpperCase()}
+                  </Text>
+                  {template.description && (
+                    <Text style={[styles.templateDescription, { color: colors.textSecondary }]} numberOfLines={2}>
+                      {template.description}
+                    </Text>
+                  )}
+                  <View style={styles.templateMeta}>
+                    {template.suggested_duration_minutes && (
+                      <Text style={[styles.templateMetaText, { color: colors.textTertiary }]}>
+                        {template.suggested_duration_minutes} min
+                      </Text>
+                    )}
+                    {template.suggested_intensity && (
+                      <>
+                        <Text style={[styles.templateMetaDivider, { color: colors.border }]}>•</Text>
+                        <Text style={[styles.templateMetaText, { color: colors.textTertiary }]}>
+                          Intensity {template.suggested_intensity}/10
+                        </Text>
+                      </>
+                    )}
+                    {template.exercises && template.exercises.length > 0 && (
+                      <>
+                        <Text style={[styles.templateMetaDivider, { color: colors.border }]}>•</Text>
+                        <Text style={[styles.templateMetaText, { color: colors.textTertiary }]}>
+                          {template.exercises.length} exercises
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.templateActions}>
+                  <TouchableOpacity
+                    style={[styles.templateActionButton, { backgroundColor: colors.surface }]}
+                    onPress={() => handleEditTemplate(template)}
+                  >
+                    <Pencil size={18} color="#2A7DE1" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.templateActionButton, { backgroundColor: colors.surface }]}
+                    onPress={() => handleDeleteTemplate(template)}
+                  >
+                    <Trash2 size={18} color="#FF6B6B" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+
+          <TouchableOpacity
+            style={[styles.addTemplateButton, { backgroundColor: colors.primary }]}
+            onPress={handleAddTemplate}
+          >
+            <Plus size={20} color="#FFF" />
+            <Text style={styles.addTemplateButtonText}>
+              {templates.length === 0 ? 'Create Your First Template' : 'Add Template'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* AdMob Medium Rectangle - Automatic test/production ads */}
         <AdMediumRectangle />
 
@@ -851,6 +1030,59 @@ export default function Training() {
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ paddingBottom: 400 }}
           >
+            {/* Template Selector - Only show when creating new workout */}
+            {!editingWorkout && templates.length > 0 && (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Start from Template (Optional)</Text>
+                <View style={styles.typeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border },
+                      selectedTemplateId === null && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                    ]}
+                    onPress={() => setSelectedTemplateId(null)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        { color: colors.textSecondary },
+                        selectedTemplateId === null && [styles.typeButtonTextActive, { color: '#FFF' }],
+                      ]}
+                    >
+                      None
+                    </Text>
+                  </TouchableOpacity>
+                  {templates.map((template) => (
+                    <TouchableOpacity
+                      key={template.id}
+                      style={[
+                        styles.typeButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        selectedTemplateId === template.id && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                      ]}
+                      onPress={() => handleApplyTemplate(template.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeButtonText,
+                          { color: colors.textSecondary },
+                          selectedTemplateId === template.id && [styles.typeButtonTextActive, { color: '#FFF' }],
+                        ]}
+                      >
+                        {template.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {selectedTemplateId && (
+                  <Text style={[styles.templateHint, { color: colors.textTertiary }]}>
+                    Template applied! You can still edit any fields below before saving.
+                  </Text>
+                )}
+              </>
+            )}
+
             {cycles.length > 0 && (
               <>
                 <Text style={[styles.label, { color: colors.text }]}>Training Cycle (Optional)</Text>
@@ -1790,5 +2022,88 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 6,
     fontStyle: 'italic',
+  },
+  // Template styles
+  templateLimitText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyTemplatesState: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(42, 125, 225, 0.05)',
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  templateCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  templateMainContent: {
+    flex: 1,
+  },
+  templateName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 4,
+  },
+  templateType: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  templateDescription: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  templateMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  templateMetaText: {
+    fontSize: 12,
+  },
+  templateMetaDivider: {
+    fontSize: 12,
+    marginHorizontal: 6,
+  },
+  templateActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 12,
+  },
+  templateActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addTemplateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  addTemplateButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  templateHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 8,
+    marginBottom: 8,
   },
 });
