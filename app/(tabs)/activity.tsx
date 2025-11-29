@@ -481,14 +481,33 @@ export default function ActivityScreen() {
         }
       }
 
-      // Delete old group avatar if exists
-      if (selectedGroup.avatar_url) {
-        // Extract path from URL (e.g., "group-id/avatar.jpg")
-        const urlParts = selectedGroup.avatar_url.split('/group-avatars/');
-        if (urlParts[1]) {
-          const oldPath = decodeURIComponent(urlParts[1].split('?')[0]);
-          await supabase.storage.from('group-avatars').remove([oldPath]);
+      // Delete ALL old avatars for this group (to handle different file extensions)
+      try {
+        // List all files in the group-avatars bucket for this group
+        const { data: existingFiles, error: listError } = await supabase.storage
+          .from('group-avatars')
+          .list(selectedGroup.id); // List files in the group's folder
+
+        if (listError) {
+          console.warn('Failed to list existing group avatars:', listError);
+        } else if (existingFiles && existingFiles.length > 0) {
+          // Build full paths for deletion (group-id/filename)
+          const filesToDelete = existingFiles.map(file => `${selectedGroup.id}/${file.name}`);
+          console.log('Deleting old group avatars:', filesToDelete);
+
+          const { error: deleteError } = await supabase.storage
+            .from('group-avatars')
+            .remove(filesToDelete);
+
+          if (deleteError) {
+            console.warn('Failed to delete old group avatars:', deleteError);
+          } else {
+            console.log('Old group avatars deleted successfully');
+          }
         }
+      } catch (error) {
+        console.warn('Error deleting old group avatars:', error);
+        // Don't throw - continue with upload even if deletion fails
       }
 
       // Read file and convert to base64
@@ -508,25 +527,57 @@ export default function ActivityScreen() {
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
+      // Get public URL with cache-busting timestamp
       const { data: { publicUrl } } = supabase.storage
         .from('group-avatars')
         .getPublicUrl(filePath);
 
-      // Update group with new avatar URL
-      updateGroup.mutate(
-        {
-          groupId: selectedGroup.id,
-          description: selectedGroup.description,
-          visibility: selectedGroup.visibility,
-          avatarUrl: publicUrl,
-        },
-        {
-          onSuccess: () => {
-            setSelectedGroup({ ...selectedGroup, avatar_url: publicUrl });
-          },
-        }
-      );
+      if (__DEV__) {
+        console.log('Generated public URL:', publicUrl);
+      }
+
+      // Validate the URL
+      if (!publicUrl || !publicUrl.startsWith('http')) {
+        throw new Error('Invalid storage URL generated. Please check Supabase configuration.');
+      }
+
+      // Add cache-busting timestamp to the URL stored in database
+      const timestamp = Date.now();
+      const publicUrlWithTimestamp = `${publicUrl}?t=${timestamp}`;
+
+      if (__DEV__) {
+        console.log('Updating group with URL:', publicUrlWithTimestamp);
+      }
+
+      // Update group in SQLite first
+      await updateGroup.mutateAsync({
+        groupId: selectedGroup.id,
+        description: selectedGroup.description,
+        visibility: selectedGroup.visibility,
+        avatarUrl: publicUrlWithTimestamp,
+      });
+
+      // CRITICAL: Update Supabase directly so changes are immediately visible
+      if (__DEV__) {
+        console.log('[Activity] Updating Supabase directly with group avatar URL...');
+      }
+      const { error: supabaseError } = await supabase
+        .from('groups')
+        .update({ avatar_url: publicUrlWithTimestamp })
+        .eq('id', selectedGroup.id);
+
+      if (supabaseError) {
+        console.error('[Activity] Supabase update error:', supabaseError);
+        throw supabaseError;
+      }
+      if (__DEV__) {
+        console.log('[Activity] Supabase updated successfully with group avatar URL');
+      }
+
+      // Update local state immediately
+      setSelectedGroup({ ...selectedGroup, avatar_url: publicUrlWithTimestamp });
+
+      Alert.alert('Success', 'Group avatar updated!');
     } catch (error) {
       console.error('Error uploading group avatar:', error);
       Alert.alert('Error', 'Failed to upload image');
