@@ -17,6 +17,7 @@ import { Plus, X, Save, ArrowLeft, Trash2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { validateTrainingTemplate, getFirstError } from '@/lib/validation';
 import { handleError } from '@/lib/errorHandling';
+import { convertWeight } from '@/lib/weightUtils';
 import {
   useTrainingTemplate,
   useCreateTrainingTemplate,
@@ -64,18 +65,29 @@ export default function TemplateForm() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Load existing template data
+  // Load existing template data and convert weights to user's current unit
   useEffect(() => {
-    if (existingTemplate) {
+    if (existingTemplate && profile) {
       setName(existingTemplate.name);
       setDescription(existingTemplate.description || '');
       setWorkoutType(existingTemplate.workout_type);
       setSuggestedDuration(existingTemplate.suggested_duration_minutes?.toString() || '');
       setSuggestedIntensity(existingTemplate.suggested_intensity?.toString() || '');
       setNotes(existingTemplate.notes || '');
-      setExercises(existingTemplate.exercises || []);
+
+      // Convert exercise weights to user's current unit
+      const convertedExercises = (existingTemplate.exercises || []).map(ex => ({
+        exercise_name: ex.exercise_name,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight_lbs: convertWeight(ex.weight_lbs, ex.weight_unit, profile.weight_unit),
+        weight_unit: profile.weight_unit,
+        notes: ex.notes || '',
+      }));
+
+      setExercises(convertedExercises);
     }
-  }, [existingTemplate]);
+  }, [existingTemplate, profile?.weight_unit]);
 
   const handleAddExercise = () => {
     setExercises([
@@ -337,7 +349,7 @@ export default function TemplateForm() {
                 </View>
                 <View style={{ flex: 1, marginLeft: 8 }}>
                   <Text style={[styles.exerciseLabel, { color: colors.textSecondary }]}>
-                    Weight ({exercise.weight_unit})
+                    Weight ({profile?.weight_unit || 'lbs'})
                   </Text>
                   <TextInput
                     style={[styles.exerciseInputSmall, { backgroundColor: colors.cardBackground, color: colors.text }]}

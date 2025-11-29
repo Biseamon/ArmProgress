@@ -23,8 +23,11 @@ import {
   useUpdateScheduledTraining,
   useDeleteScheduledTraining,
   useCreateWorkout,
+  useTrainingTemplates,
+  useCreateExercises,
 } from '@/lib/react-query-sqlite-complete';
 import { handleError } from '@/lib/errorHandling';
+import { convertWeight } from '@/lib/weightUtils';
 
 export default function ScheduleScreen() {
   const { profile } = useAuth();
@@ -32,12 +35,14 @@ export default function ScheduleScreen() {
 
   // Use SQLite hooks for offline-first data
   const { data: trainings = [] } = useScheduledTrainings();
-  
+  const { data: templates = [] } = useTrainingTemplates();
+
   // Mutations
   const createTrainingMutation = useCreateScheduledTraining();
   const updateTrainingMutation = useUpdateScheduledTraining();
   const deleteTrainingMutation = useDeleteScheduledTraining();
   const createWorkoutMutation = useCreateWorkout();
+  const createExercisesMutation = useCreateExercises();
   
   const [showModal, setShowModal] = useState(false);
   const [editingTraining, setEditingTraining] = useState<ScheduledTraining | null>(null);
@@ -49,6 +54,23 @@ export default function ScheduleScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [notificationEnabled, setNotificationEnabled] = useState(true);
   const [minutesBefore, setMinutesBefore] = useState('30');
+
+  // Workout modal state
+  const [showWorkoutModal, setShowWorkoutModal] = useState(false);
+  const [completingTraining, setCompletingTraining] = useState<ScheduledTraining | null>(null);
+  const [workoutType, setWorkoutType] = useState('table_practice');
+  const [duration, setDuration] = useState('60');
+  const [intensity, setIntensity] = useState('7');
+  const [workoutNotes, setWorkoutNotes] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [exercises, setExercises] = useState<Array<{
+    exercise_name: string;
+    sets: number;
+    reps: number;
+    weight_lbs: number;
+    weight_unit: 'lbs' | 'kg';
+    notes: string;
+  }>>([]);
 
   const handleSave = async () => {
     if (!profile) return;
@@ -140,32 +162,111 @@ export default function ScheduleScreen() {
     }
   };
 
+  const handleApplyTemplate = (templateId: string) => {
+    const template = templates.find(t => t.id === templateId);
+    if (!template || !profile) return;
+
+    // Pre-fill form with template data
+    setWorkoutType(template.workout_type);
+    if (template.suggested_duration_minutes) {
+      setDuration(template.suggested_duration_minutes.toString());
+    }
+    if (template.suggested_intensity) {
+      setIntensity(template.suggested_intensity.toString());
+    }
+    if (template.notes) {
+      setWorkoutNotes(template.notes);
+    }
+
+    // Pre-fill exercises with weight conversion to user's current unit
+    if (template.exercises && template.exercises.length > 0) {
+      setExercises(template.exercises.map(ex => ({
+        exercise_name: ex.exercise_name,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight_lbs: convertWeight(ex.weight_lbs, ex.weight_unit, profile.weight_unit),
+        weight_unit: profile.weight_unit,
+        notes: ex.notes || '',
+      })));
+    }
+
+    setSelectedTemplateId(templateId);
+  };
+
   const handleToggleComplete = async (training: ScheduledTraining) => {
     const newStatus = !training.completed;
 
-    try {
-      if (newStatus && profile) {
-        // Note: created_at is set automatically by the database, we can't override it in the mutation
-        await createWorkoutMutation.mutateAsync({
-          user_id: profile.id,
-          workout_type: 'scheduled_training',
-          duration_minutes: 60,
-          intensity: 7,
-          notes: `Completed scheduled training: ${training.title}${training.description ? `\n${training.description}` : ''}`,
-          cycle_id: null,
+    if (newStatus) {
+      // Open workout modal to log details
+      setCompletingTraining(training);
+      setWorkoutNotes(`Completed scheduled training: ${training.title}${training.description ? `\n${training.description}` : ''}`);
+      setShowWorkoutModal(true);
+    } else {
+      // Uncompleting - just update status
+      try {
+        await updateTrainingMutation.mutateAsync({
+          id: training.id,
+          updates: { completed: false },
         });
-
-        if (training.notification_id) {
-          await cancelNotification(training.notification_id);
-        }
+      } catch (error) {
+        const errorMessage = handleError(error);
+        Alert.alert('Error', errorMessage);
       }
+    }
+  };
 
-      await updateTrainingMutation.mutateAsync({
-        id: training.id,
-        updates: { completed: newStatus },
+  const handleCompleteWorkout = async () => {
+    if (!profile || !completingTraining) return;
+
+    try {
+      // Create workout
+      const workoutId = await createWorkoutMutation.mutateAsync({
+        user_id: profile.id,
+        workout_type: workoutType,
+        duration_minutes: parseInt(duration),
+        intensity: parseInt(intensity),
+        notes: workoutNotes,
+        cycle_id: null,
+        weight_unit: profile.weight_unit,
       });
 
-      // Data refreshes automatically via React Query
+      // Create exercises if any
+      if (exercises.length > 0) {
+        await createExercisesMutation.mutateAsync(
+          exercises.map(ex => ({
+            workout_id: workoutId,
+            exercise_name: ex.exercise_name,
+            sets: ex.sets,
+            reps: ex.reps,
+            weight_lbs: ex.weight_lbs,
+            weight_unit: ex.weight_unit,
+            notes: ex.notes,
+          }))
+        );
+      }
+
+      // Mark training as completed
+      await updateTrainingMutation.mutateAsync({
+        id: completingTraining.id,
+        updates: { completed: true },
+      });
+
+      // Cancel notification if exists
+      if (completingTraining.notification_id) {
+        await cancelNotification(completingTraining.notification_id);
+      }
+
+      // Reset and close
+      setShowWorkoutModal(false);
+      setCompletingTraining(null);
+      setWorkoutType('table_practice');
+      setDuration('60');
+      setIntensity('7');
+      setWorkoutNotes('');
+      setSelectedTemplateId(null);
+      setExercises([]);
+
+      Alert.alert('Success', 'Workout logged successfully!');
     } catch (error) {
       const errorMessage = handleError(error);
       Alert.alert('Error', errorMessage);
@@ -472,6 +573,119 @@ export default function ScheduleScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Workout Modal */}
+      <Modal
+        visible={showWorkoutModal}
+        animationType="slide"
+        onRequestClose={() => setShowWorkoutModal(false)}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Log Workout</Text>
+            <TouchableOpacity onPress={() => setShowWorkoutModal(false)}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {/* Template Selector */}
+            {templates.length > 0 && (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Start from Template (Optional)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.templateButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+                      selectedTemplateId === null && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    ]}
+                    onPress={() => setSelectedTemplateId(null)}
+                  >
+                    <Text style={[{ color: colors.textSecondary }, selectedTemplateId === null && { color: '#FFF' }]}>
+                      None
+                    </Text>
+                  </TouchableOpacity>
+                  {templates.map((template) => (
+                    <TouchableOpacity
+                      key={template.id}
+                      style={[
+                        styles.templateButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+                        selectedTemplateId === template.id && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                      onPress={() => handleApplyTemplate(template.id)}
+                    >
+                      <Text style={[{ color: colors.textSecondary }, selectedTemplateId === template.id && { color: '#FFF' }]}>
+                        {template.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {selectedTemplateId && (
+                  <Text style={{ color: colors.textTertiary, fontSize: 12, fontStyle: 'italic', marginBottom: 16 }}>
+                    Template applied! You can still edit any fields below.
+                  </Text>
+                )}
+              </>
+            )}
+
+            <Text style={[styles.label, { color: colors.text }]}>Workout Type</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+              {['table_practice', 'strength', 'technique', 'conditioning', 'endurance', 'sparring', 'recovery', 'mixed'].map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.templateButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+                    workoutType === type && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  ]}
+                  onPress={() => setWorkoutType(type)}
+                >
+                  <Text style={[{ color: colors.textSecondary }, workoutType === type && { color: '#FFF' }]}>
+                    {type.replace(/_/g, ' ')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.label, { color: colors.text }]}>Duration (minutes)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={duration}
+              onChangeText={setDuration}
+              keyboardType="number-pad"
+              placeholder="60"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Intensity (1-10)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={intensity}
+              onChangeText={setIntensity}
+              keyboardType="number-pad"
+              placeholder="7"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <Text style={[styles.label, { color: colors.text }]}>Notes</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border }]}
+              value={workoutNotes}
+              onChangeText={setWorkoutNotes}
+              multiline
+              numberOfLines={4}
+              placeholder="How did the workout go?"
+              placeholderTextColor={colors.textTertiary}
+            />
+
+            <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleCompleteWorkout}>
+              <Text style={styles.saveButtonText}>Complete & Log Workout</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -635,5 +849,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFF',
+  },
+  templateButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
   },
 });

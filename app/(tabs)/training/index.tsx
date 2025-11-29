@@ -435,7 +435,7 @@ export default function Training() {
 
   const handleApplyTemplate = (templateId: string) => {
     const template = templates.find(t => t.id === templateId);
-    if (!template) return;
+    if (!template || !profile) return;
 
     // Pre-fill form with template data
     setWorkoutType(template.workout_type);
@@ -449,14 +449,14 @@ export default function Training() {
       setNotes(template.notes);
     }
 
-    // Pre-fill exercises
+    // Pre-fill exercises with weight conversion to user's current unit
     if (template.exercises && template.exercises.length > 0) {
       setExercises(template.exercises.map(ex => ({
         exercise_name: ex.exercise_name,
         sets: ex.sets,
         reps: ex.reps,
-        weight_lbs: ex.weight_lbs,
-        weight_unit: ex.weight_unit || profile?.weight_unit || 'lbs',
+        weight_lbs: convertWeight(ex.weight_lbs, ex.weight_unit, profile.weight_unit),
+        weight_unit: profile.weight_unit,
         notes: ex.notes || '',
       })));
     }
