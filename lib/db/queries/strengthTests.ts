@@ -199,10 +199,10 @@ export const upsertStrengthTest = async (test: StrengthTest): Promise<void> => {
       test.id,
       test.user_id,
       test.test_type,
-      test.result_value,
-      test.result_unit,
-      test.notes,
-      test.created_at,
+      test.result_value ?? null,
+      test.result_unit ?? null,
+      test.notes ?? null,
+      (test as any).created_at ?? now,
       now,
     ]
   );
@@ -229,4 +229,3 @@ function generateUUID(): string {
     return v.toString(16);
   });
 }
-

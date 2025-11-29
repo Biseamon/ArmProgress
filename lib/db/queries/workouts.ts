@@ -53,12 +53,15 @@ export const getWorkoutById = async (id: string): Promise<Workout | null> => {
 /**
  * Create a new workout
  */
-export const createWorkout = async (workout: Omit<Workout, 'id' | 'updated_at'> & { created_at?: string }): Promise<string> => {
+export const createWorkout = async (
+  workout: Omit<Workout, 'id' | 'updated_at' | 'created_at'> & { created_at?: string }
+): Promise<string> => {
   const db = await getDatabase();
   
   const id = generateUUID();
   const now = new Date().toISOString();
   const createdAt = workout.created_at || now; // Use provided created_at or default to now
+  const weightUnit = (workout as any).weight_unit || 'lbs';
   
   await db.runAsync(
     `INSERT INTO workouts (
@@ -74,7 +77,7 @@ export const createWorkout = async (workout: Omit<Workout, 'id' | 'updated_at'> 
       workout.duration_minutes || 0,
       workout.intensity || 5,
       workout.notes || '',
-      workout.weight_unit || 'lbs',
+      weightUnit,
       createdAt, // Use custom or current timestamp
       now,
       now
@@ -232,4 +235,3 @@ function generateUUID(): string {
     return v.toString(16);
   });
 }
-

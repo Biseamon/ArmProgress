@@ -176,14 +176,14 @@ export const upsertMeasurement = async (measurement: BodyMeasurement): Promise<v
     [
       measurement.id,
       measurement.user_id,
-      measurement.weight,
-      measurement.weight_unit,
-      measurement.arm_circumference,
-      measurement.forearm_circumference,
-      measurement.wrist_circumference,
-      measurement.notes,
-      measurement.measured_at,
-      measurement.created_at,
+      measurement.weight ?? null,
+      measurement.weight_unit ?? 'lbs',
+      measurement.arm_circumference ?? null,
+      measurement.forearm_circumference ?? null,
+      measurement.wrist_circumference ?? null,
+      measurement.notes ?? null,
+      measurement.measured_at ?? now,
+      measurement.created_at ?? now,
       now,
     ]
   );
@@ -213,4 +213,3 @@ function generateUUID(): string {
     return v.toString(16);
   });
 }
-

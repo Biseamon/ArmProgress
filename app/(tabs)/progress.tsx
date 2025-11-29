@@ -54,6 +54,8 @@ import {
   useCreateMeasurement,
   useUpdateMeasurement,
   useDeleteMeasurement,
+  useCreateFeedPost,
+  useGroups,
 } from '@/lib/react-query-sqlite-complete';
 import { handleError } from '@/lib/errorHandling';
 
@@ -94,7 +96,8 @@ export default function Progress() {
   const { data: workouts = [], isLoading: workoutsLoading } = useWorkouts();
   const { data: cycles = [] } = useCycles();
   const { data: measurements = [] } = useMeasurements();
-  
+  const { data: groupsData = [] } = useGroups();
+
   // Mutations
   const createGoalMutation = useCreateGoal();
   const updateGoalMutation = useUpdateGoal();
@@ -107,6 +110,7 @@ export default function Progress() {
   const createMeasurementMutation = useCreateMeasurement();
   const updateMeasurementMutation = useUpdateMeasurement();
   const deleteMeasurementMutation = useDeleteMeasurement();
+  const createFeedPost = useCreateFeedPost();
   
   const loading = goalsLoading || testsLoading || workoutsLoading;
   
@@ -143,6 +147,11 @@ export default function Progress() {
   const [showGoalsTooltip, setShowGoalsTooltip] = useState(false);
 
   const [showReportModal, setShowReportModal] = useState(false);
+
+  // Share to Activity modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareContent, setShareContent] = useState<{ type: 'goal' | 'pr' | 'summary'; title: string; body: string } | null>(null);
+  const [selectedShareGroup, setSelectedShareGroup] = useState<string | null>(null);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [viewingGoal, setViewingGoal] = useState<Goal | null>(null);
   const [showGoalViewModal, setShowGoalViewModal] = useState(false);
@@ -228,7 +237,48 @@ export default function Progress() {
       setMeasurementNotes('');
       setEditingMeasurement(null);
       setShowAddMeasurement(false);
-      Alert.alert('Success', `Measurement ${editingMeasurement ? 'updated' : 'saved'} successfully!`);
+
+      // Build measurement summary for sharing
+      const measurementDetails: string[] = [];
+      if (weightValue) measurementDetails.push(`Weight: ${weightValue} ${userUnit}`);
+      if (armCircumference) measurementDetails.push(`Arm: ${armCircumference}${getCircumferenceUnit(userUnit)}`);
+      if (forearmCircumference) measurementDetails.push(`Forearm: ${forearmCircumference}${getCircumferenceUnit(userUnit)}`);
+      if (wristCircumference) measurementDetails.push(`Wrist: ${wristCircumference}${getCircumferenceUnit(userUnit)}`);
+
+      // Show success alert first
+      Alert.alert(
+        'Success',
+        `Measurement ${editingMeasurement ? 'updated' : 'saved'} successfully!`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // After success alert is dismissed, offer to share (only for new measurements)
+              if (!editingMeasurement && measurementDetails.length > 0) {
+                Alert.alert(
+                  'Share to Activity?',
+                  'Share this body measurement to your Activity feed?',
+                  [
+                    { text: 'Not now', style: 'cancel' },
+                    {
+                      text: 'Share',
+                      onPress: () => {
+                        setShareContent({
+                          type: 'summary',
+                          title: 'New body measurements',
+                          body: measurementDetails.join(' • '),
+                        });
+                        setSelectedShareGroup(null);
+                        setShowShareModal(true);
+                      },
+                    },
+                  ]
+                );
+              }
+            },
+          },
+        ]
+      );
       // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
@@ -327,6 +377,39 @@ export default function Progress() {
       if (newValue >= goal.target_value) {
         setShowConfetti(true);
         setTimeout(() => setShowConfetti(false), 5000);
+
+        // Show success alert first
+        Alert.alert(
+          'Goal Completed!',
+          `Congrats on finishing your goal: ${goal.goal_type}!`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // After success alert is dismissed, offer to share
+                Alert.alert(
+                  'Share to Activity?',
+                  'Want to share this achievement to your Activity feed?',
+                  [
+                    { text: 'Not now', style: 'cancel' },
+                    {
+                      text: 'Share',
+                      onPress: () => {
+                        setShareContent({
+                          type: 'goal',
+                          title: `Goal completed: ${goal.goal_type}`,
+                          body: `Hit ${goal.target_value} ${goal.goal_type ? '' : 'target'}`,
+                        });
+                        setSelectedShareGroup(null);
+                        setShowShareModal(true);
+                      },
+                    },
+                  ]
+                );
+              },
+            },
+          ]
+        );
       }
       // Data refreshes automatically via React Query
     } catch (error) {
@@ -435,7 +518,39 @@ export default function Progress() {
       setTestNotes('');
       setEditingTest(null);
       setShowTestModal(false);
-      Alert.alert('Success', 'PR saved successfully!');
+
+      // Show success alert first, then offer to share
+      Alert.alert(
+        'Success',
+        'PR saved successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // After success alert is dismissed, show share prompt
+              Alert.alert(
+                'Share to Activity?',
+                'Share this PR to your Activity feed?',
+                [
+                  { text: 'Not now', style: 'cancel' },
+                  {
+                    text: 'Share',
+                    onPress: () => {
+                      setShareContent({
+                        type: 'pr',
+                        title: `New PR: ${finalTestType.replace(/_/g, ' ')}`,
+                        body: `${formatWeight(resultValue, userUnit)} ${userUnit.toUpperCase()}`,
+                      });
+                      setSelectedShareGroup(null);
+                      setShowShareModal(true);
+                    },
+                  },
+                ]
+              );
+            },
+          },
+        ]
+      );
       // Data refreshes automatically via React Query
     } catch (error) {
       const errorMessage = handleError(error);
@@ -466,6 +581,26 @@ export default function Progress() {
     setTestResult(displayValue.toString());
     setTestNotes(test.notes || '');
     setShowTestModal(true);
+  };
+
+  const handleShareToActivity = () => {
+    if (!shareContent || createFeedPost.isPending) return;
+    createFeedPost.mutate(
+      {
+        type: shareContent.type,
+        title: shareContent.title,
+        body: shareContent.body,
+        groupId: selectedShareGroup || undefined,
+      },
+      {
+        onSuccess: () => {
+          setShowShareModal(false);
+          setShareContent(null);
+          setSelectedShareGroup(null);
+          Alert.alert('Success', 'Shared to Activity feed!');
+        },
+      }
+    );
   };
 
   const handleDeleteTest = async (testId: string) => {
@@ -2312,6 +2447,67 @@ const handleShareReport = async (type: 'pdf' | 'social') => {
         weightUnit={displayWeightUnit}
         isEditing={!!editingMeasurement}
       />
+
+      {/* Share to Activity Modal */}
+      <Modal visible={showShareModal} transparent animationType="slide" onRequestClose={() => setShowShareModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Share to Activity</Text>
+              <TouchableOpacity onPress={() => setShowShareModal(false)}>
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>
+              Choose where to share this {shareContent?.type === 'goal' ? 'goal' : shareContent?.type === 'pr' ? 'PR' : 'update'}:
+            </Text>
+            <ScrollView style={{ maxHeight: 300, marginBottom: 16 }}>
+              <TouchableOpacity
+                style={[
+                  styles.groupOption,
+                  {
+                    backgroundColor: selectedShareGroup === null ? colors.primary : colors.surface,
+                    borderColor: selectedShareGroup === null ? colors.primary : colors.border,
+                    borderWidth: 1,
+                    marginBottom: 8,
+                  },
+                ]}
+                onPress={() => setSelectedShareGroup(null)}
+              >
+                <Text style={[styles.groupOptionText, { color: selectedShareGroup === null ? '#FFF' : colors.text }]}>
+                  All (Public)
+                </Text>
+              </TouchableOpacity>
+              {groupsData.map((group: any) => (
+                <TouchableOpacity
+                  key={group.id}
+                  style={[
+                    styles.groupOption,
+                    {
+                      backgroundColor: selectedShareGroup === group.id ? colors.primary : colors.surface,
+                      borderColor: selectedShareGroup === group.id ? colors.primary : colors.border,
+                      borderWidth: 1,
+                      marginBottom: 8,
+                    },
+                  ]}
+                  onPress={() => setSelectedShareGroup(group.id)}
+                >
+                  <Text style={[styles.groupOptionText, { color: selectedShareGroup === group.id ? '#FFF' : colors.text }]}>
+                    {group.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.primary, opacity: createFeedPost.isPending ? 0.6 : 1 }]}
+              onPress={handleShareToActivity}
+              disabled={createFeedPost.isPending}
+            >
+              <Text style={styles.buttonText}>{createFeedPost.isPending ? 'Sharing...' : 'Share'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -3007,5 +3203,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  groupOption: {
+    padding: 16,
+    borderRadius: 8,
+  },
+  groupOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalCard: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 12,
+    padding: 20,
+  },
+  button: {
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

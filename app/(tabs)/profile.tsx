@@ -21,14 +21,15 @@ import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
-import { BookOpen, Camera, ChevronRight, Crown, FileText, Heart, Info, LogOut, Mail, Moon, Shield, Sun, User, Weight } from 'lucide-react-native';
+import { BookOpen, Camera, ChevronRight, Crown, Info, LogOut, Mail, Moon, Settings, Shield, Sun, User, Weight } from 'lucide-react-native';
 import { GuideModal } from '@/components/GuideModal';
-import { STRIPE_CONFIG, APP_CONFIG } from '@/lib/config';
+import { PaywallModal } from '@/components/PaywallModal';
 import { useUpdateProfile } from '@/lib/react-query-sqlite-complete';
 import { convertAllDataToNewUnit } from '@/lib/db/queries/weightConversion';
 import { triggerSync } from '@/lib/sync/syncEngine';
 import { handleError } from '@/lib/errorHandling';
 import { useQueryClient } from '@tanstack/react-query';
+import { getCachedProfilePicture } from '@/lib/cache/imageCache';
 
 // Helper function to validate URL
 const isValidHttpUrl = (str: string) => {
@@ -52,15 +53,24 @@ export default function Profile() {
   const [weightUnit, setWeightUnit] = useState<'lbs' | 'kg'>(profile?.weight_unit || 'lbs');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [imageKey, setImageKey] = useState(Date.now());
-  const [showDonationModal, setShowDonationModal] = useState(false);
   const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     const checkAndFixAvatar = async () => {
       if (profile?.avatar_url) {
         console.log('Profile avatar URL changed:', profile.avatar_url);
+        
+        // Try to use locally cached avatar when available (works offline)
+        const cached = await getCachedProfilePicture(profile.id, profile.avatar_url);
+        if (cached) {
+          setAvatarUrl(cached);
+          setImageKey(Date.now());
+          setImageError(false);
+          return;
+        }
         
         // Extract the base URL without query params
         const baseUrl = profile.avatar_url.split('?')[0];
@@ -453,7 +463,7 @@ export default function Profile() {
   };
 
   const handleUpgrade = () => {
-    router.push('/paywall');
+    setShowPaywall(true);
   };
 
   const handleManageSubscription = async () => {
@@ -485,28 +495,6 @@ export default function Profile() {
     }
   };
 
-  const handleDonate = () => {
-    // Build return URL based on platform
-    let returnUrl: string;
-    if (Platform.OS === 'web') {
-      returnUrl = window.location.origin;
-    } else if (Platform.OS === 'ios') {
-      returnUrl = `${APP_CONFIG.scheme}://profile`;
-    } else if (Platform.OS === 'android') {
-      returnUrl = `${APP_CONFIG.url}/profile`;
-    } else {
-      returnUrl = `${APP_CONFIG.scheme}://profile`;
-    }
-
-    // Use configured Stripe donation URL
-    const stripeDonationUrl = `${STRIPE_CONFIG.donationUrl}?prefilled_return_url=${encodeURIComponent(returnUrl)}`;
-
-    if (Platform.OS === 'web') {
-      window.open(stripeDonationUrl, '_blank');
-    } else {
-      Linking.openURL(stripeDonationUrl);
-    }
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -517,7 +505,9 @@ export default function Profile() {
             onPress={pickImage}
             disabled={uploading}
           >
-            {avatarUrl && !imageError && isValidHttpUrl(avatarUrl) ? (
+            {avatarUrl && !imageError && (
+              avatarUrl.startsWith('file:') || isValidHttpUrl(avatarUrl)
+            ) ? (
               <Image
                 source={{
                   uri: avatarUrl.includes('?t=') ? avatarUrl : `${avatarUrl}?t=${imageKey}`,
@@ -597,6 +587,17 @@ export default function Profile() {
               </Text>
             </View>
           </View>
+
+          <TouchableOpacity
+            style={[styles.card, styles.legalCard, { backgroundColor: colors.surface }]}
+            onPress={() => setShowGuide(true)}
+          >
+            <View style={styles.settingLeft}>
+              <BookOpen size={20} color={colors.primary} />
+              <Text style={[styles.settingText, { color: colors.text }]}>App Guide</Text>
+            </View>
+            <ChevronRight size={20} color={colors.textTertiary} />
+          </TouchableOpacity>
 
           {profile?.is_test_user && (
             <View style={[styles.testUserBanner, { backgroundColor: colors.surface, borderColor: colors.premium }]}>
@@ -736,35 +737,19 @@ export default function Profile() {
         </View>
 
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Legal</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
 
           <TouchableOpacity
             style={[styles.card, styles.legalCard, { backgroundColor: colors.surface }]}
-            onPress={() => router.push('/legal')}
+            onPress={() => router.push('/account-settings' as any)}
           >
             <View style={styles.settingLeft}>
-              <FileText size={20} color={colors.primary} />
-              <Text style={[styles.settingText, { color: colors.text }]}>Privacy & Terms</Text>
+              <Settings size={20} color={colors.primary} />
+              <Text style={[styles.settingText, { color: colors.text }]}>Account Settings</Text>
             </View>
             <ChevronRight size={20} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity
-          style={[styles.guideButton, { backgroundColor: colors.primary }]}
-          onPress={() => setShowGuide(true)}
-        >
-          <BookOpen size={22} color="#FFF" />
-          <Text style={styles.guideButtonText}>App Guide - Learn How to Use</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.donateButton, { backgroundColor: colors.surface, borderColor: '#FF6B9D' }]}
-          onPress={handleDonate}
-        >
-          <Heart size={20} color="#FF6B9D" />
-          <Text style={[styles.donateText, { color: '#FF6B9D' }]}>Support Development</Text>
-        </TouchableOpacity>
 
         <TouchableOpacity style={[styles.signOutButton, { backgroundColor: colors.surface, borderColor: colors.error }]} onPress={handleSignOut}>
           <LogOut size={20} color={colors.error} />
@@ -775,6 +760,12 @@ export default function Profile() {
       </ScrollView>
 
       <GuideModal visible={showGuide} onClose={() => setShowGuide(false)} />
+      <PaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onUpgrade={() => setShowPaywall(false)}
+        feature="Unlock all premium features"
+      />
     </View>
   );
 }
@@ -973,21 +964,6 @@ const styles = StyleSheet.create({
   },
   guideButtonText: {
     color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  donateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 16,
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-  },
-  donateText: {
     fontSize: 16,
     fontWeight: 'bold',
   },

@@ -239,11 +239,11 @@ export const upsertGoal = async (goal: Goal): Promise<void> => {
       goal.user_id,
       goal.goal_type,
       goal.target_value,
-      goal.current_value,
-      goal.deadline,
+      goal.current_value ?? null,
+      goal.deadline ?? null,
       goal.is_completed ? 1 : 0,
-      goal.notes,
-      goal.created_at,
+      goal.notes ?? null,
+      goal.created_at ?? now,
       now,
     ]
   );
@@ -279,4 +279,3 @@ function generateUUID(): string {
     return v.toString(16);
   });
 }
-

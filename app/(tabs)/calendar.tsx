@@ -1717,12 +1717,12 @@ export default function CalendarScreen() {
         onRequestClose={() => handleCloseViewModal('workout')}
       >
         <View style={[styles.viewModalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20, paddingRight: 28 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <TrendingUp size={24} color={colors.primary} />
               <Text style={[styles.modalTitle, { color: colors.text }]}>Workout Details</Text>
             </View>
-            <TouchableOpacity onPress={() => handleCloseViewModal('workout')}>
+            <TouchableOpacity onPress={() => handleCloseViewModal('workout')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -1867,12 +1867,12 @@ export default function CalendarScreen() {
         onRequestClose={() => handleCloseViewModal('goal')}
       >
         <View style={[styles.viewModalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20, paddingRight: 28 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Target size={24} color={colors.primary} />
               <Text style={[styles.modalTitle, { color: colors.text }]}>Goal Details</Text>
             </View>
-            <TouchableOpacity onPress={() => handleCloseViewModal('goal')}>
+            <TouchableOpacity onPress={() => handleCloseViewModal('goal')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -1964,12 +1964,12 @@ export default function CalendarScreen() {
         onRequestClose={() => handleCloseViewModal('pr')}
       >
         <View style={[styles.viewModalContainer, { backgroundColor: colors.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20 }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 20, paddingRight: 28 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <TrendingUp size={24} color={colors.primary} />
               <Text style={[styles.modalTitle, { color: colors.text }]}>PR Details</Text>
             </View>
-            <TouchableOpacity onPress={() => handleCloseViewModal('pr')}>
+            <TouchableOpacity onPress={() => handleCloseViewModal('pr')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
