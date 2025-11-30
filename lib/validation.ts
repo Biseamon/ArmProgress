@@ -300,6 +300,103 @@ export function validateStrengthTest(data: StrengthTestInput): ValidationResult 
 }
 
 /**
+ * Training Template Validation
+ */
+export interface TrainingTemplateInput {
+  name: string;
+  description?: string;
+  workout_type: string;
+  suggested_duration_minutes?: number;
+  suggested_intensity?: number;
+  exercises?: Array<{
+    exercise_name: string;
+    sets: number;
+    reps: number;
+    weight_lbs: number;
+    notes?: string;
+  }>;
+  notes?: string;
+}
+
+export function validateTrainingTemplate(data: TrainingTemplateInput): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  // Validate name
+  if (!data.name || data.name.trim().length === 0) {
+    errors.push({ field: 'name', message: 'Template name is required' });
+  } else if (data.name.length > 100) {
+    errors.push({ field: 'name', message: 'Template name must be under 100 characters' });
+  }
+
+  // Validate workout type
+  const validWorkoutTypes = [
+    'table_practice',
+    'strength',
+    'technique',
+    'endurance',
+    'sparring'
+  ];
+
+  if (!data.workout_type || !validWorkoutTypes.includes(data.workout_type)) {
+    errors.push({ field: 'workout_type', message: 'Invalid workout type' });
+  }
+
+  // Validate suggested duration (optional)
+  if (data.suggested_duration_minutes !== undefined && data.suggested_duration_minutes !== null) {
+    if (typeof data.suggested_duration_minutes !== 'number' || isNaN(data.suggested_duration_minutes)) {
+      errors.push({ field: 'suggested_duration_minutes', message: 'Duration must be a number' });
+    } else if (data.suggested_duration_minutes < 1 || data.suggested_duration_minutes > 480) {
+      errors.push({ field: 'suggested_duration_minutes', message: 'Duration must be between 1 and 480 minutes' });
+    }
+  }
+
+  // Validate suggested intensity (optional)
+  if (data.suggested_intensity !== undefined && data.suggested_intensity !== null) {
+    if (typeof data.suggested_intensity !== 'number' || isNaN(data.suggested_intensity)) {
+      errors.push({ field: 'suggested_intensity', message: 'Intensity must be a number' });
+    } else if (data.suggested_intensity < 1 || data.suggested_intensity > 10) {
+      errors.push({ field: 'suggested_intensity', message: 'Intensity must be between 1 and 10' });
+    }
+  }
+
+  // Validate description (optional)
+  if (data.description && data.description.length > 500) {
+    errors.push({ field: 'description', message: 'Description must be under 500 characters' });
+  }
+
+  // Validate notes (optional)
+  if (data.notes && data.notes.length > 1000) {
+    errors.push({ field: 'notes', message: 'Notes must be under 1000 characters' });
+  }
+
+  // Validate exercises (optional array)
+  if (data.exercises && Array.isArray(data.exercises)) {
+    data.exercises.forEach((exercise, index) => {
+      const exerciseValidation = validateExercise({
+        exercise_name: exercise.exercise_name,
+        sets: exercise.sets,
+        reps: exercise.reps,
+        weight_lbs: exercise.weight_lbs,
+        notes: exercise.notes || '',
+      });
+
+      if (!exerciseValidation.isValid) {
+        const firstError = getFirstError(exerciseValidation);
+        errors.push({
+          field: `exercises[${index}]`,
+          message: `Exercise ${index + 1}: ${firstError}`
+        });
+      }
+    });
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
  * File Upload Validation
  */
 export interface FileUploadInput {

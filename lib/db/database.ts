@@ -154,8 +154,32 @@ const createTables = async (database: SQLite.SQLiteDatabase) => {
       deleted INTEGER DEFAULT 0,
       FOREIGN KEY (user_id) REFERENCES profiles(id)
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_cycles_user_id ON cycles(user_id);
+  `);
+
+  // Training Templates table
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS training_templates (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      workout_type TEXT NOT NULL,
+      suggested_duration_minutes INTEGER,
+      suggested_intensity INTEGER CHECK (suggested_intensity >= 1 AND suggested_intensity <= 10),
+      exercises TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      modified_at TEXT DEFAULT (datetime('now')),
+      pending_sync INTEGER DEFAULT 0,
+      deleted INTEGER DEFAULT 0,
+      FOREIGN KEY (user_id) REFERENCES profiles(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_training_templates_user_id ON training_templates(user_id);
+    CREATE INDEX IF NOT EXISTS idx_training_templates_pending_sync ON training_templates(pending_sync);
   `);
 
   // Goals table
