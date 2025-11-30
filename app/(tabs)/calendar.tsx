@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Workout, StrengthTest, Goal } from '@/lib/supabase';
+import { Workout, StrengthTest, Goal, TrainingTemplate } from '@/lib/supabase';
 import { ChevronLeft, ChevronRight, X, TrendingUp, Pencil, Trash2, Save, Plus, Target, Trophy } from 'lucide-react-native';
 import { convertWeight, formatWeight, convertFromLbs, convertToLbs } from '@/lib/weightUtils';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +34,7 @@ import {
   useCreateWorkout,
   useCreateExercises,
   useCreateScheduledTraining,
+  useTrainingTemplates,
 } from '@/lib/react-query-sqlite-complete';
 import { getExercises, deleteExercisesByWorkout } from '@/lib/db/queries/exercises';
 
@@ -75,6 +76,8 @@ export default function CalendarScreen() {
   const { data: allGoals = [] } = useGoals();
   const { data: strengthTests = [] } = useStrengthTests();
   const { data: scheduledTrainings = [] } = useScheduledTrainings();
+  const { data: templates = [], isLoading: templatesLoading } = useTrainingTemplates();
+  const lastWeightUnit = useRef(profile?.weight_unit || 'lbs');
   
   // Mutations
   const updateWorkoutMutation = useUpdateWorkout();
@@ -129,6 +132,8 @@ export default function CalendarScreen() {
   const [addWorkoutNotes, setAddWorkoutNotes] = useState('');
   const [addExercises, setAddExercises] = useState<Exercise[]>([]);
   const [addWorkoutCycleId, setAddWorkoutCycleId] = useState<string | null>(null);
+  const [addSelectedTemplateId, setAddSelectedTemplateId] = useState<string | null>(null);
+  const [editSelectedTemplateId, setEditSelectedTemplateId] = useState<string | null>(null);
 
   // Schedule training modal state (for future dates)
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -149,6 +154,31 @@ export default function CalendarScreen() {
   // Workout exercises loading for view modal
   const [viewModalExercises, setViewModalExercises] = useState<Exercise[]>([]);
   const [loadingViewExercises, setLoadingViewExercises] = useState(false);
+
+  // Convert any in-progress exercise inputs if the user switches weight units
+  useEffect(() => {
+    const newUnit = profile?.weight_unit || 'lbs';
+    const previousUnit = lastWeightUnit.current;
+    if (newUnit === previousUnit) return;
+
+    setAddExercises((prev) =>
+      prev.map((ex) => ({
+        ...ex,
+        weight_lbs: convertWeight(ex.weight_lbs, ex.weight_unit || previousUnit, newUnit),
+        weight_unit: newUnit,
+      }))
+    );
+
+    setExercises((prev) =>
+      prev.map((ex) => ({
+        ...ex,
+        weight_lbs: convertWeight(ex.weight_lbs, ex.weight_unit || previousUnit, newUnit),
+        weight_unit: newUnit,
+      }))
+    );
+
+    lastWeightUnit.current = newUnit;
+  }, [profile?.weight_unit]);
 
   // Set available years based on profile
   useFocusEffect(
@@ -439,6 +469,7 @@ export default function CalendarScreen() {
   const handleEditWorkout = async (workout: Workout) => {
     // Close day modal first
     setShowDayModal(false);
+    setEditSelectedTemplateId(null);
     
     // Fetch exercises from SQLite
     const exercisesData = await getExercises(workout.id);
@@ -616,6 +647,69 @@ export default function CalendarScreen() {
     setAddWorkoutNotes('');
     setAddExercises([]);
     setAddWorkoutCycleId(null);
+    setAddSelectedTemplateId(null);
+  };
+
+  const handleApplyTemplateToAdd = (templateId: string) => {
+    const template = templates.find((t: TrainingTemplate) => t.id === templateId);
+    if (!template || !profile) return;
+
+    setAddWorkoutType(template.workout_type);
+    if (template.suggested_duration_minutes) {
+      setAddDuration(template.suggested_duration_minutes.toString());
+    }
+    if (template.suggested_intensity) {
+      setAddIntensity(template.suggested_intensity.toString());
+    }
+    if (template.notes) {
+      setAddWorkoutNotes(template.notes);
+    }
+
+    if (template.exercises && template.exercises.length > 0) {
+      setAddExercises(
+        template.exercises.map((ex) => ({
+          exercise_name: ex.exercise_name,
+          sets: ex.sets,
+          reps: ex.reps,
+          weight_lbs: convertWeight(ex.weight_lbs, ex.weight_unit || 'lbs', profile.weight_unit || 'lbs'),
+          weight_unit: profile.weight_unit || 'lbs',
+          notes: ex.notes || '',
+        }))
+      );
+    }
+
+    setAddSelectedTemplateId(templateId);
+  };
+
+  const handleApplyTemplateToEdit = (templateId: string) => {
+    const template = templates.find((t: TrainingTemplate) => t.id === templateId);
+    if (!template || !profile) return;
+
+    setWorkoutType(template.workout_type);
+    if (template.suggested_duration_minutes) {
+      setDuration(template.suggested_duration_minutes.toString());
+    }
+    if (template.suggested_intensity) {
+      setIntensity(template.suggested_intensity.toString());
+    }
+    if (template.notes) {
+      setWorkoutNotes(template.notes);
+    }
+
+    if (template.exercises && template.exercises.length > 0) {
+      setExercises(
+        template.exercises.map((ex) => ({
+          exercise_name: ex.exercise_name,
+          sets: ex.sets,
+          reps: ex.reps,
+          weight_lbs: convertWeight(ex.weight_lbs, ex.weight_unit || 'lbs', profile.weight_unit || 'lbs'),
+          weight_unit: profile.weight_unit || 'lbs',
+          notes: ex.notes || '',
+        }))
+      );
+    }
+
+    setEditSelectedTemplateId(templateId);
   };
 
   const handleAddWorkout = async () => {
@@ -1235,14 +1329,76 @@ export default function CalendarScreen() {
             </View>
 
             <ScrollView
-              style={styles.modalContent}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="interactive"
-              contentContainerStyle={{ paddingBottom: 400 }}
-            >
+            style={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            contentContainerStyle={{ paddingBottom: 400 }}
+          >
+            {/* Template Selector - Optional (mirror training log modal) */}
+            {templatesLoading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginBottom: 16 }} />
+            ) : templates.length > 0 ? (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Start from Template (Optional)</Text>
+                <View style={styles.typeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border },
+                      editSelectedTemplateId === null && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                    ]}
+                    onPress={() => setEditSelectedTemplateId(null)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        { color: colors.textSecondary },
+                        editSelectedTemplateId === null && [styles.typeButtonTextActive, { color: '#FFF' }],
+                      ]}
+                    >
+                      None
+                    </Text>
+                  </TouchableOpacity>
+                  {templates.map((template: TrainingTemplate) => (
+                    <TouchableOpacity
+                      key={template.id}
+                      style={[
+                        styles.typeButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        editSelectedTemplateId === template.id && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                      ]}
+                      onPress={() => handleApplyTemplateToEdit(template.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeButtonText,
+                          { color: colors.textSecondary },
+                          editSelectedTemplateId === template.id && [styles.typeButtonTextActive, { color: '#FFF' }],
+                        ]}
+                      >
+                        {template.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {editSelectedTemplateId && (
+                  <Text style={[styles.templateHint, { color: colors.textTertiary }]}>
+                    Template applied! You can still edit any fields below before saving.
+                  </Text>
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Start from Template (Optional)</Text>
+                <Text style={[styles.templateEmptyText, { color: colors.textSecondary }]}>
+                  No templates yet. Create one from the Training tab to reuse here.
+                </Text>
+              </>
+            )}
+
             <Text style={[styles.label, { color: colors.text }]}>Workout Type</Text>
             <View style={styles.typeContainer}>
-              {['table_practice', 'strength', 'technique', 'endurance', 'sparring'].map((type) => (
+              {['table_practice', 'strength', 'technique', 'conditioning', 'endurance', 'sparring', 'recovery', 'mixed'].map((type) => (
                 <TouchableOpacity
                   key={type}
                   style={[
@@ -1428,9 +1584,71 @@ export default function CalendarScreen() {
               keyboardDismissMode="interactive"
               contentContainerStyle={{ paddingBottom: 400 }}
             >
+            {/* Template Selector - Optional (mirror training log modal) */}
+            {templatesLoading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginBottom: 16 }} />
+            ) : templates.length > 0 ? (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Start from Template (Optional)</Text>
+                <View style={styles.typeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border },
+                      addSelectedTemplateId === null && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                    ]}
+                    onPress={() => setAddSelectedTemplateId(null)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        { color: colors.textSecondary },
+                        addSelectedTemplateId === null && [styles.typeButtonTextActive, { color: '#FFF' }],
+                      ]}
+                    >
+                      None
+                    </Text>
+                  </TouchableOpacity>
+                  {templates.map((template: TrainingTemplate) => (
+                    <TouchableOpacity
+                      key={template.id}
+                      style={[
+                        styles.typeButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                        addSelectedTemplateId === template.id && [styles.typeButtonActive, { backgroundColor: colors.primary, borderColor: colors.primary }],
+                      ]}
+                      onPress={() => handleApplyTemplateToAdd(template.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.typeButtonText,
+                          { color: colors.textSecondary },
+                          addSelectedTemplateId === template.id && [styles.typeButtonTextActive, { color: '#FFF' }],
+                        ]}
+                      >
+                        {template.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {addSelectedTemplateId && (
+                  <Text style={[styles.templateHint, { color: colors.textTertiary }]}>
+                    Template applied! You can still edit any fields below before saving.
+                  </Text>
+                )}
+              </>
+            ) : (
+              <>
+                <Text style={[styles.label, { color: colors.text }]}>Start from Template (Optional)</Text>
+                <Text style={[styles.templateEmptyText, { color: colors.textSecondary }]}>
+                  No templates yet. Create one from the Training tab to reuse here.
+                </Text>
+              </>
+            )}
+
             <Text style={[styles.label, { color: colors.text }]}>Workout Type</Text>
             <View style={styles.typeContainer}>
-              {['table_practice', 'strength', 'technique', 'endurance', 'sparring'].map((type) => (
+              {['table_practice', 'strength', 'technique', 'conditioning', 'endurance', 'sparring', 'recovery', 'mixed'].map((type) => (
                 <TouchableOpacity
                   key={type}
                   style={[
@@ -2495,6 +2713,16 @@ const styles = StyleSheet.create({
   typeButtonActive: {
     backgroundColor: '#E63946',
     borderColor: '#E63946',
+  },
+  templateHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  templateEmptyText: {
+    fontSize: 13,
+    marginBottom: 16,
   },
   typeButtonText: {
     fontSize: 14,
